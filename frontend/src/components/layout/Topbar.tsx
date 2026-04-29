@@ -1,7 +1,7 @@
-import { View, Text, StyleSheet, TouchableOpacity, TextInput, Platform, Image } from 'react-native';
-import { usePathname, useRouter } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
+import { usePathname, useRouter } from 'expo-router';
 import { useState } from 'react';
+import { Image, Platform, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { colors } from '../../constants/colors';
 import { useLayoutStore } from '../../store/useLayoutStore';
 import { useSyncStore } from '../../store/useSyncStore';
@@ -85,16 +85,17 @@ export function Topbar({ viewMode = 'list', onViewModeChange }: TopbarProps) {
 
         {/* View mode toggle */}
         <TouchableOpacity
-          style={[styles.iconBtn, viewMode === 'list' && styles.iconBtnActive]}
-          onPress={() => onViewModeChange?.('list')}
-        >
-          <Feather name="list" size={18} color={viewMode === 'list' ? colors.primary : colors.textSecondary} />
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={[styles.iconBtn, viewMode === 'grid' && styles.iconBtnActive]}
-          onPress={() => onViewModeChange?.('grid')}
-        >
-          <Feather name="grid" size={18} color={viewMode === 'grid' ? colors.primary : colors.textSecondary} />
+          style={styles.iconBtn}
+          onPress={() => {
+            const nextMode = viewMode === 'list' ? 'grid' : 'list';
+            onViewModeChange?.(nextMode);
+          }}
+        >{/* Nếu đang là list thì hiện icon grid (để bấm chuyển sang grid) và ngược lại */}
+          <Feather
+            name={viewMode === 'list' ? "grid" : "list"}
+            size={20}
+            color={colors.textSecondary}
+          />
         </TouchableOpacity>
 
         {/* Notification */}
@@ -177,7 +178,7 @@ const styles = StyleSheet.create({
     ...Platform.select({ web: { outlineStyle: 'none' } as any }),
   },
   actions: {
-    width: 210,
+    width: 170,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,

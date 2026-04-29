@@ -5,10 +5,8 @@ import { QuickCapture } from '../../src/components/notes/QuickCapture';
 import { SectionLabel } from '../../src/components/ui/SectionLabel';
 import { colors } from '../../src/constants/colors';
 import { useSyncStore } from '../../src/store/useSyncStore';
-import { apiRequest } from '../../src/api/api';
 
-// Mock data khớp với mockup
-const PINNED_NOTES: NoteCardData[] = [
+const MOCK_NOTES: NoteCardData[] = [
   {
     id: '1',
     type: 'text',
@@ -38,9 +36,6 @@ const PINNED_NOTES: NoteCardData[] = [
     todo_total: 6,
     todo_completed: 2,
   },
-];
-
-const OTHER_NOTES: NoteCardData[] = [
   {
     id: '3',
     type: 'text',
@@ -68,16 +63,14 @@ const OTHER_NOTES: NoteCardData[] = [
 
 export default function HomeScreen() {
   const { setSyncing, setDone, setError } = useSyncStore();
-  const [notes, setNotes] = useState<NoteCardData[]>([]); // ← đây là setNotes
+  const [notes, setNotes] = useState<NoteCardData[]>([]);
 
   useEffect(() => {
     setSyncing();
     const load = async () => {
-      
       try {
-        // Dùng mock data tạm vì chưa có backend
-        await new Promise(res => setTimeout(res, 1000)); // giả lập delay
-        setNotes(PINNED_NOTES); // dùng mock data có sẵn
+        await new Promise(res => setTimeout(res, 1000));
+        setNotes(MOCK_NOTES);
         setDone();
       } catch {
         setError();
@@ -85,6 +78,22 @@ export default function HomeScreen() {
     };
     load();
   }, []);
+
+  const handleUpdate = (id: string, changes: Partial<NoteCardData>) => {
+    setNotes(prev => prev.map(n => n.id === id ? { ...n, ...changes } : n));
+  };
+
+  const handleDelete = (id: string) => {
+    setNotes(prev => prev.filter(n => n.id !== id));
+  };
+
+  const handleArchive = (id: string) => {
+    setNotes(prev => prev.filter(n => n.id !== id));
+    // TODO: apiRequest(`/notes/${id}`, { method: 'PATCH', body: JSON.stringify({ is_archived: true }) })
+  };
+
+  const pinned = notes.filter(n => n.is_pinned);
+  const others = notes.filter(n => !n.is_pinned);
 
   return (
     <ScrollView
@@ -95,15 +104,35 @@ export default function HomeScreen() {
       <View style={styles.inner}>
         <QuickCapture />
 
-        <SectionLabel label="Đã ghim" />
-        {PINNED_NOTES.map((note) => (
-          <NoteCard key={note.id} note={note} />
-        ))}
+        {pinned.length > 0 && (
+          <>
+            <SectionLabel label="Đã ghim" />
+            {pinned.map(note => (
+              <NoteCard
+                key={note.id}
+                note={note}
+                onUpdate={handleUpdate}
+                onDelete={handleDelete}
+                onArchive={handleArchive}
+              />
+            ))}
+          </>
+        )}
 
-        <SectionLabel label="Khác" />
-        {OTHER_NOTES.map((note) => (
-          <NoteCard key={note.id} note={note} />
-        ))}
+        {others.length > 0 && (
+          <>
+            <SectionLabel label="Khác" />
+            {others.map(note => (
+              <NoteCard
+                key={note.id}
+                note={note}
+                onUpdate={handleUpdate}
+                onDelete={handleDelete}
+                onArchive={handleArchive}
+              />
+            ))}
+          </>
+        )}
       </View>
     </ScrollView>
   );
