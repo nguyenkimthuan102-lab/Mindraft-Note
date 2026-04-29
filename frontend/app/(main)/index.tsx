@@ -1,8 +1,11 @@
 import { ScrollView, StyleSheet, View } from 'react-native';
+import { useState, useEffect } from 'react';
 import { NoteCard, NoteCardData } from '../../src/components/notes/NoteCard';
 import { QuickCapture } from '../../src/components/notes/QuickCapture';
 import { SectionLabel } from '../../src/components/ui/SectionLabel';
 import { colors } from '../../src/constants/colors';
+import { useSyncStore } from '../../src/store/useSyncStore';
+import { apiRequest } from '../../src/api/api';
 
 // Mock data khớp với mockup
 const PINNED_NOTES: NoteCardData[] = [
@@ -64,6 +67,25 @@ const OTHER_NOTES: NoteCardData[] = [
 ];
 
 export default function HomeScreen() {
+  const { setSyncing, setDone, setError } = useSyncStore();
+  const [notes, setNotes] = useState<NoteCardData[]>([]); // ← đây là setNotes
+
+  useEffect(() => {
+    setSyncing();
+    const load = async () => {
+      
+      try {
+        // Dùng mock data tạm vì chưa có backend
+        await new Promise(res => setTimeout(res, 1000)); // giả lập delay
+        setNotes(PINNED_NOTES); // dùng mock data có sẵn
+        setDone();
+      } catch {
+        setError();
+      }
+    };
+    load();
+  }, []);
+
   return (
     <ScrollView
       style={styles.scroll}

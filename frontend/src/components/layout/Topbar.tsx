@@ -1,18 +1,70 @@
-import { View, Text, StyleSheet, TouchableOpacity, TextInput, Platform } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, TextInput, Platform, Image } from 'react-native';
+import { usePathname, useRouter } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
 import { useState } from 'react';
 import { colors } from '../../constants/colors';
+import { useLayoutStore } from '../../store/useLayoutStore';
+import { useSyncStore } from '../../store/useSyncStore';
+import { SyncIndicator } from '../ui/SyncIndicator';
 
 interface TopbarProps {
   viewMode?: 'list' | 'grid';
   onViewModeChange?: (mode: 'list' | 'grid') => void;
 }
 
+const logoIcon = require('../../../assets/images/icon.png');
+
 export function Topbar({ viewMode = 'list', onViewModeChange }: TopbarProps) {
   const [search, setSearch] = useState('');
+  const { toggleSidebar } = useLayoutStore();
+  const pathname = usePathname();
+  const isHome = pathname === '/' || pathname === '/(main)';
+  const isSettings = pathname.includes('settings');
+  const router = useRouter();
+  const { status: syncStatus } = useSyncStore();
+
+  const getAreaTitle = () => {
+    if (isHome) return 'Mindraft Note';
+    if (pathname.includes('trash')) return 'Trash';
+    if (pathname.includes('archive')) return 'Archive';
+    if (pathname.includes('reminders')) return 'Reminders';
+    if (pathname.includes('tag')) return pathname.split('/').pop()?.toUpperCase();
+    return 'Mindraft Note';
+  };
+
+  if (isSettings) return null; // Hoặc render một Topbar tối giản cho Setting
 
   return (
     <View style={styles.topbar}>
+
+      <View style={styles.leftSection}>
+        <TouchableOpacity onPress={toggleSidebar} style={styles.menuBtn}>
+          <Feather name="menu" size={22} color={colors.textSecondary} />
+        </TouchableOpacity>
+        {/* Bọc cụm Logo/Brand vào TouchableOpacity để click được */}
+        <TouchableOpacity
+          activeOpacity={0.7}
+          style={styles.logoContainer}
+          onPress={() => {
+            // Nếu đang ở Home thì replace để reload, nếu ở trang khác thì push về Home
+            if (isHome) {
+              router.replace('/(main)');
+            } else {
+              router.push('/(main)');
+            }
+          }}
+        >
+          {isHome ? (
+            <>
+              <Image source={logoIcon} style={styles.logoImg} />
+              <Text style={styles.brandText}>Mindraft Note</Text>
+            </>
+          ) : (
+            <Text style={styles.areaTitle}>{getAreaTitle()}</Text>
+          )}
+        </TouchableOpacity>
+      </View>
+
       {/* Search */}
       <View style={styles.searchWrap}>
         <Feather name="search" size={16} color={colors.textTertiary} style={styles.searchIcon} />
@@ -27,6 +79,10 @@ export function Topbar({ viewMode = 'list', onViewModeChange }: TopbarProps) {
 
       {/* Right actions */}
       <View style={styles.actions}>
+
+        {/* Sync - gần search nhất */}
+        <SyncIndicator status={syncStatus} />
+
         {/* View mode toggle */}
         <TouchableOpacity
           style={[styles.iconBtn, viewMode === 'list' && styles.iconBtnActive]}
@@ -60,23 +116,54 @@ export function Topbar({ viewMode = 'list', onViewModeChange }: TopbarProps) {
 
 const styles = StyleSheet.create({
   topbar: {
-    height: 56,
+    height: 66,
+    justifyContent: 'space-between',
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 20,
-    gap: 16,
+    //gap: 16,
     borderBottomWidth: 1,
     borderBottomColor: colors.borderDefault,
     backgroundColor: colors.bgSurface,
   },
+  leftSection: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    width: 250, // Giữ cố định để thanh search không bị nhảy
+  },
+  menuBtn: {
+    padding: 8,
+    marginRight: 4,
+  },
+  logoContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  logoImg: {
+    width: 32,
+    height: 32,
+  },
+  brandText: {
+    fontFamily: 'Inter-SemiBold',
+    fontSize: 20,
+    color: colors.textPrimary,
+    marginLeft: 8,
+  },
+  areaTitle: {
+    fontFamily: 'Inter-Medium',
+    fontSize: 18,
+    color: colors.textSecondary,
+    marginLeft: 12,
+  },
   searchWrap: {
-    flex: 1,
+    width: '100%', // Dùng width kết hợp maxWidth
+    maxWidth: 800, // Độ rộng bạn muốn
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: colors.gray100,
-    borderRadius: 999,
+    borderRadius: 8,
     paddingHorizontal: 14,
-    height: 38,
+    height: 44,
     gap: 8,
   },
   searchIcon: {
@@ -90,6 +177,7 @@ const styles = StyleSheet.create({
     ...Platform.select({ web: { outlineStyle: 'none' } as any }),
   },
   actions: {
+    width: 210,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
