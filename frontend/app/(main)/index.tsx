@@ -1,11 +1,13 @@
 import { ScrollView, StyleSheet, View } from 'react-native';
 import { useState, useEffect } from 'react';
 import { NoteCard, NoteCardData } from '../../src/components/notes/NoteCard';
+import { NoteEditor } from '../../src/components/notes/NoteEditor';
 import { QuickCapture } from '../../src/components/notes/QuickCapture';
 import { SectionLabel } from '../../src/components/ui/SectionLabel';
 import { colors } from '../../src/constants/colors';
 import { useSyncStore } from '../../src/store/useSyncStore';
 import { useSelectionStore } from '../../src/store/useSelectionStore'; // Import store
+import { useNoteStore } from '../../src/store/useNoteStore';
 
 const MOCK_NOTES: NoteCardData[] = [
   {
@@ -65,6 +67,15 @@ const MOCK_NOTES: NoteCardData[] = [
 export default function HomeScreen() {
   const { setSyncing, setDone, setError } = useSyncStore();
   const [notes, setNotes] = useState<NoteCardData[]>([]);
+  const {
+    editorVisible,
+    editorMode,
+    editingNote,
+    openCreateText: openCreateTextStore,
+    openCreateTodo: openCreateTodoStore,
+    openEditNote: openEditNoteStore,
+    closeEditor: closeEditorStore,
+  } = useNoteStore();
 
   const { selectedIds, toggleSelect, clearSelection } = useSelectionStore();
 
@@ -96,6 +107,32 @@ export default function HomeScreen() {
     // TODO: apiRequest(`/notes/${id}`, { method: 'PATCH', body: JSON.stringify({ is_archived: true }) })
   };
 
+  const openCreateText = () => {
+    openCreateTextStore();
+  };
+
+  const openCreateTodo = () => {
+    openCreateTodoStore();
+  };
+
+  const openEditNote = (note: NoteCardData) => {
+    openEditNoteStore(note);
+  };
+
+  const closeEditor = () => {
+    closeEditorStore();
+  };
+
+  const handleSaveNote = (note: NoteCardData) => {
+    setNotes((prev) => {
+      const exists = prev.some((item) => item.id === note.id);
+      if (exists) {
+        return prev.map((item) => (item.id === note.id ? { ...item, ...note } : item));
+      }
+      return [note, ...prev];
+    });
+  };
+
   const pinned = notes.filter(n => n.is_pinned);
   const others = notes.filter(n => !n.is_pinned);
 
@@ -107,7 +144,7 @@ export default function HomeScreen() {
         showsVerticalScrollIndicator={false}
       >
         <View style={styles.inner}>
-          <QuickCapture />
+          <QuickCapture onCreateText={openCreateText} onCreateTodo={openCreateTodo} />
 
           {pinned.length > 0 && (
             <>
@@ -116,10 +153,10 @@ export default function HomeScreen() {
                 <NoteCard
                   key={note.id}
                   note={note}
+                  onPress={() => openEditNote(note)}
                   onUpdate={handleUpdate}
                   onDelete={handleDelete}
                   onArchive={handleArchive}
-                  // Truyền trạng thái chọn từ Store/State cha xuống
                   isSelected={selectedIds.includes(note.id)}
                   onSelect={() => toggleSelect(note.id)}
                 />
@@ -134,6 +171,7 @@ export default function HomeScreen() {
                 <NoteCard
                   key={note.id}
                   note={note}
+                  onPress={() => openEditNote(note)}
                   isSelected={selectedIds.includes(note.id)}
                   onSelect={() => toggleSelect(note.id)}
                   onUpdate={handleUpdate}
@@ -145,6 +183,14 @@ export default function HomeScreen() {
           )}
         </View>
       </ScrollView>
+
+      <NoteEditor
+        visible={editorVisible}
+        mode={editorMode}
+        note={editingNote}
+        onClose={closeEditor}
+        onSave={handleSaveNote}
+      />
     </View>
   );
 }
