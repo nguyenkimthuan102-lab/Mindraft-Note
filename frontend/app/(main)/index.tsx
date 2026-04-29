@@ -5,6 +5,7 @@ import { QuickCapture } from '../../src/components/notes/QuickCapture';
 import { SectionLabel } from '../../src/components/ui/SectionLabel';
 import { colors } from '../../src/constants/colors';
 import { useSyncStore } from '../../src/store/useSyncStore';
+import { useSelectionStore } from '../../src/store/useSelectionStore'; // Import store
 
 const MOCK_NOTES: NoteCardData[] = [
   {
@@ -65,7 +66,10 @@ export default function HomeScreen() {
   const { setSyncing, setDone, setError } = useSyncStore();
   const [notes, setNotes] = useState<NoteCardData[]>([]);
 
+  const { selectedIds, toggleSelect, clearSelection } = useSelectionStore();
+
   useEffect(() => {
+    clearSelection();
     setSyncing();
     const load = async () => {
       try {
@@ -96,45 +100,52 @@ export default function HomeScreen() {
   const others = notes.filter(n => !n.is_pinned);
 
   return (
-    <ScrollView
-      style={styles.scroll}
-      contentContainerStyle={styles.container}
-      showsVerticalScrollIndicator={false}
-    >
-      <View style={styles.inner}>
-        <QuickCapture />
+    <View style={{ flex: 1 }}>
+      <ScrollView
+        style={styles.scroll}
+        contentContainerStyle={styles.container}
+        showsVerticalScrollIndicator={false}
+      >
+        <View style={styles.inner}>
+          <QuickCapture />
 
-        {pinned.length > 0 && (
-          <>
-            <SectionLabel label="Đã ghim" />
-            {pinned.map(note => (
-              <NoteCard
-                key={note.id}
-                note={note}
-                onUpdate={handleUpdate}
-                onDelete={handleDelete}
-                onArchive={handleArchive}
-              />
-            ))}
-          </>
-        )}
+          {pinned.length > 0 && (
+            <>
+              <SectionLabel label="Đã ghim" />
+              {pinned.map(note => (
+                <NoteCard
+                  key={note.id}
+                  note={note}
+                  onUpdate={handleUpdate}
+                  onDelete={handleDelete}
+                  onArchive={handleArchive}
+                  // Truyền trạng thái chọn từ Store/State cha xuống
+                  isSelected={selectedIds.includes(note.id)}
+                  onSelect={() => toggleSelect(note.id)}
+                />
+              ))}
+            </>
+          )}
 
-        {others.length > 0 && (
-          <>
-            <SectionLabel label="Khác" />
-            {others.map(note => (
-              <NoteCard
-                key={note.id}
-                note={note}
-                onUpdate={handleUpdate}
-                onDelete={handleDelete}
-                onArchive={handleArchive}
-              />
-            ))}
-          </>
-        )}
-      </View>
-    </ScrollView>
+          {others.length > 0 && (
+            <>
+              <SectionLabel label="Khác" />
+              {others.map(note => (
+                <NoteCard
+                  key={note.id}
+                  note={note}
+                  isSelected={selectedIds.includes(note.id)}
+                  onSelect={() => toggleSelect(note.id)}
+                  onUpdate={handleUpdate}
+                  onDelete={handleDelete}
+                  onArchive={handleArchive}
+                />
+              ))}
+            </>
+          )}
+        </View>
+      </ScrollView>
+    </View>
   );
 }
 

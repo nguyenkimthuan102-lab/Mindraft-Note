@@ -2,10 +2,12 @@ import { Feather } from '@expo/vector-icons';
 import { usePathname, useRouter } from 'expo-router';
 import { useState } from 'react';
 import { Image, Platform, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { Icon } from 'react-native-paper';
 import { colors } from '../../constants/colors';
 import { useLayoutStore } from '../../store/useLayoutStore';
 import { useSyncStore } from '../../store/useSyncStore';
 import { SyncIndicator } from '../ui/SyncIndicator';
+import { useSelectionStore } from '../../store/useSelectionStore'; // Import store
 
 interface TopbarProps {
   viewMode?: 'list' | 'grid';
@@ -13,6 +15,14 @@ interface TopbarProps {
 }
 
 const logoIcon = require('../../../assets/images/icon.png');
+
+function ActionBtn({ icon, label }: { icon: string; label: string }) {
+  return (
+    <TouchableOpacity style={styles.iconBtn}>
+      <Icon source={icon} size={20} color={colors.textSecondary} />
+    </TouchableOpacity>
+  );
+}
 
 export function Topbar({ viewMode = 'list', onViewModeChange }: TopbarProps) {
   const [search, setSearch] = useState('');
@@ -23,16 +33,43 @@ export function Topbar({ viewMode = 'list', onViewModeChange }: TopbarProps) {
   const router = useRouter();
   const { status: syncStatus } = useSyncStore();
 
+  // Tự động lấy trạng thái từ Store
+  const { selectedIds, clearSelection } = useSelectionStore();
+  const selectedCount = selectedIds.length;
+
   const getAreaTitle = () => {
     if (isHome) return 'Mindraft Note';
     if (pathname.includes('trash')) return 'Trash';
     if (pathname.includes('archive')) return 'Archive';
     if (pathname.includes('reminders')) return 'Reminders';
+    if (pathname.includes('setting')) return 'Setting';
     if (pathname.includes('tag')) return pathname.split('/').pop()?.toUpperCase();
     return 'Mindraft Note';
   };
 
-  if (isSettings) return null; // Hoặc render một Topbar tối giản cho Setting
+
+  if (selectedCount > 0) {
+    return (
+      <View style={[styles.topbar, { backgroundColor: colors.bgSurface }]}>
+        <View style={styles.selectionSection}>
+          <TouchableOpacity onPress={clearSelection} style={styles.menuBtn}>
+            {/* Đổi Feather name="x" thành Icon source="close" */}
+            <Icon source="close" size={22} color={colors.textPrimary} />
+          </TouchableOpacity>
+          <Text style={styles.selectionText}>{selectedCount} đã chọn</Text>
+        </View>
+
+        <View style={styles.selectionActions}>
+          {/* Cập nhật tên icon theo Material Design (kèm hậu tố -outline cho đồng bộ) */}
+          <ActionBtn icon="pin-outline" label="Ghim" />
+          <ActionBtn icon="bell-outline" label="Nhắc nhở" />
+          <ActionBtn icon="palette-outline" label="Màu" />
+          <ActionBtn icon="archive-arrow-down-outline" label="Lưu trữ" />
+          <ActionBtn icon="delete-outline" label="Xóa" />
+        </View>
+      </View>
+    );
+  }
 
   return (
     <View style={styles.topbar}>
@@ -116,6 +153,9 @@ export function Topbar({ viewMode = 'list', onViewModeChange }: TopbarProps) {
 }
 
 const styles = StyleSheet.create({
+  selectionSection: { flexDirection: 'row', alignItems: 'center' },
+  selectionText: { fontSize: 18, fontFamily: 'Inter-Medium', marginLeft: 15 },
+  selectionActions: { flexDirection: 'row', gap: 10 }, // Đã thêm dấu phẩy
   topbar: {
     height: 66,
     justifyContent: 'space-between',

@@ -1,6 +1,5 @@
 import { View, Text, StyleSheet, TouchableOpacity, Platform } from 'react-native';
 import { Icon, MD3Colors } from 'react-native-paper';
-import { Feather } from '@expo/vector-icons';
 import { useState, useRef } from 'react';
 import { TagChip } from '../ui/TagChip';
 import { colors } from '../../constants/colors';
@@ -37,6 +36,8 @@ interface NoteCardProps {
   onUpdate?: (id: string, changes: Partial<NoteCardData>) => void;
   onDelete?: (id: string) => void;
   onArchive?: (id: string) => void;
+  isSelected: boolean; // Thêm dòng này
+  onSelect: () => void; // Thêm dòng này
 }
 
 function Avatars({ names }: { names: string[] }) {
@@ -128,26 +129,27 @@ function Tooltip({ label, children }: { label: string; children: React.ReactNode
 
 // Action icon button in toolbar
 function ActionBtn({ icon, label, onPress, color }: {
-  icon: keyof typeof Feather.glyphMap;
+  icon: string;
   label: string;
   onPress: () => void;
   color?: string;
 }) {
   return (
-    <Tooltip label={label}>
-      <TouchableOpacity style={styles.actionBtn} onPress={onPress} activeOpacity={0.7}>
-        <Feather name={icon} size={16} color={color ?? colors.textSecondary} />
-      </TouchableOpacity>
-    </Tooltip>
+    <TouchableOpacity
+      onPress={onPress}
+      style={styles.actionBtn}
+      activeOpacity={0.6}
+    >
+      <Icon source={icon} size={18} color={color || colors.textSecondary} />
+    </TouchableOpacity>
   );
 }
 
-export function NoteCard({ note, onPress, onUpdate, onDelete, onArchive }: NoteCardProps) {
+export function NoteCard({ note, isSelected, onSelect, onPress, onUpdate, onDelete, onArchive }: NoteCardProps) {
   const [hovered, setHovered] = useState(false);
   const [showColorPicker, setShowColorPicker] = useState(false);
   const [showDotMenu, setShowDotMenu] = useState(false);
   const [localNote, setLocalNote] = useState(note);
-  const [isSelected, setIsSelected] = useState(false); // Trạng thái chọn
 
   const update = (changes: Partial<NoteCardData>) => {
     setLocalNote(prev => ({ ...prev, ...changes }));
@@ -178,6 +180,7 @@ export function NoteCard({ note, onPress, onUpdate, onDelete, onArchive }: NoteC
         styles.card,
         { backgroundColor: bg },
         hovered && styles.cardHovered,
+        isSelected && { borderColor: colors.primary, borderWidth: 2 },
       ]}
       {...hoverProps}
     >
@@ -185,7 +188,8 @@ export function NoteCard({ note, onPress, onUpdate, onDelete, onArchive }: NoteC
       {(hovered || isSelected) && (
         <View style={styles.checkboxWrapper}>
           <TouchableOpacity
-            onPress={() => setIsSelected(!isSelected)} // Toggle trạng thái khi click
+            onPress={onSelect} // Toggle trạng thái khi click
+            activeOpacity={0.8}
             style={[
               isSelected && { backgroundColor: '#fff' } // Đảm bảo nền trắng khi được chọn
             ]}
@@ -238,7 +242,12 @@ export function NoteCard({ note, onPress, onUpdate, onDelete, onArchive }: NoteC
             {visibleItems.map((item) => (
               <View key={item.id} style={styles.todoRow}>
                 <View style={[styles.checkbox, item.is_completed && styles.checkboxDone]}>
-                  {item.is_completed && <Feather name="check" size={9} color="#fff" />}
+                  {item.is_completed && (
+                    <Icon
+                      source="check"
+                      size={10}
+                      color="#fff"
+                    />)}
                 </View>
                 <Text style={[styles.todoText, item.is_completed && styles.todoTextDone]} numberOfLines={1}>
                   {item.title}
@@ -283,7 +292,7 @@ export function NoteCard({ note, onPress, onUpdate, onDelete, onArchive }: NoteC
           {/* Color picker */}
           <View style={{ position: 'relative' }}>
             <ActionBtn
-              icon="droplet"
+              icon="palette-outline"
               label="Đổi màu"
               onPress={() => { setShowColorPicker(v => !v); setShowDotMenu(false); }}
               color={showColorPicker ? colors.primary : undefined}
@@ -298,19 +307,19 @@ export function NoteCard({ note, onPress, onUpdate, onDelete, onArchive }: NoteC
 
           {/* Reminder - chỉ text note */}
           {!isTodo && (
-            <ActionBtn icon="bell" label="Nhắc nhở" onPress={() => { }} />
+            <ActionBtn icon="bell-outline" label="Nhắc nhở" onPress={() => { }} />
           )}
 
           {/* Thêm CTV */}
-          <ActionBtn icon="user-plus" label="Thêm cộng tác viên" onPress={() => { }} />
+          <ActionBtn icon="account-plus-outline" label="Thêm cộng tác viên" onPress={() => { }} />
 
           {/* Lưu trữ */}
-          <ActionBtn icon="archive" label="Lưu trữ" onPress={() => onArchive?.(note.id)} />
+          <ActionBtn icon="archive-arrow-down-outline" label="Lưu trữ" onPress={() => onArchive?.(note.id)} />
 
           {/* 3-dot menu */}
           <View style={{ position: 'relative' }}>
             <ActionBtn
-              icon="more-vertical"
+              icon="dots-vertical"
               label="Thêm tùy chọn"
               onPress={() => { setShowDotMenu(v => !v); setShowColorPicker(false); }}
             />
