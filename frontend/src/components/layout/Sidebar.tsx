@@ -4,6 +4,7 @@ import { useRouter, usePathname } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
 import { colors } from '../../constants/colors';
 import { useLayoutStore } from '../../store/useLayoutStore';
+import { useNoteStore } from '../../store/useNoteStore';
 
 const LABELS = ['Personal', 'Work', 'Ideas'];
 
@@ -37,8 +38,26 @@ function NavItem({ icon, label, href, active }: NavItemProps) {
 export function Sidebar() {
   const { isSidebarOpen } = useLayoutStore();
   const pathname = usePathname();
+  const router = useRouter();
+  const { openCreateText, openCreateTodo } = useNoteStore();
   const [isNewNoteOpen, setIsNewNoteOpen] = React.useState(false);
   if (!isSidebarOpen) return null; // Nếu đóng thì biến mất
+
+  const handleCreateText = () => {
+    setIsNewNoteOpen(false);
+    if (pathname !== '/') {
+      router.push('/(main)');
+    }
+    openCreateText();
+  };
+
+  const handleCreateTodo = () => {
+    setIsNewNoteOpen(false);
+    if (pathname !== '/') {
+      router.push('/(main)');
+    }
+    openCreateTodo();
+  };
 
   return (
     <View style={styles.sidebar}>
@@ -57,10 +76,7 @@ export function Sidebar() {
             <View style={styles.dropdownContent}>
               <TouchableOpacity
                 style={styles.dropdownItem}
-                onPress={() => {
-                  console.log("Tạo Note văn bản");
-                  setIsNewNoteOpen(false); // Đóng menu sau khi chọn
-                }}
+                onPress={handleCreateText}
               >
                 <Feather name="type" size={14} color={colors.textSecondary} />
                 <Text style={styles.dropdownItemText}>Văn bản</Text>
@@ -68,10 +84,7 @@ export function Sidebar() {
 
               <TouchableOpacity
                 style={styles.dropdownItem}
-                onPress={() => {
-                  console.log("Tạo To-do list");
-                  setIsNewNoteOpen(false);
-                }}
+                onPress={handleCreateTodo}
               >
                 <Feather name="check-square" size={14} color={colors.textSecondary} />
                 <Text style={styles.dropdownItemText}>To-do list</Text>
