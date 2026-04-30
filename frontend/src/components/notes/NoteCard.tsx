@@ -3,6 +3,8 @@ import { Icon } from 'react-native-paper';
 import { useState, useRef } from 'react';
 import { TagChip } from '../ui/TagChip';
 import { colors } from '../../constants/colors';
+import { HoverBtn } from '../ui/HoverBtn';
+
 
 const cardColorMap: Record<string, string> = {
   default: '#FFFFFF', red: '#FADADD', orange: '#FEEFC3', yellow: '#FEF7CD',
@@ -64,8 +66,10 @@ function ColorPicker({ onSelect, onClose }: { onSelect: (color: string) => void;
   return (
     <View style={styles.colorPicker}>
       {NOTE_COLORS.map((c) => (
-        <TouchableOpacity
+        <HoverBtn
           key={c.key}
+          size={24}
+          borderRadius={12}
           style={[styles.colorDot, { backgroundColor: c.bg }]}
           onPress={() => { onSelect(c.key); onClose(); }}
         />
@@ -95,15 +99,17 @@ function DotMenu({ isTodo, onAction, onClose }: {
   return (
     <View style={styles.dotMenu}>
       {items.map((item) => (
-        <TouchableOpacity
+        <HoverBtn
           key={item.key}
           style={styles.dotMenuItem}
           onPress={() => { onAction(item.key); onClose(); }}
+          fullWidth
+          borderRadius={0}
         >
           <Text style={[styles.dotMenuText, (item as any).danger && { color: colors.danger }]}>
             {item.label}
           </Text>
-        </TouchableOpacity>
+        </HoverBtn>
       ))}
     </View>
   );
@@ -135,13 +141,12 @@ function ActionBtn({ icon, label, onPress, color }: {
   color?: string;
 }) {
   return (
-    <TouchableOpacity
+    <HoverBtn
       onPress={onPress}
       style={styles.actionBtn}
-      activeOpacity={0.6}
     >
       <Icon source={icon} size={18} color={color || colors.textSecondary} />
-    </TouchableOpacity>
+    </HoverBtn>
   );
 }
 
