@@ -28,6 +28,7 @@ export interface NoteCardData {
   tags?: string[]; collaborators?: { name: string }[];
   todo_items?: TodoItemData[]; todo_total?: number;
   todo_completed?: number; date?: string; reminder?: string;
+  images?: string[];
 }
 
 interface NoteCardProps {
