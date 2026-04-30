@@ -1,5 +1,5 @@
-import { View, Text, StyleSheet, TouchableOpacity, Platform } from 'react-native';
-import { Icon, MD3Colors } from 'react-native-paper';
+import { View, Text, StyleSheet, TouchableOpacity, Platform, Modal, Dimensions } from 'react-native';
+import { Icon } from 'react-native-paper';
 import { useState, useRef } from 'react';
 import { TagChip } from '../ui/TagChip';
 import { colors } from '../../constants/colors';
@@ -150,6 +150,8 @@ export function NoteCard({ note, isSelected, onSelect, onPress, onUpdate, onDele
   const [showColorPicker, setShowColorPicker] = useState(false);
   const [showDotMenu, setShowDotMenu] = useState(false);
   const [localNote, setLocalNote] = useState(note);
+  const [dotMenuPos, setDotMenuPos] = useState({ x: 0, y: 0 });
+  const dotBtnRef = useRef<View>(null);
 
   const update = (changes: Partial<NoteCardData>) => {
     setLocalNote(prev => ({ ...prev, ...changes }));
@@ -184,25 +186,6 @@ export function NoteCard({ note, isSelected, onSelect, onPress, onUpdate, onDele
       ]}
       {...hoverProps}
     >
-      {/* CỤM GÓC TRÁI TRÊN - CHECKBOX CHÈN RA NGOÀI */}
-      {(hovered || isSelected) && (
-        <View style={styles.checkboxWrapper}>
-          <TouchableOpacity
-            onPress={onSelect} // Toggle trạng thái khi click
-            activeOpacity={0.8}
-            style={[
-              isSelected && { backgroundColor: '#fff' } // Đảm bảo nền trắng khi được chọn
-            ]}
-          >
-            <Icon
-              source={isSelected ? "check-circle" : "circle-outline"}
-              size={22}
-              color={isSelected ? colors.primary : colors.textTertiary}
-            />
-          </TouchableOpacity>
-        </View>
-      )}
-
       {/* Pin icon góc trên phải - luôn hiện nếu pinned, chỉ hiện khi hover nếu chưa pin */}
 
       {/* 2. SỬA PHẦN PIN CORNER */}
@@ -317,20 +300,62 @@ export function NoteCard({ note, isSelected, onSelect, onPress, onUpdate, onDele
           <ActionBtn icon="archive-arrow-down-outline" label="Lưu trữ" onPress={() => onArchive?.(note.id)} />
 
           {/* 3-dot menu */}
-          <View style={{ position: 'relative' }}>
+          <View ref={dotBtnRef}>
             <ActionBtn
               icon="dots-vertical"
               label="Thêm tùy chọn"
-              onPress={() => { setShowDotMenu(v => !v); setShowColorPicker(false); }}
+              onPress={() => {
+                dotBtnRef.current?.measureInWindow((x, y, w, h) => {
+                  const screenHeight = Dimensions.get('window').height;
+                  const menuHeight = isTodo ? 280 : 200;
+                  const spaceBelow = screenHeight - (y + h);
+                  if (spaceBelow < menuHeight) {
+                    setDotMenuPos({ x: x - 160, y: y - menuHeight });
+                  } else {
+                    setDotMenuPos({ x: x - 160, y: y + h + 4 });
+                  }
+                });
+                setShowDotMenu(v => !v);
+                setShowColorPicker(false);
+              }}
             />
-            {showDotMenu && (
+          </View>
+          <Modal
+            visible={showDotMenu}
+            transparent
+            animationType="none"
+            onRequestClose={() => setShowDotMenu(false)}
+          >
+            <TouchableOpacity
+              style={StyleSheet.absoluteFillObject}
+              onPress={() => setShowDotMenu(false)}
+              activeOpacity={1}
+            />
+            <View style={[styles.dotMenu, { position: 'absolute', top: dotMenuPos.y, left: dotMenuPos.x }]}>
               <DotMenu
                 isTodo={isTodo}
                 onAction={handleDotAction}
                 onClose={() => setShowDotMenu(false)}
               />
-            )}
-          </View>
+            </View>
+          </Modal>
+        </View>
+      )}
+
+      {/* CHECKBOX - đặt cuối cùng để nằm trên dotMenu và tất cả overlay */}
+      {(hovered || isSelected) && (
+        <View style={styles.checkboxWrapper}>
+          <TouchableOpacity
+            onPress={onSelect}
+            activeOpacity={0.8}
+            style={[isSelected && { backgroundColor: '#fff' }]}
+          >
+            <Icon
+              source={isSelected ? "check-circle" : "circle-outline"}
+              size={22}
+              color={isSelected ? colors.primary : colors.textTertiary}
+            />
+          </TouchableOpacity>
         </View>
       )}
     </View>
@@ -348,7 +373,7 @@ const styles = StyleSheet.create({
     zIndex: 1,
 
     ...Platform.select({
-      web: { cursor: 'pointer' } as any,
+      web: { cursor: 'pointer', overflow: 'visible', } as any,
     }),
   },
   cardHovered: {
@@ -365,7 +390,7 @@ const styles = StyleSheet.create({
     paddingTop: 20,
   },
   checkboxCorner: {
-    position: 'absolute', top: -12, left: -12, zIndex: 10,
+    position: 'absolute', top: -12, left: -12, zIndex: 1,
     width: 28, height: 28, alignItems: 'center', justifyContent: 'center',
   },
   checkboxWrapper: {
@@ -425,6 +450,9 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: colors.borderDefault,
     gap: 2,
+    ...Platform.select({
+      web: { overflow: 'visible' } as any,
+    }),
   },
   actionBtn: {
     width: 32, height: 32, borderRadius: 6,
@@ -440,7 +468,7 @@ const styles = StyleSheet.create({
     borderRadius: 10, padding: 8, gap: 6,
     width: 172,
     borderWidth: 1, borderColor: colors.borderDefault,
-    zIndex: 100,
+    zIndex: 9999,
     ...Platform.select({
       web: { boxShadow: '0 4px 16px rgba(0,0,0,0.12)' } as any,
     }),
@@ -453,12 +481,10 @@ const styles = StyleSheet.create({
 
   // 3-dot menu
   dotMenu: {
-    position: 'absolute', bottom: 36, right: 0,
     backgroundColor: colors.bgSurface,
     borderRadius: 8, paddingVertical: 4,
     minWidth: 200,
     borderWidth: 1, borderColor: colors.borderDefault,
-    zIndex: 100,
     ...Platform.select({
       web: { boxShadow: '0 4px 16px rgba(0,0,0,0.12)' } as any,
     }),
