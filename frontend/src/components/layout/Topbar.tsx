@@ -1,13 +1,14 @@
 import { Feather } from '@expo/vector-icons';
 import { usePathname, useRouter } from 'expo-router';
 import { useState } from 'react';
-import { Image, Platform, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { Image, Platform, StyleSheet, Text, TextInput, TouchableOpacity, View, LayoutAnimation, UIManager } from 'react-native';
 import { Icon } from 'react-native-paper';
 import { colors } from '../../constants/colors';
 import { useLayoutStore } from '../../store/useLayoutStore';
 import { useSyncStore } from '../../store/useSyncStore';
 import { SyncIndicator } from '../ui/SyncIndicator';
 import { useSelectionStore } from '../../store/useSelectionStore'; // Import store
+import { useAppStore } from '../../store/useAppStore';
 
 interface TopbarProps {
   viewMode?: 'list' | 'grid';
@@ -24,7 +25,7 @@ function ActionBtn({ icon, label }: { icon: string; label: string }) {
   );
 }
 
-export function Topbar({ viewMode = 'list', onViewModeChange }: TopbarProps) {
+export function Topbar({ onViewModeChange }: TopbarProps) {
   const [search, setSearch] = useState('');
   const { toggleSidebar } = useLayoutStore();
   const pathname = usePathname();
@@ -32,10 +33,25 @@ export function Topbar({ viewMode = 'list', onViewModeChange }: TopbarProps) {
   const isSettings = pathname.includes('settings');
   const router = useRouter();
   const { status: syncStatus } = useSyncStore();
+  const { viewMode, setViewMode } = useAppStore();
 
   // Tự động lấy trạng thái từ Store
   const { selectedIds, clearSelection } = useSelectionStore();
   const selectedCount = selectedIds.length;
+
+  const handleToggle = () => {
+    // 1. Xác định chế độ tiếp theo
+    const nextMode = viewMode === 'list' ? 'grid' : 'list';
+
+    // 2. Chỉ chạy LayoutAnimation trên Mobile (Web hỗ trợ kém)
+    if (Platform.OS !== 'web') {
+      LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+    }
+
+    // 3. Cập nhật State
+    setViewMode(nextMode);
+    onViewModeChange?.(nextMode);
+  };
 
   const getAreaTitle = () => {
     if (isHome) return 'Mindraft Note';
@@ -123,10 +139,7 @@ export function Topbar({ viewMode = 'list', onViewModeChange }: TopbarProps) {
         {/* View mode toggle */}
         <TouchableOpacity
           style={styles.iconBtn}
-          onPress={() => {
-            const nextMode = viewMode === 'list' ? 'grid' : 'list';
-            onViewModeChange?.(nextMode);
-          }}
+          onPress={handleToggle}
         >{/* Nếu đang là list thì hiện icon grid (để bấm chuyển sang grid) và ngược lại */}
           <Feather
             name={viewMode === 'list' ? "grid" : "list"}

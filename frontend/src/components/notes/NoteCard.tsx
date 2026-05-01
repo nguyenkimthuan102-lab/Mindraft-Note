@@ -40,6 +40,7 @@ interface NoteCardProps {
   onArchive?: (id: string) => void;
   isSelected: boolean; // Thêm dòng này
   onSelect: () => void; // Thêm dòng này
+  isGridView?: boolean;
 }
 
 function Avatars({ names }: { names: string[] }) {
@@ -70,8 +71,10 @@ function ColorPicker({ onSelect, onClose }: { onSelect: (color: string) => void;
           key={c.key}
           size={24}
           borderRadius={12}
-          style={[styles.colorDot, { backgroundColor: c.bg }]}
+          hoverBorder
+          style={[{ backgroundColor: c.bg }]}
           onPress={() => { onSelect(c.key); onClose(); }}
+          label={c.key.charAt(0).toUpperCase() + c.key.slice(1)} // Hiện tên màu khi hover
         />
       ))}
     </View>
@@ -141,16 +144,18 @@ function ActionBtn({ icon, label, onPress, color }: {
   color?: string;
 }) {
   return (
-    <HoverBtn
-      onPress={onPress}
-      style={styles.actionBtn}
-    >
-      <Icon source={icon} size={18} color={color || colors.textSecondary} />
-    </HoverBtn>
+    <Tooltip label={label}>
+      <HoverBtn
+        onPress={onPress}
+        style={styles.actionBtn}
+      >
+        <Icon source={icon} size={18} color={color || colors.textSecondary} />
+      </HoverBtn>
+    </Tooltip>
   );
 }
 
-export function NoteCard({ note, isSelected, onSelect, onPress, onUpdate, onDelete, onArchive }: NoteCardProps) {
+export function NoteCard({ note, isSelected, onSelect, isGridView, onPress, onUpdate, onDelete, onArchive }: NoteCardProps) {
   const [hovered, setHovered] = useState(false);
   const [showColorPicker, setShowColorPicker] = useState(false);
   const [showDotMenu, setShowDotMenu] = useState(false);
@@ -188,6 +193,7 @@ export function NoteCard({ note, isSelected, onSelect, onPress, onUpdate, onDele
         { backgroundColor: bg },
         hovered && styles.cardHovered,
         isSelected && { borderColor: colors.primary, borderWidth: 2 },
+        { zIndex: hovered ? 100 : 1 },
       ]}
       {...hoverProps}
     >
@@ -196,9 +202,9 @@ export function NoteCard({ note, isSelected, onSelect, onPress, onUpdate, onDele
       {/* 2. SỬA PHẦN PIN CORNER */}
       {(hovered || localNote.is_pinned) && (
         <View style={[styles.pinCorner, { opacity: (hovered || localNote.is_pinned) ? 1 : 0 }]}>
-          <TouchableOpacity
+          <HoverBtn
             onPress={() => update({ is_pinned: !localNote.is_pinned })}
-            activeOpacity={0.7}
+            label={localNote.is_pinned ? "Bỏ ghim ghi chú" : "Ghim ghi chú"}
           >
             {/* SỬ DỤNG ICON CỦA REACT NATIVE PAPER */}
             <Icon
@@ -207,7 +213,7 @@ export function NoteCard({ note, isSelected, onSelect, onPress, onUpdate, onDele
               // Sử dụng màu của Mindraft: primary nếu đã ghim, tertiary nếu chưa
               color={localNote.is_pinned ? colors.primary : colors.textTertiary}
             />
-          </TouchableOpacity>
+          </HoverBtn>
         </View>
       )}
 
@@ -350,17 +356,17 @@ export function NoteCard({ note, isSelected, onSelect, onPress, onUpdate, onDele
       {/* CHECKBOX - đặt cuối cùng để nằm trên dotMenu và tất cả overlay */}
       {(hovered || isSelected) && (
         <View style={styles.checkboxWrapper}>
-          <TouchableOpacity
+          <HoverBtn
             onPress={onSelect}
-            activeOpacity={0.8}
             style={[isSelected && { backgroundColor: '#fff' }]}
+            label="Chọn ghi chú"
           >
             <Icon
               source={isSelected ? "check-circle" : "circle-outline"}
               size={22}
               color={isSelected ? colors.primary : colors.textTertiary}
             />
-          </TouchableOpacity>
+          </HoverBtn>
         </View>
       )}
     </View>
@@ -472,7 +478,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.bgSurface,
     borderRadius: 10, padding: 8, gap: 6,
     width: 172,
-    borderWidth: 1, borderColor: colors.borderDefault,
+
     zIndex: 9999,
     ...Platform.select({
       web: { boxShadow: '0 4px 16px rgba(0,0,0,0.12)' } as any,
@@ -480,7 +486,6 @@ const styles = StyleSheet.create({
   },
   colorDot: {
     width: 24, height: 24, borderRadius: 12,
-    borderWidth: 1, borderColor: colors.borderDefault,
     ...Platform.select({ web: { cursor: 'pointer' } as any }),
   },
 
