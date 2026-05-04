@@ -5,6 +5,7 @@ import { AuthCard } from '../../src/components/ui/AuthCard';
 import { Input } from '../../src/components/ui/Input';
 import { AuthButton } from '../../src/components/ui/AuthButton';
 import { colors } from '../../src/constants/colors';
+import { apiRequest } from '../../src/api/api';
 
 export default function RegisterScreen() {
   const [email, setEmail] = useState('');
@@ -28,19 +29,35 @@ export default function RegisterScreen() {
     return Object.keys(e).length === 0;
   };
 
-  const handleSignUp = async () => {
-    if (!validate()) return;
-    setLoading(true);
-    try {
-      // TODO: apiRequest('/auth/register')
-      // Then navigate to OTP verification
-      router.push('/(auth)/otp');
-    } catch (e) {
-      console.error(e);
-    } finally {
-      setLoading(false);
-    }
-  };
+const handleSignUp = async () => {
+  if (!validate()) return;
+  setLoading(true);
+  try {
+    // 🚀 PHÁT LỆNH: Gọi Backend để tạo User và gửi OTP
+    await apiRequest('/auth/register/', {
+      method: 'POST',
+      body: JSON.stringify({ 
+        email, 
+        password, 
+        nickname 
+      }),
+    });
+
+    // CHỈ KHI THÀNH CÔNG MỚI SANG TRANG OTP
+    // Truyền thêm email sang để trang OTP biết là gửi cho ai
+    router.push({ 
+      pathname: '/(auth)/otp', 
+      params: { email } 
+    });
+
+  } catch (e: any) {
+    console.error("Lỗi đăng ký:", e);
+    // Nếu email đã tồn tại hoặc lỗi gì đó, nó sẽ hiện ở đây
+    alert(e.message || "Đăng ký không thành công rồi ông Anh!");
+  } finally {
+    setLoading(false);
+  }
+};
 
   return (
     <AuthCard topLabel="Mindraft Note">

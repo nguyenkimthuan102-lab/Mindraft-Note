@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Note App</title>
+
+    <style>
+        body { font-family: Arial; padding: 30px; }
+        input, textarea { width: 300px; padding: 8px; margin: 5px 0; }
+        button { padding: 6px 10px; margin: 5px; cursor: pointer; }
+        .hidden { display: none; }
+        .note { background: #eee; padding: 10px; margin-top: 10px; }
+    </style>
+</head>
+
+<body>
+
+<h1>Note App</h1>
+
+<!-- AUTH UI -->
+<div id="authSection">
+    <h3>Login / Register</h3>
+
+    <input id="username" placeholder="Username"><br>
+    <input id="password" type="password" placeholder="Password"><br>
+
+    <button onclick="register()">Register</button>
+    <button onclick="login()">Login</button>
+    <button onclick="offlineMode()">Offline Mode</button>
+</div>
+
+<!-- NOTE UI -->
+<div id="noteSection" class="hidden">
+
+    <h3>My Notes</h3>
+
+    <input id="titleInput" placeholder="Title"><br>
+    <textarea id="contentInput" placeholder="Content"></textarea><br>
+
+    <button onclick="saveNote()">Save</button>
+    <button onclick="logout()">Logout</button>
+
+    <div id="noteList"></div>
+</div>
+
+<script>
+const API_URL = "/api/notes/";
+let token = null;
+let editingId = null;
+let offline = false;
+
+// ======================
+// AUTH
+// ======================
+
+async function register() {
+    const username = document.getElementById("username").value;
+    const password = document.getElementById("password").value;
+
+    const res = await fetch("/api/register/", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({ username, password })
+    });
+
+    const data = await res.json();
+    alert(JSON.stringify(data));
+}
+
+async function login() {
+    const username = document.getElementById("username").value;
+    const password = document.getElementById("password").value;
+
+    const res = await fetch("/api/login/", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({ username, password })
+    });
+
+    const data = await res.json();
+
+    if (data.access) {
+        token = data.access;
+        enterApp();
+    } else {
+        alert("Login failed");
+    }
+}
+
+function offlineMode() {
+    offline = true;
+    enterApp();
+}
+
+function logout() {
+    token = null;
+    location.reload();
+}
+
+// ======================
+// UI SWITCH
+// ======================
+
+function enterApp() {
+    document.getElementById("authSection").classList.add("hidden");
+    document.getElementById("noteSection").classList.remove("hidden");
+
+    loadNotes();
+}
+
+// ======================
+// NOTES
+// ======================
+
+function getHeaders() {
+    if (offline) return {"Content-Type": "application/json"};
+
+    return {
+        "Content-Type": "application/json",
+        "Authorization": "Bearer " + token
+    };
+}
+
+async function loadNotes() {
+    if (offline) {
+        document.getElementById("noteList").innerHTML = "<p>Offline mode (no DB)</p>";
+        return;
+    }
+
+    const res = await fetch(API_URL, {
+        headers: getHeaders()
+    });
+
+    const data = await res.json();
+
+    const list = document.getElementById("noteList");
+    list.innerHTML = "";
+
+    data.forEach(note => {
+        const div = document.createElement("div");
+        div.className = "note";
+
+        div.innerHTML = `
+            <b>${note.title}</b>
+            <p>${note.content}</p>
+            <button onclick="editNote(${note.id}, \`${note.title}\`, \`${note.content}\`)">✏️</button>
+            <button onclick="deleteNote(${note.id})">❌</button>
+        `;
+
+        list.appendChild(div);
+    });
+}
+
+async function saveNote() {
+    const title = document.getElementById("titleInput").value.trim();
+    const content = document.getElementById("contentInput").value.trim();
+
+    if (!title || !content) {
+        alert("Không được để trống!");
+        return;
+    }
+
+    if (offline) {
+        alert("Offline mode: không lưu DB");
+        return;
+    }
+
+    if (editingId) {
+        await fetch(`/api/notes/${editingId}/`, {
+            method: "PUT",
+            headers: getHeaders(),
+            body: JSON.stringify({ title, content })
+        });
+    } else {
+        await fetch(API_URL, {
+            method: "POST",
+            headers: getHeaders(),
+            body: JSON.stringify({ title, content })
+        });
+    }
+
+    editingId = null;
+    document.getElementById("titleInput").value = "";
+    document.getElementById("contentInput").value = "";
+
+    loadNotes();
+}
+
+function editNote(id, title, content) {
+    document.getElementById("titleInput").value = title;
+    document.getElementById("contentInput").value = content;
+    editingId = id;
+}
+
+async function deleteNote(id) {
+    if (!confirm("Xóa note?")) return;
+
+    await fetch(`/api/notes/${id}/`, {
+        method: "DELETE",
+        headers: getHeaders()
+    });
+
+    loadNotes();
+}
+</script>
+
+</body>
+</html>

@@ -11,6 +11,7 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { AuthCard } from '../../src/components/ui/AuthCard';
 import { AuthButton } from '../../src/components/ui/AuthButton';
 import { colors } from '../../src/constants/colors';
+import { apiRequest } from '../../src/api/api';
 
 const OTP_LENGTH = 6;
 
@@ -42,29 +43,69 @@ export default function OtpScreen() {
     }
   };
 
-  const handleVerify = async () => {
-    const code = otp.join('');
-    if (code.length < OTP_LENGTH) return;
-    setLoading(true);
-    try {
-      // TODO: apiRequest('/auth/verify-otp', { method: 'POST', body: JSON.stringify({ email, code }) })
-      if (mode === 'reset') {
-        router.push('/(auth)/reset-password');
-      } else {
-        router.replace('/(main)');
-      }
-    } catch (e) {
-      console.error(e);
-    } finally {
-      setLoading(false);
-    }
-  };
+// 1. XỬ LÝ GỬI LẠI MÃ (Resend)
+const handleResend = async () => {
+  if (!email) {
+    alert("Không tìm thấy Email để gửi lại mã ông Anh ơi!");
+    return;
+  }
+  
+  setLoading(true);
+  try {
+    // Tùy theo mode mà gọi lại API tương ứng để gửi lại mail
+    const endpoint = mode === 'reset' ? '/auth/forgot-password/' : '/auth/register/';
+    
+    await apiRequest(endpoint, {
+      method: 'POST',
+      body: JSON.stringify({ email }), // Backend sẽ gửi lại mail mới
+    });
 
-  const handleResend = async () => {
-    // TODO: apiRequest('/auth/resend-otp', ...)
-    setOtp(Array(OTP_LENGTH).fill(''));
+    alert("Mã mới đã về hòm thư, check kỹ nhé!");
+    setOtp(Array(OTP_LENGTH).fill('')); // Xóa mã cũ đi
     inputRefs.current[0]?.focus();
-  };
+  } catch (e: any) {
+    alert(e.message || "Gửi lại mã thất bại!");
+  } finally {
+    setLoading(false);
+  }
+};
+
+// 2. XỬ LÝ XÁC THỰC (Verify)
+const handleVerify = async () => {
+  const code = otp.join('');
+  if (code.length < OTP_LENGTH) {
+    alert("Nhập đủ 6 số đã ông Anh!");
+    return;
+  }
+
+  setLoading(true);
+  try {
+    // GỬI LỆNH: Phải có cả email và code thì Backend mới check được
+    await apiRequest('/auth/verify-otp/', { 
+      method: 'POST', 
+      body: JSON.stringify({ email, code }) 
+    });
+
+    if (mode === 'reset') {
+      alert("Xác thực thành công! Giờ đổi mật khẩu mới.");
+      // ⚠️ QUAN TRỌNG: Phải truyền cả email và code sang Reset Password 
+      // để Backend biết là ai đang đổi pass và mã có đúng không.
+      router.push({
+        pathname: '/(auth)/reset-password',
+        params: { email, code } 
+      });
+    } else {
+      alert("Xác thực thành công! Mời ông đăng nhập.");
+      router.replace('/(auth)/login'); 
+    }
+  } catch (e: any) {
+    console.error("Lỗi OTP:", e);
+    alert(e.message || "Mã OTP sai hoặc đã hết hạn rồi!");
+    // setOtp(Array(OTP_LENGTH).fill('')); // Tùy ông, nếu muốn cho nhập lại nhanh thì đừng xóa
+  } finally {
+    setLoading(false);
+  }
+};
 
   return (
     <AuthCard topLabel="Mindraft Note">

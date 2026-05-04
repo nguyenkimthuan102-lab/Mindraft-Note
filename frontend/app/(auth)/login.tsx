@@ -5,7 +5,9 @@ import { AuthCard } from '../../src/components/ui/AuthCard';
 import { Input } from '../../src/components/ui/Input';
 import { AuthButton } from '../../src/components/ui/AuthButton';
 import { colors } from '../../src/constants/colors';
-import { useGoogleAuth } from '../../src/lib/googleAuth';
+//import { useGoogleAuth } from '../../src/lib/googleAuth';
+import * as SecureStore from 'expo-secure-store';
+import { apiRequest, storage} from '../../src/api/api';
 
 export default function LoginScreen() {
   const [email, setEmail] = useState('');
@@ -14,17 +16,42 @@ export default function LoginScreen() {
   const passwordRef = useRef<any>(null);
 
   const handleLogin = async () => {
-    if (!email || !password) return;
+    // 1. Kiểm tra đầu vào cơ bản
+    if (!email || !password) {
+      alert("Chưa nhập Email hoặc Mật khẩu !");
+      return;
+    }
+
     setLoading(true);
     try {
-      // TODO: integrate apiRequest('/auth/login')
-      router.replace('/(main)');
-    } catch (e) {
-      console.error(e);
+      // 2. GỌI API THẬT SỰ (Đấu dây với Django)
+      // Tên biến gửi lên là 'email' và 'password' khớp với Serializer của ông
+      const response = await apiRequest<{ access: string; refresh: string }>('/auth/login/', {
+        method: 'POST',
+        body: JSON.stringify({ email, password }),
+      });
+
+      // 3. NẾU CÓ TOKEN (Thành công) -> LƯU VÀO MÁY & VÀO APP
+      // 3. NẾU CÓ TOKEN (Thành công) -> LƯU VÀO MÁY & VÀO APP
+      if (response && response.access) {
+        // THAY THẾ 2 DÒNG CŨ BẰNG 2 DÒNG DƯỚI ĐÂY:
+        await storage.setItem('access_token', response.access);
+        await storage.setItem('refresh_token', response.refresh);
+        
+        // Chỉ khi có Token xịn mới cho vào Main
+        router.replace('/(main)');
+      }
+    } catch (e: any) {
+      // 4. BẮT LỖI (Ví dụ: 401 Unauthorized từ Backend)
+      console.error("Lỗi đăng nhập:", e);
+      // Backend trả về lỗi gì thì hiện cái đó lên cho người dùng biết
+      alert(e.message || "Sai Email hoặc mật khẩu rồi!");
     } finally {
       setLoading(false);
     }
   };
+  
+  // Phần return bên dưới giữ nguyên...
 
   return (
     <AuthCard topLabel="Mindraft Note">

@@ -5,23 +5,42 @@ import { AuthCard } from '../../src/components/ui/AuthCard';
 import { Input } from '../../src/components/ui/Input';
 import { AuthButton } from '../../src/components/ui/AuthButton';
 import { colors } from '../../src/constants/colors';
+import { apiRequest } from '../../src/api/api';
 
 export default function ForgotPasswordScreen() {
   const [email, setEmail] = useState('');
   const [loading, setLoading] = useState(false);
 
   const handleSendCode = async () => {
-    if (!email) return;
-    setLoading(true);
-    try {
-      // TODO: apiRequest('/auth/forgot-password', { method: 'POST', body: JSON.stringify({ email }) })
-      router.push({ pathname: '/(auth)/otp', params: { email, mode: 'reset' } });
-    } catch (e) {
-      console.error(e);
-    } finally {
-      setLoading(false);
-    }
-  };
+  if (!email) {
+    alert("Vui lòng nhập Email để nhận mã hồi sinh mật khẩu!");
+    return;
+  }
+
+  setLoading(true); // Lúc này cái vòng quay quay mới bắt đầu xuất hiện
+  try {
+    // 🚀 THỰC THI: Gọi API gửi mail thật
+    // Nhớ có dấu gạch chéo '/' ở cuối để khớp với Django nhé
+    await apiRequest('/auth/forgot-password/', { 
+      method: 'POST', 
+      body: JSON.stringify({ email }) 
+    });
+
+    // CHỈ KHI API CHẠY XONG (Thành công) -> Mới đẩy sang trang OTP
+    alert("Mã xác thực đã được gửi vào hòm thư!");
+    router.push({ 
+      pathname: '/(auth)/otp', 
+      params: { email, mode: 'reset' } 
+    });
+
+  } catch (e: any) {
+    console.error("Lỗi gửi mail reset:", e);
+    // Hiện lỗi nếu email không tồn tại hoặc lỗi server
+    alert(e.message || "Không gửi được mã, check lại email hoặc mạng nhé!");
+  } finally {
+    setLoading(false); // Xong xuôi thì tắt quay quay
+  }
+};
 
   return (
     <AuthCard topLabel="Mindraft Note">

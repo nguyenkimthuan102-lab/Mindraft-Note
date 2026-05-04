@@ -1,33 +1,56 @@
 import * as SecureStore from 'expo-secure-store';
+import { Platform } from 'react-native';
 
-const BASE_URL = process.env.EXPO_PUBLIC_API_URL ?? 'https://api.mindraft.com/v1';
+// LƯU Ý: Nếu test trên Web dùng 127.0.0.1, nếu máy ảo Android dùng 10.0.2.2
+const BASE_URL = 'http://localhost:8000/api';
+
+// --- BỘ TIẾP HỢP BỘ NHỚ (FIX LỖI WEB) ---
+export const storage = {
+  getItem: async (key: string) => {
+    if (Platform.OS === 'web') return localStorage.getItem(key);
+    return await SecureStore.getItemAsync(key);
+  },
+  setItem: async (key: string, value: string) => {
+    if (Platform.OS === 'web') localStorage.setItem(key, value);
+    else await SecureStore.setItemAsync(key, value);
+  },
+  deleteItem: async (key: string) => {
+    if (Platform.OS === 'web') localStorage.removeItem(key);
+    else await SecureStore.deleteItemAsync(key);
+  }
+};
 
 async function getAccessToken(): Promise<string | null> {
-  return SecureStore.getItemAsync('access_token');
+  return storage.getItem('access_token');
 }
 
 async function refreshAccessToken(): Promise<string | null> {
-  const refreshToken = await SecureStore.getItemAsync('refresh_token');
+  const refreshToken = await storage.getItem('refresh_token');
   if (!refreshToken) return null;
 
-  const res = await fetch(`${BASE_URL}/auth/refresh`, {
+  const res = await fetch(`${BASE_URL}/auth/refresh/`, {
     method: 'POST',
-    headers: {
+    headers: {  
       'Content-Type': 'application/json',
       'X-Platform': 'mobile',
     },
-    body: JSON.stringify({ refresh_token: refreshToken }),
+    body: JSON.stringify({ refresh: refreshToken }),
   });
 
   if (!res.ok) {
-    await SecureStore.deleteItemAsync('access_token');
-    await SecureStore.deleteItemAsync('refresh_token');
+    await storage.deleteItem('access_token');
+    await storage.deleteItem('refresh_token');
     return null;
   }
 
-  const { data } = await res.json();
-  await SecureStore.setItemAsync('access_token', data.access_token);
-  return data.access_token;
+  const resData = await res.json();
+  const newAccess = resData.data?.access || resData.access;
+
+  if (newAccess) {
+    await storage.setItem('access_token', newAccess);
+    return newAccess;
+  }
+  return null;
 }
 
 export async function apiRequest<T>(
@@ -56,12 +79,12 @@ export async function apiRequest<T>(
   }
 
   if (!res.ok) {
-    const body = await res.json().catch(() => ({}));
-    throw { status: res.status, ...(body.error ?? {}) };
+    const errorBody = await res.json().catch(() => ({}));
+    throw { status: res.status, ...(errorBody.error ?? errorBody) };
   }
 
   if (res.status === 204) return undefined as T;
 
   const body = await res.json();
-  return body.data as T;
+  return (body.data !== undefined ? body.data : body) as T;
 }
