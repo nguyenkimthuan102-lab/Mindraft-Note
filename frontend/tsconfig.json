@@ -1,7 +1,12 @@
 {
   "extends": "expo/tsconfig.base",
   "compilerOptions": {
+    "moduleResolution": "bundler", // Hoặc "node16" / "nodenext"
+    "skipLibCheck": true,
+    "module": "esnext",
+    "allowSyntheticDefaultImports": true,
     "strict": true,
+    "baseUrl": "./",
     "paths": {
       "@/*": [
         "./*"
@@ -12,6 +17,7 @@
     "**/*.ts",
     "**/*.tsx",
     ".expo/types/**/*.ts",
-    "expo-env.d.ts"
+    "expo-env.d.ts",
+    "src/types/**/*.d.ts"
   ]
 }
