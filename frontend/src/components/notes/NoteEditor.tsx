@@ -3,6 +3,8 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { colors } from '../../constants/colors';
 import { NoteCardData, TodoItemData } from './NoteCard';
 import { useEffect, useState, useRef } from 'react';
+import { useNoteStore } from '@/src/store/useNoteStore';
+import { TagMenu } from './TagMenu';
 
 const isWeb = Platform.OS === 'web';
 const WebDiv = 'div' as any;
@@ -48,7 +50,7 @@ function Tooltip({ label, children }: { label: string; children: React.ReactNode
   const [show, setShow] = useState(false);
   if (!isWeb) return <>{children}</>;
   return (
-    <View 
+    <View
       style={{ position: 'relative' }}
       {...{ onMouseEnter: () => setShow(true), onMouseLeave: () => setShow(false) } as any}
     >
@@ -66,7 +68,7 @@ function ToolbarBtn({ icon, onPress, label, isActive, isFormatActive }: { icon: 
   return (
     <Tooltip label={label}>
       <TouchableOpacity onPress={onPress} style={[
-        styles.toolbarIcon, 
+        styles.toolbarIcon,
         isActive && styles.toolbarIconActive,
         isFormatActive && { backgroundColor: 'rgba(0, 0, 0, 0.08)' }
       ]}>
@@ -92,7 +94,7 @@ export function NoteEditor({ visible, mode, note, onClose, onSave }: NoteEditorP
   ]);
   const [isPinned, setIsPinned] = useState(note?.is_pinned ?? false);
   const [noteColor, setNoteColor] = useState(note?.color ?? 'default');
-  
+
   // UI states
   const [showColorPicker, setShowColorPicker] = useState(false);
   const [showMoreMenu, setShowMoreMenu] = useState(false);
@@ -107,6 +109,10 @@ export function NoteEditor({ visible, mode, note, onClose, onSave }: NoteEditorP
     block: 'div',
   });
 
+  const [showTagMenu, setShowTagMenu] = useState(false);
+  const { allTags, addTagToSystem } = useNoteStore();
+  const [noteTags, setNoteTags] = useState<string[]>(note?.labels ?? []); // Trong code của bạn dùng 'labels'[cite: 7]
+
   const contentRef = useRef<any>(null);
 
   useEffect(() => {
@@ -118,7 +124,7 @@ export function NoteEditor({ visible, mode, note, onClose, onSave }: NoteEditorP
     ]);
     setIsPinned(note?.is_pinned ?? false);
     setNoteColor(note?.color ?? 'default');
-    
+
     setEditorMode(mode);
     setShowColorPicker(false);
     setShowMoreMenu(false);
@@ -192,6 +198,15 @@ export function NoteEditor({ visible, mode, note, onClose, onSave }: NoteEditorP
   const handleUndo = () => { if (isWeb) document.execCommand('undo'); };
   const handleRedo = () => { if (isWeb) document.execCommand('redo'); };
 
+  const handleToggleTag = (tag: string) => {
+    setNoteTags(prev => prev.includes(tag) ? prev.filter(t => t !== tag) : [...prev, tag]);
+  };
+
+  const handleCreateTag = async (tag: string) => {
+    await addTagToSystem(tag);
+    handleToggleTag(tag);
+  };
+
   const handleSaveAndClose = () => {
     let currentContent = content;
     if (editorMode === 'text') {
@@ -200,7 +215,7 @@ export function NoteEditor({ visible, mode, note, onClose, onSave }: NoteEditorP
 
     const cleanedTodoItems = todoItems.filter((item) => item.title.trim().length > 0);
     const hasContent = title.trim() || (editorMode === 'text' ? currentContent.trim().replace(/<[^>]*>?/gm, '') : cleanedTodoItems.length > 0);
-    
+
     if (!hasContent) {
       onClose();
       return;
@@ -216,6 +231,7 @@ export function NoteEditor({ visible, mode, note, onClose, onSave }: NoteEditorP
       todo_items: editorMode === 'todo' ? cleanedTodoItems : undefined,
       todo_total: editorMode === 'todo' ? cleanedTodoItems.length : undefined,
       todo_completed: editorMode === 'todo' ? cleanedTodoItems.filter((item) => item.is_completed).length : undefined,
+      labels: noteTags, // Gán danh sách nhãn đã chỉnh sửa vào đây
       is_pinned: isPinned,
     };
 
@@ -232,7 +248,7 @@ export function NoteEditor({ visible, mode, note, onClose, onSave }: NoteEditorP
     <View style={styles.overlay}>
       <TouchableOpacity style={styles.backdrop} activeOpacity={1} onPress={handleSaveAndClose} />
       <View style={[styles.panel, isCompact ? styles.panelFull : styles.panelPopup, { backgroundColor: bg }]}>
-        
+
         {/* Header */}
         <View style={styles.headerRow}>
           <TextInput
@@ -245,10 +261,10 @@ export function NoteEditor({ visible, mode, note, onClose, onSave }: NoteEditorP
           />
           <Tooltip label={isPinned ? "Bỏ ghim ghi chú" : "Ghim ghi chú"}>
             <TouchableOpacity onPress={() => setIsPinned(!isPinned)} style={styles.iconBtn}>
-              <MaterialCommunityIcons 
-                name={isPinned ? "pin" : "pin-outline"} 
-                size={24} 
-                color={isPinned ? colors.primary : colors.textSecondary} 
+              <MaterialCommunityIcons
+                name={isPinned ? "pin" : "pin-outline"}
+                size={24}
+                color={isPinned ? colors.primary : colors.textSecondary}
               />
             </TouchableOpacity>
           </Tooltip>
@@ -332,15 +348,15 @@ export function NoteEditor({ visible, mode, note, onClose, onSave }: NoteEditorP
                 </View>
               ))}
               <View style={[styles.todoRow, styles.addTodoRow]}>
-                 <TouchableOpacity style={styles.addTodoBtn} onPress={handleAddTodo}>
-                    <MaterialCommunityIcons name="plus" size={20} color={colors.textSecondary} />
-                 </TouchableOpacity>
-                 <TextInput
-                    placeholder="Mục danh sách"
-                    placeholderTextColor={colors.textPlaceholder}
-                    style={styles.todoInput}
-                    onFocus={handleAddTodo}
-                 />
+                <TouchableOpacity style={styles.addTodoBtn} onPress={handleAddTodo}>
+                  <MaterialCommunityIcons name="plus" size={20} color={colors.textSecondary} />
+                </TouchableOpacity>
+                <TextInput
+                  placeholder="Mục danh sách"
+                  placeholderTextColor={colors.textPlaceholder}
+                  style={styles.todoInput}
+                  onFocus={handleAddTodo}
+                />
               </View>
             </View>
           )}
@@ -370,16 +386,47 @@ export function NoteEditor({ visible, mode, note, onClose, onSave }: NoteEditorP
             <ToolbarBtn icon="palette-outline" onPress={() => { setShowColorPicker(!showColorPicker); setShowMoreMenu(false); }} label="Tùy chọn nền" />
             <ToolbarBtn icon="image-outline" onPress={() => alert('Thêm hình ảnh sẽ xử lý upload file')} label="Thêm hình ảnh" />
             <ToolbarBtn icon="archive-arrow-down-outline" onPress={() => alert('Ghi chú đã được lưu trữ (Cần API)')} label="Lưu trữ" />
-            
+
             <View style={{ position: 'relative', zIndex: 300 }}>
               <ToolbarBtn icon="dots-vertical" onPress={() => { setShowMoreMenu(!showMoreMenu); setShowColorPicker(false); }} label="Thêm tùy chọn" />
               {showMoreMenu && (
                 <View style={styles.moreMenu}>
-                  <MenuBtn onPress={() => { alert('Xóa ghi chú (Cần API)'); setShowMoreMenu(false); }} label="Xóa ghi chú" />
-                  <MenuBtn onPress={() => { alert('Thêm nhãn (Cần API)'); setShowMoreMenu(false); }} label="Thêm nhãn" />
-                  <MenuBtn onPress={() => { alert('Tạo bản sao (Cần API)'); setShowMoreMenu(false); }} label="Tạo bản sao" />
-                  <MenuBtn onPress={handleToggleMode} label={editorMode === 'text' ? "Hiển thị hộp kiểm" : "Ẩn hộp kiểm"} />
-                  <MenuBtn onPress={() => { alert('Lịch sử phiên bản (Cần API)'); setShowMoreMenu(false); }} label="Lịch sử phiên bản" />
+                  <MenuBtn
+                    onPress={() => { alert('Xóa ghi chú (Cần API)'); setShowMoreMenu(false); }}
+                    label="Xóa ghi chú"
+                  />
+
+                  {/* PHẦN SỬA ĐỔI CHÍNH: Menu nhãn con */}
+                  <View style={{ position: 'relative', zIndex: 310 }}>
+                    <MenuBtn
+                      onPress={() => setShowTagMenu(!showTagMenu)}
+                      label="Thêm nhãn"
+                    />
+
+                    {showTagMenu && (
+                      <View style={styles.tagMenuPopover}>
+                        <TagMenu
+                          noteTags={noteTags}
+                          allTags={allTags}
+                          onToggleTag={handleToggleTag}
+                          onCreateTag={handleCreateTag}
+                        />
+                      </View>
+                    )}
+                  </View>
+
+                  <MenuBtn
+                    onPress={() => { alert('Tạo bản sao (Cần API)'); setShowMoreMenu(false); }}
+                    label="Tạo bản sao"
+                  />
+                  <MenuBtn
+                    onPress={handleToggleMode}
+                    label={editorMode === 'text' ? "Hiển thị hộp kiểm" : "Ẩn hộp kiểm"}
+                  />
+                  <MenuBtn
+                    onPress={() => { alert('Lịch sử phiên bản (Cần API)'); setShowMoreMenu(false); }}
+                    label="Lịch sử phiên bản"
+                  />
                 </View>
               )}
             </View>
@@ -421,6 +468,14 @@ export function NoteEditor({ visible, mode, note, onClose, onSave }: NoteEditorP
 }
 
 const styles = StyleSheet.create({
+  // Thêm vào styles của NoteEditor_2.tsx
+  tagMenuPopover: {
+    position: 'absolute',
+    left: isWeb ? '100%' : 0, // Trên Web đẩy sang phải, Mobile có thể đè lên
+    bottom: isWeb ? 0 : 40,   // Điều chỉnh để không bị khuất khỏi màn hình
+    marginLeft: 8,
+    zIndex: 1000,
+  },
   overlay: {
     position: 'absolute',
     inset: 0,
