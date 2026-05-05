@@ -1,19 +1,14 @@
+import axiosClient from './axiosClient';
 import { Note } from '../types';
 
-export const mockNotes: Note[] = [
-  {
-    id: '1',
-    title: 'Sample Note',
-    content_text: 'This is a sample note content.',
-    type: 'text',
-    color: 'default',
-    is_pinned: false,
-    tags: [{ id: 't1', name: 'work' }],
-    // ... các field khác theo interface
-  },
-  // thêm vài note mẫu
-] as any;
+export const fetchNotes = (): Promise<Note[]> =>
+  axiosClient.get('/notes').then(res => res.data.data);
 
-export const fetchNotes = async (): Promise<Note[]> => {
-  return mockNotes;
-};
+export const createNote = (note: Partial<Note>): Promise<Note> =>
+  axiosClient.post('/notes', note).then(res => res.data.data);
+
+export const updateNote = (id: string, note: Partial<Note>): Promise<Note> =>
+  axiosClient.put(`/notes/${id}`, note).then(res => res.data.data);
+
+export const deleteNote = (id: string): Promise<void> =>
+  axiosClient.delete(`/notes/${id}`);

@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { Platform } from 'react-native';
-import { db } from '../api/database';
+import { db } from '../services/database/database';
 import api from '../api/axiosInstance'; // Giả định bạn có axios instance
 
 interface AppState {

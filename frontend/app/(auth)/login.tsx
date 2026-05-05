@@ -1,11 +1,10 @@
-import React, { useRef, useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { router } from 'expo-router';
+import React, { useRef, useState } from 'react';
+import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { AuthButton } from '../../src/components/ui/AuthButton';
 import { AuthCard } from '../../src/components/ui/AuthCard';
 import { Input } from '../../src/components/ui/Input';
-import { AuthButton } from '../../src/components/ui/AuthButton';
 import { colors } from '../../src/constants/colors';
-import { useGoogleAuth } from '../../src/lib/googleAuth';
 
 export default function LoginScreen() {
   const [email, setEmail] = useState('');
