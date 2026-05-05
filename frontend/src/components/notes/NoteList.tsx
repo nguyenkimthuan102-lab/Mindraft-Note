@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useMemo } from 'react';
 import { View, StyleSheet } from 'react-native';
 import { useAppStore } from '../../store/useAppStore';
 import { NoteCard } from './NoteCard';
@@ -22,7 +22,19 @@ interface NoteListProps {
 
 export function NoteList({ notes, title, onPressNote, onUpdateNote, onDeleteNote, onArchiveNote, selectedIds, onSelectNote }: NoteListProps) {
 
-  const { viewMode, isSidebarOpen, initSettings } = useAppStore();
+  const { viewMode, isSidebarOpen, initSettings, sort } = useAppStore();
+
+const sortedNotes = useMemo(() => {
+  if (sort.field === 'custom') {
+    return notes; 
+  }
+  const dir = sort.direction === 'desc' ? -1 : 1;
+  return [...notes].sort((a, b) => {
+    const aTime = new Date(a[sort.field] ?? 0).getTime();
+    const bTime = new Date(b[sort.field] ?? 0).getTime();
+    return sort.direction === 'desc' ? bTime - aTime : aTime - bTime;
+  });
+}, [notes, sort]);
 
   useEffect(() => {
     initSettings(); // Lấy settings từ server khi mount màn hình
@@ -40,7 +52,7 @@ export function NoteList({ notes, title, onPressNote, onUpdateNote, onDeleteNote
         data={notes}
         numColumns={columns}
         // KEY QUAN TRỌNG: Phải thay đổi khi columns hoặc title đổi để ép render lại
-        key={`list-${title}-${columns}`}
+        key={`list-${title}-${columns}-${sort.field}-${sort.direction}`}
         estimatedItemSize={200}
         scrollEnabled={false} // Quan trọng: Để ScrollView của index.tsx quản lý việc cuộn
         renderItem={({ item }) => (

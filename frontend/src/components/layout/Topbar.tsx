@@ -1,14 +1,14 @@
 import { Feather } from '@expo/vector-icons';
 import { usePathname, useRouter } from 'expo-router';
 import { useState } from 'react';
-import { Image, Platform, StyleSheet, Text, TextInput, TouchableOpacity, View, LayoutAnimation, UIManager } from 'react-native';
-import { Icon } from 'react-native-paper';
+import { Image, Platform, StyleSheet, Text, TextInput, TouchableOpacity, View, LayoutAnimation, UIManager, Modal } from 'react-native';
+import { Icon, IconButton, Menu, Divider } from 'react-native-paper';
 import { colors } from '../../constants/colors';
 import { useLayoutStore } from '../../store/useLayoutStore';
 import { useSyncStore } from '../../store/useSyncStore';
 import { SyncIndicator } from '../ui/SyncIndicator';
 import { useSelectionStore } from '../../store/useSelectionStore'; // Import store
-import { useAppStore } from '../../store/useAppStore';
+import { useAppStore, DEFAULT_SORT, SortOption } from '../../store/useAppStore';
 
 interface TopbarProps {
   viewMode?: 'list' | 'grid';
@@ -26,6 +26,14 @@ function ActionBtn({ icon, label }: { icon: string; label: string }) {
 }
 
 export function Topbar({ onViewModeChange }: TopbarProps) {
+  const { sort, setSort } = useAppStore();
+  const [menuVisible, setMenuVisible] = useState(false); // State cho dropdown
+  //const [sortVisible, setSortVisible] = useState(false);
+  const isSortActive = sort.field !== DEFAULT_SORT.field || sort.direction !== DEFAULT_SORT.direction;
+
+  const openMenu = () => setMenuVisible(true);
+  const closeMenu = () => setMenuVisible(false);
+
   const [search, setSearch] = useState('');
   const { toggleSidebar } = useLayoutStore();
   const pathname = usePathname();
@@ -38,6 +46,11 @@ export function Topbar({ onViewModeChange }: TopbarProps) {
   // Tự động lấy trạng thái từ Store
   const { selectedIds, clearSelection } = useSelectionStore();
   const selectedCount = selectedIds.length;
+
+  const handleSortChange = (field: any, direction: any) => {
+    setSort({ field, direction });
+    closeMenu();
+  };
 
   const handleToggle = () => {
     // 1. Xác định chế độ tiếp theo
@@ -148,6 +161,74 @@ export function Topbar({ onViewModeChange }: TopbarProps) {
           />
         </TouchableOpacity>
 
+        {/* SORT DROPDOWN (Thay thế Modal) */}
+        <Menu
+          visible={menuVisible}
+          onDismiss={closeMenu}
+          anchor={
+            <TouchableOpacity
+              style={[styles.iconBtn, isSortActive && styles.iconBtnActive]}
+              onPress={openMenu}
+            >
+              <Icon
+                source="sort-variant"
+                size={22}
+                color={isSortActive ? colors.primary : colors.textSecondary}
+              />
+              {isSortActive && <View style={styles.sortDot} />}
+            </TouchableOpacity>
+          }
+          contentStyle={{ backgroundColor: colors.bgSurface }}
+        >
+          <Menu.Item title="SẮP XẾP THEO" titleStyle={styles.menuHeader} disabled />
+
+          {/* Lựa chọn Tùy chỉnh mới */}
+          <Menu.Item
+            leadingIcon="drag-variant" // Icon gợi ý việc kéo thả/tùy chỉnh
+            onPress={() => handleSortChange('custom', 'desc')}
+            title="Thứ tự tùy chỉnh"
+            trailingIcon={sort.field === 'custom' ? "check" : undefined}
+          />
+
+          <Divider />
+
+          <Menu.Item
+            leadingIcon="update"
+            onPress={() => handleSortChange('updated_at', 'desc')}
+            title="Sửa đổi: Mới nhất"
+            trailingIcon={sort.field === 'updated_at' && sort.direction === 'desc' ? "check" : undefined}
+          />
+          <Menu.Item
+            leadingIcon="update"
+            onPress={() => handleSortChange('updated_at', 'asc')}
+            title="Sửa đổi: Cũ nhất"
+            trailingIcon={sort.field === 'updated_at' && sort.direction === 'asc' ? "check" : undefined}
+          />
+
+          <Divider />
+
+          <Menu.Item
+            leadingIcon="calendar-plus"
+            onPress={() => handleSortChange('created_at', 'desc')}
+            title="Ngày tạo: Mới nhất"
+            trailingIcon={sort.field === 'created_at' && sort.direction === 'desc' ? "check" : undefined}
+          />
+          <Menu.Item
+            leadingIcon="calendar-plus"
+            onPress={() => handleSortChange('created_at', 'asc')}
+            title="Ngày tạo: Cũ nhất"
+            trailingIcon={sort.field === 'created_at' && sort.direction === 'asc' ? "check" : undefined}
+          />
+
+          <Divider />
+
+          <Menu.Item
+            leadingIcon="restore"
+            onPress={() => handleSortChange(DEFAULT_SORT.field, DEFAULT_SORT.direction)}
+            title="Đặt lại mặc định"
+          />
+        </Menu>
+
         {/* Notification */}
         <TouchableOpacity style={styles.iconBtn}>
           <View>
@@ -231,7 +312,7 @@ const styles = StyleSheet.create({
     ...Platform.select({ web: { outlineStyle: 'none' } as any }),
   },
   actions: {
-    width: 170,
+    width: 210,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
@@ -270,5 +351,24 @@ const styles = StyleSheet.create({
     fontFamily: 'Inter-SemiBold',
     fontSize: 14,
     color: '#fff',
+  },
+
+
+  menuHeader: {
+    fontSize: 11,
+    color: colors.textTertiary,
+    fontWeight: '700',
+    letterSpacing: 1,
+  },
+  sortDot: {
+    position: 'absolute',
+    top: 5,
+    right: 5,
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: colors.primary,
+    borderWidth: 1,
+    borderColor: colors.bgSurface,
   },
 });
