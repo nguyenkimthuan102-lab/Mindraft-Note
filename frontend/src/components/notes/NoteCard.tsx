@@ -18,8 +18,13 @@ const NOTE_COLORS = [
   { key: 'pink', bg: '#FDCFE8' }, { key: 'brown', bg: '#F0E6DA' },
 ];
 
+export interface SubTaskData {
+  id: string; title: string; is_completed: boolean;
+}
+
 export interface TodoItemData {
   id: string; title: string; is_completed: boolean;
+  sub_tasks?: SubTaskData[];
 }
 
 export interface NoteCardData {
@@ -247,7 +252,7 @@ export function NoteCard({ note, isSelected, onSelect, onPress, onUpdate, onDele
                     <Icon
                       source="check"
                       size={10}
-                      color="#fff"
+                      color={colors.textPrimary}
                     />)}
                 </View>
                 <Text style={[styles.todoText, item.is_completed && styles.todoTextDone]} numberOfLines={1}>
@@ -398,7 +403,7 @@ const styles = StyleSheet.create({
     borderWidth: 1.5, borderColor: colors.gray400,
     alignItems: 'center', justifyContent: 'center', flexShrink: 0,
   },
-  checkboxDone: { backgroundColor: colors.primary, borderColor: colors.primary },
+  checkboxDone: { borderColor: colors.textTertiary },
   todoText: { fontFamily: 'Inter-Regular', fontSize: 14, color: colors.textSecondary, flex: 1 },
   todoTextDone: { textDecorationLine: 'line-through', opacity: 0.5 },
   moreText: { fontFamily: 'Inter-Regular', fontSize: 13, color: colors.textTertiary, marginTop: 2, marginLeft: 24 },
