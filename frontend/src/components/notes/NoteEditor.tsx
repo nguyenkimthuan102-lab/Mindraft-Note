@@ -45,18 +45,17 @@ interface NoteEditorProps {
   onSave: (note: NoteCardData) => void;
 }
 
-// Tooltip wrapper
-function Tooltip({ label, children }: { label: string; children: React.ReactNode }) {
+function Tooltip({ label, children, position = 'top' }: { label: string; children: React.ReactNode; position?: 'top' | 'bottom' }) {
   const [show, setShow] = useState(false);
   if (!isWeb) return <>{children}</>;
   return (
     <View
-      style={{ position: 'relative' }}
+      style={{ position: 'relative', zIndex: show ? 1000 : 1 }}
       {...{ onMouseEnter: () => setShow(true), onMouseLeave: () => setShow(false) } as any}
     >
       {children}
       {show && (
-        <View style={styles.tooltip}>
+        <View style={[styles.tooltip, position === 'bottom' && styles.tooltipBottom]}>
           <Text style={styles.tooltipText}>{label}</Text>
         </View>
       )}
@@ -78,9 +77,9 @@ function ToolbarBtn({ icon, onPress, label, isActive, isFormatActive }: { icon: 
   );
 }
 
-function MenuBtn({ label, onPress }: { label: string, onPress: () => void }) {
+function MenuBtn({ label, onPress, disabled }: { label: string, onPress: () => void, disabled?: boolean }) {
   return (
-    <TouchableOpacity onPress={onPress} style={styles.menuItem}>
+    <TouchableOpacity onPress={disabled ? undefined : onPress} style={[styles.menuItem, disabled && { opacity: 0.5 }]} disabled={disabled}>
       <Text style={styles.menuItemText}>{label}</Text>
     </TouchableOpacity>
   );
@@ -135,23 +134,51 @@ export function NoteEditor({ visible, mode, note, onClose, onSave }: NoteEditorP
   const { width } = useWindowDimensions();
   const isCompact = width < 720;
 
-  const handleToggleTodo = (id: string) => {
-    setTodoItems((prev) => prev.map((item) => item.id === id ? { ...item, is_completed: !item.is_completed } : item));
+  const handleToggleTodo = (id: string, parentId?: string) => {
+    if (parentId) {
+      setTodoItems((prev) => prev.map((item) => item.id === parentId ? {
+        ...item,
+        subtasks: item.subtasks?.map(sub => sub.id === id ? { ...sub, is_completed: !sub.is_completed } : sub)
+      } : item));
+    } else {
+      setTodoItems((prev) => prev.map((item) => item.id === id ? { ...item, is_completed: !item.is_completed } : item));
+    }
   };
 
-  const handleChangeTodo = (id: string, value: string) => {
-    setTodoItems((prev) => prev.map((item) => item.id === id ? { ...item, title: value } : item));
+  const handleChangeTodo = (id: string, value: string, parentId?: string) => {
+    if (parentId) {
+      setTodoItems((prev) => prev.map((item) => item.id === parentId ? {
+        ...item,
+        subtasks: item.subtasks?.map(sub => sub.id === id ? { ...sub, title: value } : sub)
+      } : item));
+    } else {
+      setTodoItems((prev) => prev.map((item) => item.id === id ? { ...item, title: value } : item));
+    }
   };
 
-  const handleAddTodo = () => {
-    setTodoItems((prev) => [
-      ...prev,
-      { id: `${Date.now()}-${prev.length + 1}`, title: '', is_completed: false },
-    ]);
+  const handleAddTodo = (parentId?: string) => {
+    if (parentId) {
+      setTodoItems((prev) => prev.map((item) => item.id === parentId ? {
+        ...item,
+        subtasks: [...(item.subtasks || []), { id: `${Date.now()}-${(item.subtasks?.length || 0) + 1}`, title: '', is_completed: false }]
+      } : item));
+    } else {
+      setTodoItems((prev) => [
+        ...prev,
+        { id: `${Date.now()}-${prev.length + 1}`, title: '', is_completed: false },
+      ]);
+    }
   };
 
-  const handleRemoveTodo = (id: string) => {
-    setTodoItems((prev) => prev.filter((item) => item.id !== id));
+  const handleRemoveTodo = (id: string, parentId?: string) => {
+    if (parentId) {
+      setTodoItems((prev) => prev.map((item) => item.id === parentId ? {
+        ...item,
+        subtasks: item.subtasks?.filter(sub => sub.id !== id)
+      } : item));
+    } else {
+      setTodoItems((prev) => prev.filter((item) => item.id !== id));
+    }
   };
 
 
@@ -172,6 +199,12 @@ export function NoteEditor({ visible, mode, note, onClose, onSave }: NoteEditorP
       setEditorMode('text');
     }
     setShowMoreMenu(false);
+  };
+
+  const closePopups = () => {
+    setShowColorPicker(false);
+    setShowMoreMenu(false);
+    setShowTagMenu(false);
   };
 
   const updateFormattingState = () => {
@@ -213,7 +246,12 @@ export function NoteEditor({ visible, mode, note, onClose, onSave }: NoteEditorP
       currentContent = isWeb && contentRef.current ? contentRef.current.innerHTML : content;
     }
 
-    const cleanedTodoItems = todoItems.filter((item) => item.title.trim().length > 0);
+    const cleanedTodoItems = todoItems
+      .filter((item) => item.title.trim().length > 0)
+      .map((item) => ({
+        ...item,
+        subtasks: item.subtasks?.filter(sub => sub.title.trim().length > 0)
+      }));
     const hasContent = title.trim() || (editorMode === 'text' ? currentContent.trim().replace(/<[^>]*>?/gm, '') : cleanedTodoItems.length > 0);
 
     if (!hasContent) {
@@ -258,8 +296,9 @@ export function NoteEditor({ visible, mode, note, onClose, onSave }: NoteEditorP
             placeholderTextColor={colors.textPlaceholder}
             style={styles.titleInput}
             returnKeyType="done"
+            onFocus={closePopups}
           />
-          <Tooltip label={isPinned ? "Bỏ ghim ghi chú" : "Ghim ghi chú"}>
+          <Tooltip label={isPinned ? "Bỏ ghim ghi chú" : "Ghim ghi chú"} position="bottom">
             <TouchableOpacity onPress={() => setIsPinned(!isPinned)} style={styles.iconBtn}>
               <MaterialCommunityIcons
                 name={isPinned ? "pin" : "pin-outline"}
@@ -271,7 +310,12 @@ export function NoteEditor({ visible, mode, note, onClose, onSave }: NoteEditorP
         </View>
 
         {/* Body */}
-        <ScrollView style={styles.body} showsVerticalScrollIndicator={false}>
+        <ScrollView 
+          style={styles.body} 
+          showsVerticalScrollIndicator={false}
+          onTouchStart={closePopups}
+          {...Platform.select({ web: { onClickCapture: closePopups } } as any)}
+        >
           {editorMode === 'text' ? (
             <View style={{ position: 'relative' }}>
               {isWeb ? (
@@ -289,7 +333,7 @@ export function NoteEditor({ visible, mode, note, onClose, onSave }: NoteEditorP
                     onInput={(e: any) => setIsContentEmpty(!e.currentTarget.textContent?.trim())}
                     onKeyUp={updateFormattingState}
                     onMouseUp={updateFormattingState}
-                    onFocus={updateFormattingState}
+                    onFocus={(e: any) => { updateFormattingState(); closePopups(); }}
                     style={{
                       outline: 'none',
                       minHeight: 120,
@@ -319,6 +363,7 @@ export function NoteEditor({ visible, mode, note, onClose, onSave }: NoteEditorP
                     textAlignVertical="top"
                     scrollEnabled={false}
                     autoFocus={!note?.content_text}
+                    onFocus={closePopups}
                   />
                 </View>
               )}
@@ -326,37 +371,70 @@ export function NoteEditor({ visible, mode, note, onClose, onSave }: NoteEditorP
           ) : (
             <View style={styles.todoList}>
               {todoItems.map((item) => (
-                <View key={item.id} style={styles.todoRow}>
-                  <TouchableOpacity
-                    style={[styles.todoCheckbox, item.is_completed && styles.todoCheckboxChecked]}
-                    onPress={() => handleToggleTodo(item.id)}
-                    activeOpacity={0.7}
-                  >
-                    {item.is_completed && <MaterialCommunityIcons name="check" size={16} color="#fff" />}
-                  </TouchableOpacity>
-                  <TextInput
-                    value={item.title}
-                    onChangeText={(value) => handleChangeTodo(item.id, value)}
-                    placeholder="Mục danh sách"
-                    placeholderTextColor={colors.textPlaceholder}
-                    style={[styles.todoInput, item.is_completed && styles.todoInputChecked]}
-                    multiline
-                  />
-                  <TouchableOpacity onPress={() => handleRemoveTodo(item.id)} style={styles.removeBtn}>
-                    <MaterialCommunityIcons name="close" size={20} color={colors.textSecondary} />
-                  </TouchableOpacity>
+                <View key={item.id}>
+                  <View style={styles.todoRow}>
+                    <TouchableOpacity
+                      style={[styles.todoCheckbox, item.is_completed && styles.todoCheckboxChecked]}
+                      onPress={() => handleToggleTodo(item.id)}
+                      activeOpacity={0.7}
+                    >
+                      {item.is_completed && <MaterialCommunityIcons name="check" size={16} color={colors.textPrimary} />}
+                    </TouchableOpacity>
+                    <TextInput
+                      value={item.title}
+                      onChangeText={(value) => handleChangeTodo(item.id, value)}
+                      placeholder="Mục danh sách"
+                      placeholderTextColor={colors.textPlaceholder}
+                      style={[styles.todoInput, item.is_completed && styles.todoInputChecked]}
+                      multiline
+                      onFocus={closePopups}
+                    />
+                    <Tooltip label="Thêm mục con" position="bottom">
+                      <TouchableOpacity onPress={() => handleAddTodo(item.id)} style={styles.removeBtn}>
+                        <MaterialCommunityIcons name="subdirectory-arrow-right" size={20} color={colors.textSecondary} />
+                      </TouchableOpacity>
+                    </Tooltip>
+                    <Tooltip label="Xóa mục" position="bottom">
+                      <TouchableOpacity onPress={() => handleRemoveTodo(item.id)} style={styles.removeBtn}>
+                        <MaterialCommunityIcons name="close" size={20} color={colors.textSecondary} />
+                      </TouchableOpacity>
+                    </Tooltip>
+                  </View>
+                  {/* Subtasks */}
+                  {item.subtasks?.map(subItem => (
+                    <View key={subItem.id} style={[styles.todoRow, { paddingLeft: 32 }]}>
+                      <TouchableOpacity
+                        style={[styles.todoCheckbox, subItem.is_completed && styles.todoCheckboxChecked]}
+                        onPress={() => handleToggleTodo(subItem.id, item.id)}
+                        activeOpacity={0.7}
+                      >
+                        {subItem.is_completed && <MaterialCommunityIcons name="check" size={16} color={colors.textPrimary} />}
+                      </TouchableOpacity>
+                      <TextInput
+                        value={subItem.title}
+                        onChangeText={(value) => handleChangeTodo(subItem.id, value, item.id)}
+                        placeholder="Mục con"
+                        placeholderTextColor={colors.textPlaceholder}
+                        style={[styles.todoInput, subItem.is_completed && styles.todoInputChecked]}
+                        multiline
+                        onFocus={closePopups}
+                      />
+                      <Tooltip label="Xóa mục con" position="bottom">
+                        <TouchableOpacity onPress={() => handleRemoveTodo(subItem.id, item.id)} style={styles.removeBtn}>
+                          <MaterialCommunityIcons name="close" size={20} color={colors.textSecondary} />
+                        </TouchableOpacity>
+                      </Tooltip>
+                    </View>
+                  ))}
                 </View>
               ))}
               <View style={[styles.todoRow, styles.addTodoRow]}>
-                <TouchableOpacity style={styles.addTodoBtn} onPress={handleAddTodo}>
+                <TouchableOpacity style={styles.addTodoBtn} onPress={() => handleAddTodo()}>
                   <MaterialCommunityIcons name="plus" size={20} color={colors.textSecondary} />
                 </TouchableOpacity>
-                <TextInput
-                  placeholder="Mục danh sách"
-                  placeholderTextColor={colors.textPlaceholder}
-                  style={styles.todoInput}
-                  onFocus={handleAddTodo}
-                />
+                <TouchableOpacity style={{ flex: 1, justifyContent: 'center', minHeight: 24, paddingVertical: 0 }} onPress={() => handleAddTodo()} activeOpacity={0.7}>
+                  <Text style={{ fontFamily: 'Inter-Regular', fontSize: 15, color: colors.textPlaceholder }}>Mục danh sách</Text>
+                </TouchableOpacity>
               </View>
             </View>
           )}
@@ -381,11 +459,11 @@ export function NoteEditor({ visible, mode, note, onClose, onSave }: NoteEditorP
         {/* Footer */}
         <View style={styles.footer}>
           <View style={styles.toolbarLeft}>
-            <ToolbarBtn icon="bell-plus-outline" onPress={() => alert('Nhắc nhở sẽ được lưu qua API')} label="Nhắc nhở" />
-            <ToolbarBtn icon="account-plus-outline" onPress={() => alert('Cộng tác viên sẽ được gọi API')} label="Cộng tác viên" />
-            <ToolbarBtn icon="palette-outline" onPress={() => { setShowColorPicker(!showColorPicker); setShowMoreMenu(false); }} label="Tùy chọn nền" />
-            <ToolbarBtn icon="image-outline" onPress={() => alert('Thêm hình ảnh sẽ xử lý upload file')} label="Thêm hình ảnh" />
-            <ToolbarBtn icon="archive-arrow-down-outline" onPress={() => alert('Ghi chú đã được lưu trữ (Cần API)')} label="Lưu trữ" />
+            <ToolbarBtn icon="bell-plus-outline" onPress={() => { alert('Nhắc nhở sẽ được lưu qua API'); closePopups(); }} label="Nhắc nhở" />
+            <ToolbarBtn icon="account-plus-outline" onPress={() => { alert('Cộng tác viên sẽ được gọi API'); closePopups(); }} label="Cộng tác viên" />
+            <ToolbarBtn icon="palette-outline" onPress={() => { setShowColorPicker(!showColorPicker); setShowMoreMenu(false); setShowTagMenu(false); }} label="Tùy chọn nền" />
+            <ToolbarBtn icon="image-outline" onPress={() => { alert('Thêm hình ảnh sẽ xử lý upload file'); closePopups(); }} label="Thêm hình ảnh" />
+            <ToolbarBtn icon="archive-arrow-down-outline" onPress={() => { alert('Ghi chú đã được lưu trữ (Cần API)'); closePopups(); }} label="Lưu trữ" />
 
             <View style={{ position: 'relative', zIndex: 300 }}>
               <ToolbarBtn icon="dots-vertical" onPress={() => { setShowMoreMenu(!showMoreMenu); setShowColorPicker(false); }} label="Thêm tùy chọn" />
@@ -394,6 +472,7 @@ export function NoteEditor({ visible, mode, note, onClose, onSave }: NoteEditorP
                   <MenuBtn
                     onPress={() => { alert('Xóa ghi chú (Cần API)'); setShowMoreMenu(false); }}
                     label="Xóa ghi chú"
+                    disabled={!note?.id && !title.trim() && (editorMode === 'text' ? isContentEmpty : todoItems.filter(t => t.title.trim()).length === 0)}
                   />
 
                   {/* PHẦN SỬA ĐỔI CHÍNH: Menu nhãn con */}
@@ -418,6 +497,7 @@ export function NoteEditor({ visible, mode, note, onClose, onSave }: NoteEditorP
                   <MenuBtn
                     onPress={() => { alert('Tạo bản sao (Cần API)'); setShowMoreMenu(false); }}
                     label="Tạo bản sao"
+                    disabled={!note?.id && !title.trim() && (editorMode === 'text' ? isContentEmpty : todoItems.filter(t => t.title.trim()).length === 0)}
                   />
                   <MenuBtn
                     onPress={handleToggleMode}
@@ -426,13 +506,14 @@ export function NoteEditor({ visible, mode, note, onClose, onSave }: NoteEditorP
                   <MenuBtn
                     onPress={() => { alert('Lịch sử phiên bản (Cần API)'); setShowMoreMenu(false); }}
                     label="Lịch sử phiên bản"
+                    disabled={!note?.id && !title.trim() && (editorMode === 'text' ? isContentEmpty : todoItems.filter(t => t.title.trim()).length === 0)}
                   />
                 </View>
               )}
             </View>
 
             {editorMode === 'text' && (
-              <ToolbarBtn icon="format-text" onPress={() => setShowFormattingBar(!showFormattingBar)} isActive={showFormattingBar} label="Tùy chọn định dạng" />
+              <ToolbarBtn icon="format-text" onPress={() => { setShowFormattingBar(!showFormattingBar); closePopups(); }} isActive={showFormattingBar} label="Tùy chọn định dạng" />
             )}
           </View>
 
@@ -802,10 +883,17 @@ const styles = StyleSheet.create({
     borderRadius: 4,
     paddingHorizontal: 8,
     paddingVertical: 4,
-    zIndex: 999,
+    zIndex: 9999,
     marginBottom: 4,
+    whiteSpace: 'nowrap',
     ...Platform.select({ web: { transform: 'translateX(-50%)' } as any }),
-  },
+  } as any,
+  tooltipBottom: {
+    bottom: 'auto',
+    top: '100%',
+    marginBottom: 0,
+    marginTop: 4,
+  } as any,
   tooltipText: {
     fontFamily: 'Inter-Regular',
     fontSize: 12,
