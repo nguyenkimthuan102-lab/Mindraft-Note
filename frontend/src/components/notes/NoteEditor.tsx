@@ -3,6 +3,8 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { colors } from '../../constants/colors';
 import { NoteCardData, TodoItemData } from './NoteCard';
 import { useEffect, useState, useRef } from 'react';
+import { useNoteStore } from '@/src/store/useNoteStore';
+import { TagMenu } from './TagMenu';
 
 const isWeb = Platform.OS === 'web';
 const WebDiv = 'div' as any;
@@ -111,6 +113,10 @@ export function NoteEditor({ visible, mode, note, onClose, onSave }: NoteEditorP
     block: 'div',
   });
   const [hoveredTodoId, setHoveredTodoId] = useState<string | null>(null);
+
+  const [showTagMenu, setShowTagMenu] = useState(false);
+  const { allTags, addTagToSystem } = useNoteStore();
+  const [noteTags, setNoteTags] = useState<string[]>(note?.labels ?? []); // Trong code của bạn dùng 'labels'[cite: 7]
 
   const contentRef = useRef<any>(null);
 
@@ -254,6 +260,15 @@ export function NoteEditor({ visible, mode, note, onClose, onSave }: NoteEditorP
   const handleUndo = () => { if (isWeb) document.execCommand('undo'); };
   const handleRedo = () => { if (isWeb) document.execCommand('redo'); };
 
+  const handleToggleTag = (tag: string) => {
+    setNoteTags(prev => prev.includes(tag) ? prev.filter(t => t !== tag) : [...prev, tag]);
+  };
+
+  const handleCreateTag = async (tag: string) => {
+    await addTagToSystem(tag);
+    handleToggleTag(tag);
+  };
+
   const handleSaveAndClose = () => {
     let currentContent = content;
     if (editorMode === 'text') {
@@ -281,6 +296,7 @@ export function NoteEditor({ visible, mode, note, onClose, onSave }: NoteEditorP
       todo_items: editorMode === 'todo' ? cleanedTodoItems : undefined,
       todo_total: editorMode === 'todo' ? cleanedTodoItems.length : undefined,
       todo_completed: editorMode === 'todo' ? cleanedTodoItems.filter((item) => item.is_completed).length : undefined,
+      labels: noteTags, // Gán danh sách nhãn đã chỉnh sửa vào đây
       is_pinned: isPinned,
     };
 
@@ -469,6 +485,17 @@ export function NoteEditor({ visible, mode, note, onClose, onSave }: NoteEditorP
                   Mục danh sách
                 </Text>
               </TouchableOpacity>
+              <View style={[styles.todoRow, styles.addTodoRow]}>
+                <TouchableOpacity style={styles.addTodoBtn} onPress={handleAddTodo}>
+                  <MaterialCommunityIcons name="plus" size={20} color={colors.textSecondary} />
+                </TouchableOpacity>
+                <TextInput
+                  placeholder="Mục danh sách"
+                  placeholderTextColor={colors.textPlaceholder}
+                  style={styles.todoInput}
+                  onFocus={handleAddTodo}
+                />
+              </View>
             </View>
           )}
         </ScrollView>
@@ -507,6 +534,42 @@ export function NoteEditor({ visible, mode, note, onClose, onSave }: NoteEditorP
                   <MenuBtn onPress={() => { alert('Tạo bản sao (Cần API)'); setShowMoreMenu(false); }} label="Tạo bản sao" disabled={isActionDisabled} />
                   <MenuBtn onPress={handleToggleMode} label={editorMode === 'text' ? "Hiển thị hộp kiểm" : "Ẩn hộp kiểm"} />
                   <MenuBtn onPress={() => { alert('Lịch sử phiên bản (Cần API)'); setShowMoreMenu(false); }} label="Lịch sử phiên bản" disabled={isActionDisabled} />
+                  <MenuBtn
+                    onPress={() => { alert('Xóa ghi chú (Cần API)'); setShowMoreMenu(false); }}
+                    label="Xóa ghi chú"
+                  />
+
+                  {/* PHẦN SỬA ĐỔI CHÍNH: Menu nhãn con */}
+                  <View style={{ position: 'relative', zIndex: 310 }}>
+                    <MenuBtn
+                      onPress={() => setShowTagMenu(!showTagMenu)}
+                      label="Thêm nhãn"
+                    />
+
+                    {showTagMenu && (
+                      <View style={styles.tagMenuPopover}>
+                        <TagMenu
+                          noteTags={noteTags}
+                          allTags={allTags}
+                          onToggleTag={handleToggleTag}
+                          onCreateTag={handleCreateTag}
+                        />
+                      </View>
+                    )}
+                  </View>
+
+                  <MenuBtn
+                    onPress={() => { alert('Tạo bản sao (Cần API)'); setShowMoreMenu(false); }}
+                    label="Tạo bản sao"
+                  />
+                  <MenuBtn
+                    onPress={handleToggleMode}
+                    label={editorMode === 'text' ? "Hiển thị hộp kiểm" : "Ẩn hộp kiểm"}
+                  />
+                  <MenuBtn
+                    onPress={() => { alert('Lịch sử phiên bản (Cần API)'); setShowMoreMenu(false); }}
+                    label="Lịch sử phiên bản"
+                  />
                 </View>
               )}
             </View>
@@ -548,6 +611,14 @@ export function NoteEditor({ visible, mode, note, onClose, onSave }: NoteEditorP
 }
 
 const styles = StyleSheet.create({
+  // Thêm vào styles của NoteEditor_2.tsx
+  tagMenuPopover: {
+    position: 'absolute',
+    left: isWeb ? '100%' : 0, // Trên Web đẩy sang phải, Mobile có thể đè lên
+    bottom: isWeb ? 0 : 40,   // Điều chỉnh để không bị khuất khỏi màn hình
+    marginLeft: 8,
+    zIndex: 1000,
+  },
   overlay: {
     position: 'absolute',
     inset: 0,
