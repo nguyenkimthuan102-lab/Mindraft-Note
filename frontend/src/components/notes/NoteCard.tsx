@@ -21,7 +21,7 @@ const NOTE_COLORS = [
 ];
 
 export interface TodoItemData {
-  id: string; title: string; is_completed: boolean;
+  id: string; title: string; is_completed: boolean; subtasks?: TodoItemData[];
 }
 
 export interface NoteCardData {
