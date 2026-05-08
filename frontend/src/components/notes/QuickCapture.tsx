@@ -1,52 +1,78 @@
-import { View, TextInput, StyleSheet, TouchableOpacity, Platform } from 'react-native';
-import { Feather } from '@expo/vector-icons';
+import React from 'react';
+import { View, TextInput, StyleSheet, TouchableOpacity } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { colors } from '../../constants/colors';
+import { useNoteStore } from '../../store/useNoteStore';
 
-interface QuickCaptureProps {
-  onCreateText?: () => void;
-  onCreateTodo?: () => void;
-}
+export const QuickCapture = () => {
+  const { openCreateText, openCreateTodo } = useNoteStore();
 
-export function QuickCapture({ onCreateText, onCreateTodo }: QuickCaptureProps) {
   return (
-    <TouchableOpacity style={styles.wrap} onPress={onCreateText} activeOpacity={0.8}>
-      <TextInput
-        style={styles.input}
-        placeholder="Ghi chú..."
-        placeholderTextColor={colors.textPlaceholder}
-        editable={false}
-        pointerEvents="none"
-      />
-      <TouchableOpacity onPress={onCreateTodo} style={styles.todoBtn} activeOpacity={0.7}>
-        <Feather name="check-square" size={18} color={colors.textTertiary} />
+    <View style={styles.container}>
+      <View style={styles.inputWrapper}>
+        <TextInput 
+          placeholder="Take a quick note..."
+          style={styles.input}
+          placeholderTextColor={colors.grayText}
+        />
+        <View style={styles.actionIcons}>
+          <TouchableOpacity onPress={openCreateTodo} style={styles.iconBtn}>
+            <Ionicons name="checkbox-outline" size={20} color={colors.grayText} />
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.iconBtn}>
+            <Ionicons name="image-outline" size={20} color={colors.grayText} />
+          </TouchableOpacity>
+        </View>
+      </View>
+      
+      <TouchableOpacity onPress={openCreateText} style={styles.plusBtn}>
+        <Ionicons name="add" size={26} color={colors.white} />
       </TouchableOpacity>
-    </TouchableOpacity>
+    </View>
   );
-}
+};
 
 const styles = StyleSheet.create({
-  wrap: {
+  container: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: colors.bgSurface,
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: colors.borderDefault,
-    paddingHorizontal: 16,
-    height: 48,
     marginBottom: 24,
-    ...Platform.select({
-      web: { boxShadow: '0 1px 4px rgba(0,0,0,0.05)' } as any,
-    }),
+    gap: 12,
+  },
+  inputWrapper: {
+    flex: 1,
+    height: 48,
+    backgroundColor: colors.white,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: colors.grayBorder,
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
   },
   input: {
     flex: 1,
-    fontFamily: 'Inter-Regular',
-    fontSize: 15,
-    color: colors.textPlaceholder,
-    ...Platform.select({ web: { outlineStyle: 'none' } as any }),
+    fontSize: 14,
+    color: colors.black,
   },
-  todoBtn: {
+  actionIcons: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  iconBtn: {
     padding: 4,
   },
+  plusBtn: {
+    width: 48,
+    height: 48,
+    backgroundColor: colors.primary,
+    borderRadius: 12,
+    justifyContent: 'center',
+    alignItems: 'center',
+    elevation: 2, // Tạo bóng đổ nhẹ
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+  }
 });

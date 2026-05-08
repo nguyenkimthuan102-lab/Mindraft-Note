@@ -4,6 +4,10 @@ export const colors = {
   primary:         '#2D7A4F',
   primaryHover:    '#246339',
   primaryActive:   '#1E5230',
+  white:           '#FFFFFF',        // Thêm dòng này
+  grayText:        '#666666',      // Thêm dòng này
+  grayBorder:      "#EEEEEE",    // Thêm dòng này để hết lỗi ở Sidebar
+  black:           "#000000", // Thêm dòng này để sửa lỗi ở Topbar
   primarySubtle:   '#E2F3E8',
   primaryGhost:    'rgba(45, 122, 79, 0.1)',
 

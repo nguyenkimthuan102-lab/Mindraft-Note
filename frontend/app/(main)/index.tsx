@@ -1,205 +1,164 @@
-import { ScrollView, StyleSheet, View } from 'react-native';
-import { useState, useEffect } from 'react';
-import { NoteCard, NoteCardData } from '../../src/components/notes/NoteCard';
+import React, { useEffect, useCallback, useMemo, useState } from 'react';
+import { ScrollView, StyleSheet, View, TouchableOpacity, Text, TextInput } from 'react-native';
+import { useRouter } from 'expo-router'; // ✅ Dùng useRouter để chuyển trang mạnh mẽ hơn
+import { Ionicons } from '@expo/vector-icons';
+
 import { NoteEditor } from '../../src/components/notes/NoteEditor';
 import { QuickCapture } from '../../src/components/notes/QuickCapture';
-
+import { NoteList } from '../../src/components/notes/NoteList';
 import { colors } from '../../src/constants/colors';
 import { useSyncStore } from '../../src/store/useSyncStore';
-import { useSelectionStore } from '../../src/store/useSelectionStore'; // Import store
+import { useSelectionStore } from '../../src/store/useSelectionStore';
 import { useNoteStore } from '../../src/store/useNoteStore';
-import { NoteList } from '../../src/components/notes/NoteList';
-import { useAppStore } from '@/src/store/useAppStore';
-
-
-const MOCK_NOTES: NoteCardData[] = [
-  {
-    id: '1',
-    type: 'text',
-    color: 'yellow',
-    title: 'Ghi chú...',
-    content_text: 'CA Grow\n\nThứ hai, 18:00\n\nLocation: Offline. Similar team leads for each initiative before end of month.',
-    is_pinned: true,
-    tags: ['work', 'planning'],
-    collaborators: [{ name: 'Alice' }, { name: 'Bob' }],
-  },
-  {
-    id: '2',
-    type: 'todo',
-    color: 'default',
-    title: 'Shopping List',
-    is_pinned: true,
-    tags: ['personal'],
-    date: '25/4/2026',
-    todo_items: [
-      { id: 't1', title: 'Milk & eggs', is_completed: false },
-      { id: 't2', title: 'Bread', is_completed: false },
-      { id: 't3', title: 'Coffee beans', is_completed: false },
-      { id: 't4', title: 'Butter', is_completed: false },
-      { id: 't5', title: 'Orange juice', is_completed: true },
-      { id: 't6', title: 'Yogurt', is_completed: true },
-    ],
-    todo_total: 6,
-    todo_completed: 2,
-  },
-  {
-    id: '3',
-    type: 'text',
-    color: 'blue',
-    title: 'Project Ideas',
-    content_text: 'Some thoughts on the upcoming Q3 product roadmap and feature prioritization.',
-    tags: ['work', 'ideas'],
-  },
-  {
-    id: '4',
-    type: 'todo',
-    color: 'green',
-    title: 'Weekly Tasks',
-    tags: ['personal'],
-    date: '28/4/2026',
-    todo_items: [
-      { id: 'w1', title: 'Review PR #42', is_completed: true },
-      { id: 'w2', title: 'Update documentation', is_completed: false },
-      { id: 'w3', title: 'Team sync meeting', is_completed: false },
-    ],
-    todo_total: 3,
-    todo_completed: 1,
-  },
-];
+import { fetchNotes as getNotes, updateNote as updateNoteApi, deleteNote as deleteNoteApi } from '../../src/api/noteApi';
 
 export default function HomeScreen() {
-  const { viewMode } = useAppStore();
+  const router = useRouter(); // ✅ Khởi tạo router
   const { setSyncing, setDone, setError } = useSyncStore();
-  const [notes, setNotes] = useState<NoteCardData[]>([]);
-  const {
-    editorVisible,
-    editorMode,
-    editingNote,
-    openCreateText: openCreateTextStore,
-    openCreateTodo: openCreateTodoStore,
-    openEditNote: openEditNoteStore,
-    closeEditor: closeEditorStore,
-  } = useNoteStore();
-
   const { selectedIds, toggleSelect, clearSelection } = useSelectionStore();
+  const [searchQuery, setSearchQuery] = useState('');
+
+  const {
+    notes, setNotes, activeFilter, viewMode,
+    openEditNote: openEditNoteStore,
+    updateNote: updateNoteStore,
+    deleteNote: deleteNoteStore,
+  } = useNoteStore();
 
   useEffect(() => {
     clearSelection();
     setSyncing();
-    const load = async () => {
+    const fetchRealData = async () => {
       try {
-        await new Promise(res => setTimeout(res, 1000));
-        setNotes(MOCK_NOTES);
+        const response = await getNotes(); 
+        if (response) { setNotes(response as any); }
         setDone();
-      } catch {
-        setError();
+      } catch { 
+        setError(); 
       }
     };
-    load();
-  }, []);
+    fetchRealData();
+  }, [clearSelection, setSyncing, setDone, setError, setNotes]);
 
-  const handleUpdate = (id: string, changes: Partial<NoteCardData>) => {
-    setNotes(prev => prev.map(n => n.id === id ? { ...n, ...changes } : n));
-  };
+  const filteredNotes = useMemo(() => {
+    if (!notes) return [];
+    let result = notes;
+    switch (activeFilter) {
+      case 'all': result = notes.filter((n) => !n.is_archived && !n.is_trashed); break;
+      case 'reminders': result = notes.filter((n) => n.reminder); break;
+      case 'archive': result = notes.filter((n) => n.is_archived); break;
+      case 'trash': result = notes.filter((n) => n.is_trashed); break;
+      default: result = notes.filter((n) => n.tags?.includes(activeFilter));
+    }
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase();
+      result = result.filter(n => 
+        n.title?.toLowerCase().includes(q) || 
+        n.content_text?.toLowerCase().includes(q)
+      );
+    }
+    return result;
+  }, [notes, activeFilter, searchQuery]);
 
-  const handleDelete = (id: string) => {
-    setNotes(prev => prev.filter(n => n.id !== id));
-  };
+  const handleUpdate = useCallback(async (id: string, changes: any) => {
+    updateNoteStore(id, changes);
+    try { await updateNoteApi(id, changes as any); } catch { /* ignore */ }
+  }, [updateNoteStore]);
 
-  const handleArchive = (id: string) => {
-    setNotes(prev => prev.filter(n => n.id !== id));
-    // TODO: apiRequest(`/notes/${id}`, { method: 'PATCH', body: JSON.stringify({ is_archived: true }) })
-  };
+  const handleDelete = useCallback(async (id: string) => {
+    deleteNoteStore(id);
+    try { await deleteNoteApi(id); } catch { /* ignore */ }
+  }, [deleteNoteStore]);
 
-  const openCreateText = () => {
-    openCreateTextStore();
-  };
+  const handleArchive = useCallback((id: string) => {
+    handleUpdate(id, { is_archived: true });
+  }, [handleUpdate]);
 
-  const openCreateTodo = () => {
-    openCreateTodoStore();
-  };
-
-  const openEditNote = (note: NoteCardData) => {
-    openEditNoteStore(note);
-  };
-
-  const closeEditor = () => {
-    closeEditorStore();
-  };
-
-  const handleSaveNote = (note: NoteCardData) => {
-    setNotes((prev) => {
-      const exists = prev.some((item) => item.id === note.id);
-      if (exists) {
-        return prev.map((item) => (item.id === note.id ? { ...item, ...note } : item));
-      }
-      return [note, ...prev];
-    });
-  };
-
-  const pinned = notes.filter(n => n.is_pinned);
-  const others = notes.filter(n => !n.is_pinned);
+  const pinnedNotes = filteredNotes.filter((n) => n.is_pinned);
+  const otherNotes = filteredNotes.filter((n) => !n.is_pinned);
 
   return (
-    <View style={{ flex: 1 }}>
-      <ScrollView
-        style={styles.scroll}
-        contentContainerStyle={styles.container}
-        showsVerticalScrollIndicator={false}
-      >
+    <View style={styles.screen}>
+      <ScrollView style={styles.scroll} contentContainerStyle={styles.container} showsVerticalScrollIndicator={false}>
         <View style={styles.inner}>
-          <QuickCapture onCreateText={openCreateText} onCreateTodo={openCreateTodo} />
+          <View style={styles.headerRow}>
+            <View style={styles.searchBar}>
+              <Ionicons name="search" size={18} color={colors.grayText} />
+              <TextInput 
+                placeholder="Tìm ghi chú..." 
+                style={styles.searchInput}
+                value={searchQuery}
+                onChangeText={setSearchQuery}
+              />
+              {searchQuery.length > 0 ? (
+                <TouchableOpacity onPress={() => setSearchQuery('')}>
+                  <Ionicons name="close-circle" size={18} color={colors.grayText} />
+                </TouchableOpacity>
+              ) : null}
+            </View>
+            
+            {/* ✅ Nút Settings dùng router.push để chuyển trang tuyệt đối */}
+            <TouchableOpacity 
+              style={styles.settingsBtn} 
+              activeOpacity={0.7}
+              onPress={() => router.push('/settings')}
+            >
+              <Ionicons name="settings-outline" size={20} color="#555" />
+            </TouchableOpacity>
+          </View>
 
-          {/* 2. Thay thế render cũ bằng NoteList mới */}
-          <NoteList
-            title="Đã ghim"
-            notes={pinned}
-            onPressNote={openEditNote}
-            onUpdateNote={handleUpdate}
-            onDeleteNote={handleDelete}
-            onArchiveNote={handleArchive}
-            selectedIds={selectedIds}
-            onSelectNote={toggleSelect}
-          />
+          <QuickCapture />
 
-          <NoteList
-            title="Khác"
-            notes={others}
-            onPressNote={openEditNote}
-            onUpdateNote={handleUpdate}
-            onDeleteNote={handleDelete}
-            onArchiveNote={handleArchive}
-            selectedIds={selectedIds}
-            onSelectNote={toggleSelect}
-          />
+          {pinnedNotes.length > 0 ? (
+            <NoteList
+              key={`pinned-${viewMode}`}
+              title="Đã ghim"
+              notes={pinnedNotes}
+              viewMode={viewMode}
+              onPressNote={openEditNoteStore}
+              onUpdateNote={handleUpdate}
+              onDeleteNote={handleDelete}
+              onArchiveNote={handleArchive}
+              selectedIds={selectedIds}
+              onSelectNote={toggleSelect}
+            />
+          ) : null}
+
+          {otherNotes.length > 0 ? (
+            <NoteList
+              key={`main-${viewMode}`}
+              title={activeFilter === 'all' ? (pinnedNotes.length > 0 ? 'Khác' : 'Tất cả') : `#${activeFilter}`}
+              notes={otherNotes}
+              viewMode={viewMode}
+              onPressNote={openEditNoteStore}
+              onUpdateNote={handleUpdate}
+              onDeleteNote={handleDelete}
+              onArchiveNote={handleArchive}
+              selectedIds={selectedIds}
+              onSelectNote={toggleSelect}
+            />
+          ) : (
+            <View style={styles.emptyContainer}>
+              <Ionicons name="document-text-outline" size={48} color="#ddd" />
+              <Text style={styles.emptyText}>Không tìm thấy ghi chú nào.</Text>
+            </View>
+          )}
         </View>
       </ScrollView>
-
-      <NoteEditor
-        visible={editorVisible}
-        mode={editorMode}
-        note={editingNote}
-        onClose={closeEditor}
-        onSave={handleSaveNote}
-      />
+      <NoteEditor />
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  scroll: {
-    flex: 1,
-    backgroundColor: colors.bgPage,
-  },
-  container: {
-    flexGrow: 1,
-    alignItems: 'center',
-    paddingVertical: 24,
-    paddingHorizontal: 16,
-    //width: '100%',
-  },
-  inner: {
-    width: '100%',
-    maxWidth: 720,
-  },
+  screen: { flex: 1, backgroundColor: colors.bgPage },
+  scroll: { flex: 1 },
+  container: { flexGrow: 1, alignItems: 'center', paddingVertical: 24, paddingHorizontal: 16 },
+  inner: { width: '100%', maxWidth: 600 },
+  headerRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 20, gap: 12 },
+  searchBar: { flex: 1, flexDirection: 'row', alignItems: 'center', backgroundColor: '#fff', paddingHorizontal: 12, height: 40, borderRadius: 20, borderWidth: 1, borderColor: colors.grayBorder },
+  searchInput: { flex: 1, marginLeft: 8, fontSize: 14, color: '#333' },
+  settingsBtn: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center', backgroundColor: '#fff', borderRadius: 20, borderWidth: 1, borderColor: colors.grayBorder },
+  emptyContainer: { alignItems: 'center', marginTop: 60 },
+  emptyText: { marginTop: 12, color: '#999', fontSize: 15 },
 });

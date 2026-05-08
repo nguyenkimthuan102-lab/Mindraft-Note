@@ -1,145 +1,62 @@
 ﻿import { create } from 'zustand';
-import type { NoteCardData } from '../components/notes/NoteCard';
 
-type ViewMode = 'grid' | 'list';
-type EditorMode = 'text' | 'todo';
-
-interface NoteUIState {
-  viewMode: ViewMode;
-  setViewMode: (mode: ViewMode) => void;
-
+interface NoteState {
+  notes: any[];
+  setNotes: (notes: any[]) => void;
+  
   editorVisible: boolean;
-  editorMode: EditorMode;
-  editingNote?: NoteCardData;
+  editorMode: 'text' | 'todo';
+  editingNote: any | null;
+
+  viewMode: 'grid' | 'list';
+  activeFilter: string;
 
   openCreateText: () => void;
   openCreateTodo: () => void;
-  openEditNote: (note: NoteCardData) => void;
+  openEditNote: (note: any) => void;
   closeEditor: () => void;
-
-  allTags: string[];
-  noteTagsMap: Record<string, string[]>;
-
-  addTagToSystem: (tag: string) => Promise<void>;
-  updateNoteTags: (noteId: string, tags: string[]) => Promise<void>;
+  
+  addNote: (note: any) => void;
+  updateNote: (id: string, changes: any) => void;
+  deleteNote: (id: string) => void;
+  
+  setViewMode: (mode: 'grid' | 'list') => void;
+  setActiveFilter: (filter: string) => void;
 }
 
-const normalizeTag = (tag: string) => tag.trim();
-
-const uniqueTags = (tags: string[]) => {
-  const seen = new Set<string>();
-  const result: string[] = [];
-
-  for (const tag of tags) {
-    const normalized = normalizeTag(tag);
-    if (!normalized || seen.has(normalized)) continue;
-
-    seen.add(normalized);
-    result.push(normalized);
-  }
-
-  return result;
-};
-
-export const useNoteStore = create<NoteUIState>((set, get) => ({
-  viewMode: 'list',
-
-  setViewMode: (mode) => {
-    set({ viewMode: mode });
-  },
-
+export const useNoteStore = create<NoteState>((set) => ({
+  notes: [],
   editorVisible: false,
   editorMode: 'text',
-  editingNote: undefined,
+  editingNote: null,
+  viewMode: 'grid',
+  activeFilter: 'all',
 
-  openCreateText: () =>
-    set({
-      editorVisible: true,
-      editorMode: 'text',
-      editingNote: undefined,
-    }),
+  setNotes: (notes) => set({ notes }),
 
-  openCreateTodo: () =>
-    set({
-      editorVisible: true,
-      editorMode: 'todo',
-      editingNote: undefined,
-    }),
+  openCreateText: () => set({ editorVisible: true, editorMode: 'text', editingNote: null }),
 
-  openEditNote: (note) =>
-    set({
-      editorVisible: true,
-      editorMode: note.type,
-      editingNote: note,
-    }),
+  openCreateTodo: () => set({ editorVisible: true, editorMode: 'todo', editingNote: null }),
 
-  closeEditor: () =>
-    set({
-      editorVisible: false,
-      editingNote: undefined,
-    }),
+  openEditNote: (note) => set({ 
+    editorVisible: true, 
+    editorMode: (note.type as 'text' | 'todo') || 'text', 
+    editingNote: note 
+  }),
 
-  allTags: ['ehr', 'g', 'gse'],
-  noteTagsMap: {},
+  closeEditor: () => set({ editorVisible: false, editingNote: null }),
 
-  addTagToSystem: async (rawTag) => {
-    const tag = normalizeTag(rawTag);
-    if (!tag) return;
+  addNote: (note) => set((state) => ({ notes: [note, ...state.notes] })),
 
-    const previousTags = get().allTags;
+  updateNote: (id, changes) => set((state) => ({
+    notes: state.notes.map((n) => (n.id === id ? { ...n, ...changes } : n)),
+  })),
 
-    if (previousTags.includes(tag)) {
-      return;
-    }
+  deleteNote: (id) => set((state) => ({
+    notes: state.notes.filter((n) => n.id !== id)
+  })),
 
-    set({
-      allTags: [...previousTags, tag],
-    });
+  setViewMode: (mode) => set({ viewMode: mode }),
 
-    try {
-      // TODO: gọi API backend
-      // await api.createTag({ name: tag });
-    } catch (error) {
-      set({
-        allTags: previousTags,
-      });
-
-      throw error;
-    }
-  },
-
-  updateNoteTags: async (noteId, tags) => {
-    const normalizedTags = uniqueTags(tags);
-
-    const previousNoteTags = get().noteTagsMap[noteId] ?? [];
-    const previousSystemTags = get().allTags;
-
-    const mergedSystemTags = uniqueTags([
-      ...previousSystemTags,
-      ...normalizedTags,
-    ]);
-
-    set((state) => ({
-      allTags: mergedSystemTags,
-      noteTagsMap: {
-        ...state.noteTagsMap,
-        [noteId]: normalizedTags,
-      },
-    }));
-
-    try {
-      // TODO: gọi API backend
-      // await api.updateNoteTags(noteId, normalizedTags);
-    } catch (error) {
-      set((state) => ({
-        allTags: previousSystemTags,
-        noteTagsMap: {
-          ...state.noteTagsMap,
-          [noteId]: previousNoteTags,
-        },
-      }));
-
-      throw error;
-    }
-  },
+  setActiveFilter: (filter) => set({ activeFilter: filter }),
 }));

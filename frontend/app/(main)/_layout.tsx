@@ -1,50 +1,46 @@
+import { Stack } from 'expo-router';
 import { View, StyleSheet } from 'react-native';
-import { Slot } from 'expo-router';
+
+// PHẢI có dấu { } vì dùng named export
 import { Sidebar } from '../../src/components/layout/Sidebar';
-import { Topbar } from '../../src/components/layout/Topbar';
-import { colors } from '../../src/constants/colors';
-import { useLayoutStore } from '../../src/store/useLayoutStore';
+import { NoteEditor } from '../../src/components/notes/NoteEditor';
+import { Topbar } from '../../src/components/layout/Topbar'; // Thêm lại Topbar nếu nhóm có dùng
 
 export default function MainLayout() {
-  const { isSidebarOpen } = useLayoutStore(); // Lấy trạng thái đóng/mở
-
   return (
-    <View style={{ flex: 1 }}>
-      {/* Topbar nằm trên cùng, chiếm toàn bộ chiều ngang */}
+    <View style={styles.container}>
+      {/* 1. Thanh Topbar nằm ngang trên cùng (nếu có) */}
       <Topbar /> 
-      
-      <View style={{ flex: 1, flexDirection: 'row' }}>
-        {/* Sidebar nằm bên trái */}
+
+      <View style={styles.row}>
+        {/* 2. Thanh Sidebar bên trái cố định */}
         <Sidebar />
-        
-        {/* Nội dung chính nằm bên phải */}
-        <View style={{ flex: 1 }}>
-          <Slot />
+
+        {/* 3. Vùng nội dung chính bên phải */}
+        <View style={styles.content}>
+          <Stack screenOptions={{ headerShown: false }}>
+            <Stack.Screen name="index" />
+            <Stack.Screen name="settings" />
+          </Stack>
         </View>
       </View>
+      
+      {/* 4. Modal Editor nằm lớp trên cùng */}
+      <NoteEditor />
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  topbar: {
-    height: 64,
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.borderDefault,
+  container: {
+    flex: 1,
+    backgroundColor: '#FFFFFF',
   },
-  leftSection: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    width: 250, // PHẢI CỐ ĐỊNH con số này (bằng hoặc gần bằng width Sidebar)
+  row: {
+    flex: 1,
+    flexDirection: 'row', // Đặt Sidebar và Content nằm cạnh nhau
   },
-  logoImg: { width: 32, height: 32, marginLeft: 8 },
-  brandText: { fontSize: 18, fontWeight: '500', marginLeft: 10 },
-  areaTitle: { fontSize: 18, fontWeight: '400', marginLeft: 12, color: colors.textPrimary },
-  searchContainer: {
-    flex: 1, // Để thanh search tự giãn rộng ra
-    // ...
+  content: {
+    flex: 1, // Để vùng nội dung chiếm hết phần còn lại của màn hình
   }
 });

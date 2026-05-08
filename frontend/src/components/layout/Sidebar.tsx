@@ -1,258 +1,159 @@
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Platform } from 'react-native';
 import React from 'react';
-import { useRouter, usePathname } from 'expo-router';
-import { Feather } from '@expo/vector-icons';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
+import { useRouter, usePathname } from 'expo-router'; // ✅ Thêm bộ đôi này để điều hướng
 import { colors } from '../../constants/colors';
-import { useLayoutStore } from '../../store/useLayoutStore';
 import { useNoteStore } from '../../store/useNoteStore';
 
-const LABELS = ['Personal', 'Work', 'Ideas'];
+const MAIN_ITEMS = [
+  { id: 'all', icon: 'document-text-outline', label: 'All notes' },
+  { id: 'reminders', icon: 'notifications-outline', label: 'Reminders' },
+];
 
-interface NavItemProps {
-  icon: keyof typeof Feather.glyphMap;
-  label: string;
-  href: string;
-  active: boolean;
-}
+const LABELS = [
+  { id: 'personal', color: '#FFB74D', label: 'Personal' },
+  { id: 'work', color: '#64B5F6', label: 'Work' },
+  { id: 'ideas', color: '#81C784', label: 'Ideas' },
+];
 
-function NavItem({ icon, label, href, active }: NavItemProps) {
-  const router = useRouter();
-  return (
-    <TouchableOpacity
-      style={[styles.navItem, active && styles.navItemActive]}
-      onPress={() => router.push(href as any)}
-      activeOpacity={0.7}
-    >
-      <Feather
-        name={icon}
-        size={18}
-        color={active ? colors.primary : colors.textSecondary}
-      />
-      <Text style={[styles.navLabel, active && styles.navLabelActive]}>
-        {label}
-      </Text>
-    </TouchableOpacity>
-  );
-}
+const BOTTOM_ITEMS = [
+  { id: 'archive', icon: 'archive-outline', label: 'Archive' },
+  { id: 'trash', icon: 'trash-outline', label: 'Trash' },
+];
 
-export function Sidebar() {
-  const { isSidebarOpen } = useLayoutStore();
-  const pathname = usePathname();
-  const router = useRouter();
-  const { openCreateText, openCreateTodo } = useNoteStore();
-  const [isNewNoteOpen, setIsNewNoteOpen] = React.useState(false);
-  if (!isSidebarOpen) return null; // Nếu đóng thì biến mất
+export const Sidebar = () => {
+  const router = useRouter(); // ✅ Khởi tạo router để nhảy trang
+  const pathname = usePathname(); // ✅ Lấy đường dẫn hiện tại để highlight nút
+  const { activeFilter, setActiveFilter, openCreateText } = useNoteStore();
 
-  const handleCreateText = () => {
-    setIsNewNoteOpen(false);
-    if (pathname !== '/') {
-      router.push('/(main)');
-    }
-    openCreateText();
+  // Kiểm tra xem có đang ở trang settings không
+  const isSettingsPage = pathname === '/settings';
+
+  const renderItem = (item: any, isLabel = false) => {
+    // Chỉ highlight item nếu KHÔNG phải đang ở trang settings
+    const isActive = activeFilter === item.id && !isSettingsPage; 
+    
+    return (
+      <TouchableOpacity 
+        key={item.id}
+        style={[styles.menuItem, isActive && styles.activeItem]}
+        onPress={() => {
+          setActiveFilter(item.id);
+          if (isSettingsPage) router.push('/'); // Nếu đang ở settings mà bấm vào filter thì quay về Home
+        }}
+      >
+        {isLabel ? (
+          <View style={[styles.labelDot, { backgroundColor: item.color }]} />
+        ) : (
+          <Ionicons 
+            name={item.icon} 
+            size={20} 
+            color={isActive ? colors.black : colors.grayText} 
+            style={styles.icon}
+          />
+        )}
+        <Text style={[styles.menuText, isActive && styles.activeText]}>
+          {item.label}
+        </Text>
+      </TouchableOpacity>
+    );
   };
 
-  const handleCreateTodo = () => {
-    setIsNewNoteOpen(false);
-    if (pathname !== '/') {
-      router.push('/(main)');
-    }
-    openCreateTodo();
-  };
-
   return (
-    <View style={styles.sidebar}>
-      <View style={styles.fixedTopNav}>
-        {/* New note */}
-        <View style={styles.newNoteWrapper}>
-          <TouchableOpacity style={styles.newNote} activeOpacity={0.8}
-            onPress={() => setIsNewNoteOpen(!isNewNoteOpen)} // Bấm để đóng/mở
-          >
-            <Feather name="plus" size={18} color={colors.textPrimary} />
-            <Text style={styles.newNoteText}>New note</Text>
-            {/* Thêm icon mũi tên để người dùng biết là có menu */}
-          </TouchableOpacity>
-          {/* Phần menu xổ xuống */}
-          {isNewNoteOpen && (
-            <View style={styles.dropdownContent}>
-              <TouchableOpacity
-                style={styles.dropdownItem}
-                onPress={handleCreateText}
-              >
-                <Feather name="type" size={14} color={colors.textSecondary} />
-                <Text style={styles.dropdownItemText}>Văn bản</Text>
-              </TouchableOpacity>
+    <View style={styles.container}>
+      {/* Header (Logo + Brand) */}
+      <View style={styles.header}>
+        <View style={styles.logoBox}>
+          <Text style={styles.logoText}>M</Text>
+        </View>
+        <Text style={styles.brandName}>Mindraft</Text>
+      </View>
 
-              <TouchableOpacity
-                style={styles.dropdownItem}
-                onPress={handleCreateTodo}
-              >
-                <Feather name="check-square" size={14} color={colors.textSecondary} />
-                <Text style={styles.dropdownItemText}>To-do list</Text>
-              </TouchableOpacity>
-            </View>
-          )}
+      {/* Nút Tạo mới */}
+      <TouchableOpacity style={styles.newNoteBtn} onPress={openCreateText}>
+        <Ionicons name="add" size={20} color={colors.white} />
+        <Text style={styles.newNoteText}>New note</Text>
+      </TouchableOpacity>
+
+      <ScrollView showsVerticalScrollIndicator={false}>
+        <View style={styles.section}>
+          {MAIN_ITEMS.map(item => renderItem(item))}
         </View>
 
-        {/* Main nav */}
-        <NavItem icon="file-text" label="All notes" href="/(main)" active={pathname === '/'} />
-        <NavItem icon="bell" label="Reminders" href="/(main)/reminders" active={pathname === '/reminders'} />
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>LABELS</Text>
+          {LABELS.map(item => renderItem(item, true))}
+        </View>
 
-        <View style={styles.divider} />
-      </View>
+        <View style={styles.section}>
+          {BOTTOM_ITEMS.map(item => renderItem(item))}
+        </View>
+      </ScrollView>
 
-      {/* 3. Phần Labels - CÓ THỂ CUỘN */}
-      <View style={styles.scrollArea}>
-        <ScrollView showsVerticalScrollIndicator={false} style={styles.scroll}>
-          <Text style={styles.sectionLabel}>LABELS</Text>
-          {LABELS.map((label) => (
-            <TouchableOpacity key={label} style={styles.navItem} activeOpacity={0.7}>
-              <Feather name="tag" size={16} color={colors.textSecondary} />
-              <Text style={styles.navLabel}>{label}</Text>
-            </TouchableOpacity>
-          ))}
-          <TouchableOpacity style={styles.editLabels}>
-            <Text style={styles.editLabelsText}>Edit labels</Text>
-          </TouchableOpacity>
-        </ScrollView>
-      </View>
-
-      {/* 4. Footer - CỐ ĐỊNH ở đáy */}
+      {/* ✅ NÚT SETTINGS GÓC TRÁI DƯỚI CÙNG ĐÃ ĐƯỢC FIX */}
       <View style={styles.footer}>
-        <View style={styles.divider} />
-        <NavItem icon="archive" label="Archive" href="/(main)/archive" active={pathname === '/archive'} />
-        <NavItem icon="trash-2" label="Trash" href="/(main)/trash" active={pathname === '/trash'} />
-        <NavItem icon="settings" label="Settings" href="/(main)/settings" active={pathname === '/settings'} />
+        <TouchableOpacity 
+           style={[
+             styles.menuItem, 
+             isSettingsPage && styles.activeItem, // Tự sáng lên khi đang ở trang Settings
+             { backgroundColor: isSettingsPage ? '#E8F5E9' : 'transparent' }
+           ]}
+           onPress={() => router.push('/settings')} // ✅ Chuyển trang thực sự
+        >
+          <Ionicons 
+            name={isSettingsPage ? "settings" : "settings-outline"} 
+            size={20} 
+            color={colors.primary} 
+            style={styles.icon} 
+          />
+          <Text style={[
+            styles.menuText, 
+            { color: colors.primary, fontWeight: isSettingsPage ? '700' : '600' }
+          ]}>
+            Settings
+          </Text>
+        </TouchableOpacity>
       </View>
     </View>
   );
-}
+};
 
 const styles = StyleSheet.create({
-  sidebar: {
+  container: {
     width: 250,
-    backgroundColor: colors.bgSurface,
+    backgroundColor: '#FAFAFA',
     borderRightWidth: 1,
-    borderRightColor: colors.borderDefault,
-    paddingTop: Platform.OS === 'web' ? 0 : 44,
+    borderRightColor: colors.grayBorder,
+    paddingVertical: 24,
+    paddingHorizontal: 16,
+    height: '100%',
   },
-  fixedTopNav: {
-    paddingHorizontal: 18,
-    // Không có flex ở đây để nó chỉ chiếm vừa đủ diện tích của nó
-  },
-  scrollArea: {
-    flex: 1, // Chiếm toàn bộ không gian còn lại giữa TopNav và Footer
-    paddingHorizontal: 0,
-  },
-  footer: {
-    paddingHorizontal: 18,
-    paddingBottom: Platform.OS === 'ios' ? 30 : 20,
-  },
-  scroll: {
-    flex: 1,
-    paddingHorizontal: 18,
-  },
-
-  logo: {
+  header: { flexDirection: 'row', alignItems: 'center', marginBottom: 24, paddingHorizontal: 8 },
+  logoBox: { width: 28, height: 28, backgroundColor: colors.primary, borderRadius: 6, justifyContent: 'center', alignItems: 'center', marginRight: 12 },
+  logoText: { color: colors.white, fontWeight: 'bold', fontSize: 16 },
+  brandName: { fontSize: 18, fontWeight: '800', color: colors.black },
+  
+  newNoteBtn: {
+    backgroundColor: colors.primary,
     flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    paddingHorizontal: 26,
-    paddingVertical: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.borderDefault,
-    height: 64, // Cố định chiều cao để header không bị nhảy khi mất logo
-  },
-  logoIcon: {
-    width: 32,
-    height: 32,
-    borderRadius: 8,
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  logoText: {
-    fontFamily: 'Inter-SemiBold',
-    fontSize: 17,
-    color: colors.textPrimary,
-    letterSpacing: -0.3,
-  },
-  newNote: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
     paddingVertical: 12,
-    paddingHorizontal: 8,
-    marginTop: 8,
-  },
-  newNoteWrapper: {
-    marginTop: 8,
-    marginBottom: 4,
-  },
-  dropdownContent: {
-    marginLeft: 36,
-    marginTop: 2,
-    borderLeftWidth: 1,
-    borderLeftColor: colors.borderDefault,
-  },
-  dropdownItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    paddingVertical: 10,
-    paddingHorizontal: 12,
-  },
-  dropdownItemText: {
-    fontFamily: 'Inter-Regular',
-    fontSize: 14,
-    color: colors.textSecondary,
-  },
-  newNoteText: {
-    fontFamily: 'Inter-Medium',
-    fontSize: 15,
-    color: colors.textPrimary,
-  },
-  // ... các style còn lại (navItem, sectionLabel, divider...) giữ nguyên
-  navItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    paddingVertical: 10,
-    paddingHorizontal: 10,
     borderRadius: 8,
-    marginBottom: 2,
+    marginBottom: 24,
+    gap: 8,
   },
-  navItemActive: {
-    backgroundColor: colors.primarySubtle,
-  },
-  navLabel: {
-    fontFamily: 'Inter-Regular',
-    fontSize: 15,
-    color: colors.textSecondary,
-  },
-  navLabelActive: {
-    fontFamily: 'Inter-Medium',
-    color: colors.primary,
-  },
-  sectionLabel: {
-    fontFamily: 'Inter-Medium',
-    fontSize: 10,
-    color: colors.textTertiary,
-    letterSpacing: 0.7,
-    marginTop: 16,
-    marginBottom: 6,
-    marginLeft: 10,
-  },
-  editLabels: {
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-  },
-  editLabelsText: {
-    fontFamily: 'Inter-Regular',
-    fontSize: 13,
-    color: colors.textTertiary,
-  },
-  divider: {
-    height: 1,
-    backgroundColor: colors.borderDefault,
-    marginVertical: 12,
-  },
+  newNoteText: { color: colors.white, fontWeight: '700', fontSize: 15 },
+  
+  section: { marginBottom: 24 },
+  sectionTitle: { fontSize: 11, fontWeight: '800', color: colors.grayText, marginBottom: 12, paddingHorizontal: 8, letterSpacing: 1 },
+  
+  menuItem: { flexDirection: 'row', alignItems: 'center', paddingVertical: 10, paddingHorizontal: 12, borderRadius: 8, marginBottom: 4 },
+  activeItem: { backgroundColor: '#E8F5E9' }, 
+  icon: { marginRight: 12, width: 20 },
+  labelDot: { width: 10, height: 10, borderRadius: 5, marginRight: 16, marginLeft: 4 },
+  menuText: { fontSize: 14, color: '#555', fontWeight: '500' },
+  activeText: { color: colors.black, fontWeight: '700' },
+  
+  footer: { borderTopWidth: 1, borderTopColor: colors.grayBorder, paddingTop: 16, marginTop: 'auto' }
 });
