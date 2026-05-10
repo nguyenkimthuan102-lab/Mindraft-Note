@@ -1,17 +1,17 @@
 import { ScrollView, StyleSheet, View } from 'react-native';
 import { useState, useEffect } from 'react';
-import { NoteCard, NoteCardData } from '../../src/components/notes/NoteCard';
+import { NoteCardData } from '../../src/components/notes/NoteCard';
 import { NoteEditor } from '../../src/components/notes/NoteEditor';
 import { QuickCapture } from '../../src/components/notes/QuickCapture';
 
-import { colors } from '../../src/constants/colors';
+// Thay đổi: Sử dụng hook để lấy màu động thay vì import hằng số tĩnh
+import { useThemeColors } from '../../src/hooks/useThemeColors'; 
 import { useSyncStore } from '../../src/store/useSyncStore';
-import { useSelectionStore } from '../../src/store/useSelectionStore'; // Import store
+import { useSelectionStore } from '../../src/store/useSelectionStore';
 import { useNoteStore } from '../../src/store/useNoteStore';
 import { NoteList } from '../../src/components/notes/NoteList';
-import { useAppStore } from '@/src/store/useAppStore';
 
-
+// Dữ liệu mẫu (Giữ nguyên)
 const MOCK_NOTES: NoteCardData[] = [
   {
     id: '1',
@@ -68,9 +68,11 @@ const MOCK_NOTES: NoteCardData[] = [
 ];
 
 export default function HomeScreen() {
-  const { viewMode } = useAppStore();
+  const colors = useThemeColors(); // Lấy bảng màu hiện tại (Sáng/Tối) từ Store
+  
   const { setSyncing, setDone, setError } = useSyncStore();
   const [notes, setNotes] = useState<NoteCardData[]>([]);
+  
   const {
     editorVisible,
     editorMode,
@@ -86,6 +88,7 @@ export default function HomeScreen() {
   useEffect(() => {
     clearSelection();
     setSyncing();
+    
     const load = async () => {
       try {
         await new Promise(res => setTimeout(res, 1000));
@@ -95,8 +98,9 @@ export default function HomeScreen() {
         setError();
       }
     };
+    
     load();
-  }, []);
+  }, [clearSelection, setSyncing, setDone, setError]); 
 
   const handleUpdate = (id: string, changes: Partial<NoteCardData>) => {
     setNotes(prev => prev.map(n => n.id === id ? { ...n, ...changes } : n));
@@ -108,24 +112,12 @@ export default function HomeScreen() {
 
   const handleArchive = (id: string) => {
     setNotes(prev => prev.filter(n => n.id !== id));
-    // TODO: apiRequest(`/notes/${id}`, { method: 'PATCH', body: JSON.stringify({ is_archived: true }) })
   };
 
-  const openCreateText = () => {
-    openCreateTextStore();
-  };
-
-  const openCreateTodo = () => {
-    openCreateTodoStore();
-  };
-
-  const openEditNote = (note: NoteCardData) => {
-    openEditNoteStore(note);
-  };
-
-  const closeEditor = () => {
-    closeEditorStore();
-  };
+  const openCreateText = () => openCreateTextStore();
+  const openCreateTodo = () => openCreateTodoStore();
+  const openEditNote = (note: NoteCardData) => openEditNoteStore(note);
+  const closeEditor = () => closeEditorStore();
 
   const handleSaveNote = (note: NoteCardData) => {
     setNotes((prev) => {
@@ -141,16 +133,17 @@ export default function HomeScreen() {
   const others = notes.filter(n => !n.is_pinned);
 
   return (
-    <View style={{ flex: 1 }}>
+    // Áp dụng màu nền động cho View ngoài cùng
+    <View style={{ flex: 1, backgroundColor: colors.bgPage }}>
       <ScrollView
-        style={styles.scroll}
+        // Áp dụng màu nền động cho ScrollView
+        style={[styles.scroll, { backgroundColor: colors.bgPage }]}
         contentContainerStyle={styles.container}
         showsVerticalScrollIndicator={false}
       >
         <View style={styles.inner}>
           <QuickCapture onCreateText={openCreateText} onCreateTodo={openCreateTodo} />
 
-          {/* 2. Thay thế render cũ bằng NoteList mới */}
           <NoteList
             title="Đã ghim"
             notes={pinned}
@@ -189,14 +182,12 @@ export default function HomeScreen() {
 const styles = StyleSheet.create({
   scroll: {
     flex: 1,
-    backgroundColor: colors.bgPage,
   },
   container: {
     flexGrow: 1,
     alignItems: 'center',
     paddingVertical: 24,
     paddingHorizontal: 16,
-    //width: '100%',
   },
   inner: {
     width: '100%',

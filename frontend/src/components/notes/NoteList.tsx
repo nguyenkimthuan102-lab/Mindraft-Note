@@ -1,6 +1,6 @@
-import React, { useEffect, useMemo } from 'react';
+import React, { useMemo } from 'react';
 import { View, StyleSheet } from 'react-native';
-import { useAppStore } from '../../store/useAppStore';
+import { useNoteStore } from '../../store/useNoteStore'; // Sử dụng store chúng ta vừa cập nhật
 import { NoteCard } from './NoteCard';
 import { SectionLabel } from '../ui/SectionLabel';
 
@@ -20,27 +20,48 @@ interface NoteListProps {
   onSelectNote: (id: string) => void;
 }
 
-export function NoteList({ notes, title, onPressNote, onUpdateNote, onDeleteNote, onArchiveNote, selectedIds, onSelectNote }: NoteListProps) {
+export function NoteList({ 
+  notes, 
+  title, 
+  onPressNote, 
+  onUpdateNote, 
+  onDeleteNote, 
+  onArchiveNote, 
+  selectedIds, 
+  onSelectNote 
+}: NoteListProps) {
 
-  const { viewMode, isSidebarOpen, initSettings, sort } = useAppStore();
+  // Lấy các state từ useNoteStore đã bổ sung
+  const { viewMode, sortBy } = useNoteStore();
+  
+  // Giả định isSidebarOpen nằm ở một store quản lý UI chung hoặc layout, 
+  // nếu chưa có bạn có thể tạm thời để fix cứng hoặc bổ sung vào store sau.
+  const isSidebarOpen = true; 
 
-const sortedNotes = useMemo(() => {
-  if (sort.field === 'custom') {
-    return notes; 
-  }
-  const dir = sort.direction === 'desc' ? -1 : 1;
-  return [...notes].sort((a, b) => {
-    const aTime = new Date(a[sort.field] ?? 0).getTime();
-    const bTime = new Date(b[sort.field] ?? 0).getTime();
-    return sort.direction === 'desc' ? bTime - aTime : aTime - bTime;
-  });
-}, [notes, sort]);
+  const sortedNotes = useMemo(() => {
+    if (sortBy === 'custom') {
+      return notes; 
+    }
 
-  useEffect(() => {
-    initSettings(); // Lấy settings từ server khi mount màn hình
-  }, []);
+    // Map giá trị từ store sang field dữ liệu thực tế
+    const fieldMap: Record<string, string> = {
+      updated: 'updatedAt', // hoặc 'updated' tùy data backend
+      created: 'createdAt'
+    };
+    
+    const targetField = fieldMap[sortBy] || 'updatedAt';
 
-  // Tính toán số cột cho Desktop
+    return [...notes].sort((a, b) => {
+      const aTime = new Date(a[targetField] ?? 0).getTime();
+      const bTime = new Date(b[targetField] ?? 0).getTime();
+      // Mặc định sắp xếp mới nhất lên đầu (desc) như thiết kế Cài đặt
+      return bTime - aTime;
+    });
+  }, [notes, sortBy]);
+
+  // Tính toán số cột dựa trên viewMode từ Store
+  // viewMode === 'list' -> 1 cột
+  // viewMode === 'grid' -> 4 hoặc 5 cột tùy sidebar
   const columns = viewMode === 'list' ? 1 : (isSidebarOpen ? 4 : 5);
 
   if (notes.length === 0) return null;
@@ -49,13 +70,13 @@ const sortedNotes = useMemo(() => {
     <View style={styles.sectionContainer}>
       {title && <SectionLabel label={title} />}
       <MasonryFlashList
-        data={notes}
+        data={sortedNotes}
         numColumns={columns}
-        // KEY QUAN TRỌNG: Phải thay đổi khi columns hoặc title đổi để ép render lại
-        key={`list-${title}-${columns}-${sort.field}-${sort.direction}`}
+        // Ép render lại khi thay đổi chế độ xem hoặc kiểu sắp xếp
+        key={`list-${title}-${columns}-${sortBy}`}
         estimatedItemSize={200}
-        scrollEnabled={false} // Quan trọng: Để ScrollView của index.tsx quản lý việc cuộn
-        renderItem={({ item }) => (
+        scrollEnabled={false} 
+        renderItem={({ item }: { item: any }) => (
           <View style={[
             styles.cardWrapper,
             viewMode === 'list' && styles.listMaxWidth

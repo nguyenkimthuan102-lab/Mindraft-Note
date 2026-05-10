@@ -1,14 +1,14 @@
 import { Feather } from '@expo/vector-icons';
 import { usePathname, useRouter } from 'expo-router';
 import { useState } from 'react';
-import { Image, Platform, StyleSheet, Text, TextInput, TouchableOpacity, View, LayoutAnimation, UIManager, Modal } from 'react-native';
-import { Icon, IconButton, Menu, Divider } from 'react-native-paper';
+import { Image, Platform, StyleSheet, Text, TextInput, TouchableOpacity, View, LayoutAnimation, } from 'react-native';
+import { Icon, Menu, Divider } from 'react-native-paper';
 import { colors } from '../../constants/colors';
 import { useLayoutStore } from '../../store/useLayoutStore';
 import { useSyncStore } from '../../store/useSyncStore';
 import { SyncIndicator } from '../ui/SyncIndicator';
 import { useSelectionStore } from '../../store/useSelectionStore'; // Import store
-import { useAppStore, DEFAULT_SORT, SortOption } from '../../store/useAppStore';
+import { useAppStore, DEFAULT_SORT } from '../../store/useAppStore';
 
 interface TopbarProps {
   viewMode?: 'list' | 'grid';
@@ -38,7 +38,6 @@ export function Topbar({ onViewModeChange }: TopbarProps) {
   const { toggleSidebar } = useLayoutStore();
   const pathname = usePathname();
   const isHome = pathname === '/' || pathname === '/(main)';
-  const isSettings = pathname.includes('settings');
   const router = useRouter();
   const { status: syncStatus } = useSyncStore();
   const { viewMode, setViewMode } = useAppStore();
