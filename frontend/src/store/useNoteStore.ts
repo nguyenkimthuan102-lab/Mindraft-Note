@@ -3,6 +3,9 @@ import type { NoteCardData } from '../components/notes/NoteCard';
 
 type ViewMode = 'grid' | 'list';
 type EditorMode = 'text' | 'todo';
+// Bổ sung các type mới cho Settings
+type ThemeMode = 'light' | 'dark' | 'system';
+type SortMode = 'updated' | 'created' | 'custom';
 
 interface NoteUIState {
   viewMode: ViewMode;
@@ -22,6 +25,21 @@ interface NoteUIState {
 
   addTagToSystem: (tag: string) => Promise<void>;
   updateNoteTags: (noteId: string, tags: string[]) => Promise<void>;
+
+  // --- PHẦN BỔ SUNG CHO SETTINGS ---
+  theme: ThemeMode;
+  setTheme: (theme: ThemeMode) => void;
+
+  sortBy: SortMode;
+  setSortBy: (sort: SortMode) => void;
+
+  notifications: {
+    app: boolean;
+    reminders: boolean;
+    collaboration: boolean;
+  };
+  toggleNotification: (key: keyof NoteUIState['notifications']) => void;
+  // ---------------------------------
 }
 
 const normalizeTag = (tag: string) => tag.trim();
@@ -42,6 +60,7 @@ const uniqueTags = (tags: string[]) => {
 };
 
 export const useNoteStore = create<NoteUIState>((set, get) => ({
+  // Logic cũ giữ nguyên
   viewMode: 'list',
 
   setViewMode: (mode) => {
@@ -98,19 +117,16 @@ export const useNoteStore = create<NoteUIState>((set, get) => ({
 
     try {
       // TODO: gọi API backend
-      // await api.createTag({ name: tag });
     } catch (error) {
       set({
         allTags: previousTags,
       });
-
       throw error;
     }
   },
 
   updateNoteTags: async (noteId, tags) => {
     const normalizedTags = uniqueTags(tags);
-
     const previousNoteTags = get().noteTagsMap[noteId] ?? [];
     const previousSystemTags = get().allTags;
 
@@ -129,7 +145,6 @@ export const useNoteStore = create<NoteUIState>((set, get) => ({
 
     try {
       // TODO: gọi API backend
-      // await api.updateNoteTags(noteId, normalizedTags);
     } catch (error) {
       set((state) => ({
         allTags: previousSystemTags,
@@ -138,8 +153,28 @@ export const useNoteStore = create<NoteUIState>((set, get) => ({
           [noteId]: previousNoteTags,
         },
       }));
-
       throw error;
     }
   },
+
+  // --- TRIỂN KHAI PHẦN BỔ SUNG ---
+  theme: 'light',
+  setTheme: (theme) => set({ theme }),
+
+  sortBy: 'updated',
+  setSortBy: (sort) => set({ sortBy: sort }),
+
+  notifications: {
+    app: true,
+    reminders: true,
+    collaboration: true,
+  },
+  toggleNotification: (key) =>
+    set((state) => ({
+      notifications: {
+        ...state.notifications,
+        [key]: !state.notifications[key],
+      },
+    })),
+  // ---------------------------------
 }));
