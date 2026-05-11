@@ -5,6 +5,7 @@ import { NoteCardData, TodoItemData } from './NoteCard';
 import { useEffect, useState, useRef } from 'react';
 import { useNoteStore } from '@/src/store/useNoteStore';
 import { TagMenu } from './TagMenu';
+import { exportToTxt, exportToPdf, exportToDocx } from '../../utils/exportNote';
 
 const isWeb = Platform.OS === 'web';
 const WebDiv = 'div' as any;
@@ -109,6 +110,7 @@ export function NoteEditor({ visible, mode, note, onClose, onSave }: NoteEditorP
   });
 
   const [showTagMenu, setShowTagMenu] = useState(false);
+  const [showExportMenu, setShowExportMenu] = useState(false);
   const { allTags, addTagToSystem } = useNoteStore();
   const [noteTags, setNoteTags] = useState<string[]>(note?.labels ?? []); // Trong code của bạn dùng 'labels'[cite: 7]
 
@@ -205,6 +207,7 @@ export function NoteEditor({ visible, mode, note, onClose, onSave }: NoteEditorP
     setShowColorPicker(false);
     setShowMoreMenu(false);
     setShowTagMenu(false);
+    setShowExportMenu(false);
   };
 
   const updateFormattingState = () => {
@@ -238,6 +241,33 @@ export function NoteEditor({ visible, mode, note, onClose, onSave }: NoteEditorP
   const handleCreateTag = async (tag: string) => {
     await addTagToSystem(tag);
     handleToggleTag(tag);
+  };
+
+  const handleExport = async (format: 'txt' | 'pdf' | 'docx') => {
+    let currentContent = content;
+    if (editorMode === 'text') {
+      currentContent = isWeb && contentRef.current ? contentRef.current.innerHTML : content;
+    }
+    const exportNoteData: NoteCardData = {
+      ...note,
+      color: noteColor,
+      id: note?.id ?? `${Date.now()}`,
+      title: title.trim() || undefined,
+      content_text: editorMode === 'text' ? currentContent?.trim() || undefined : undefined,
+      todo_items: editorMode === 'todo' ? todoItems : undefined,
+      type: editorMode,
+    };
+
+    setShowExportMenu(false);
+    setShowMoreMenu(false);
+
+    if (format === 'txt') {
+      await exportToTxt(exportNoteData);
+    } else if (format === 'pdf') {
+      await exportToPdf(exportNoteData);
+    } else if (format === 'docx') {
+      await exportToDocx(exportNoteData);
+    }
   };
 
   const handleSaveAndClose = () => {
@@ -466,7 +496,7 @@ export function NoteEditor({ visible, mode, note, onClose, onSave }: NoteEditorP
             <ToolbarBtn icon="archive-arrow-down-outline" onPress={() => { alert('Ghi chú đã được lưu trữ (Cần API)'); closePopups(); }} label="Lưu trữ" />
 
             <View style={{ position: 'relative', zIndex: 300 }}>
-              <ToolbarBtn icon="dots-vertical" onPress={() => { setShowMoreMenu(!showMoreMenu); setShowColorPicker(false); }} label="Thêm tùy chọn" />
+              <ToolbarBtn icon="dots-vertical" onPress={() => { setShowMoreMenu(!showMoreMenu); setShowColorPicker(false); setShowExportMenu(false); }} label="Thêm tùy chọn" />
               {showMoreMenu && (
                 <View style={styles.moreMenu}>
                   <MenuBtn
@@ -490,6 +520,22 @@ export function NoteEditor({ visible, mode, note, onClose, onSave }: NoteEditorP
                           onToggleTag={handleToggleTag}
                           onCreateTag={handleCreateTag}
                         />
+                      </View>
+                    )}
+                  </View>
+
+                  {/* PHẦN XUẤT FILE */}
+                  <View style={{ position: 'relative', zIndex: 310 }}>
+                    <MenuBtn
+                      onPress={() => { setShowExportMenu(!showExportMenu); setShowTagMenu(false); }}
+                      label="Xuất file"
+                    />
+
+                    {showExportMenu && (
+                      <View style={styles.exportMenuPopover}>
+                        <MenuBtn onPress={() => handleExport('txt')} label="Xuất ra .TXT" />
+                        <MenuBtn onPress={() => handleExport('pdf')} label="Xuất ra .PDF" />
+                        <MenuBtn onPress={() => handleExport('docx')} label="Xuất ra .DOCX" />
                       </View>
                     )}
                   </View>
@@ -549,6 +595,22 @@ export function NoteEditor({ visible, mode, note, onClose, onSave }: NoteEditorP
 }
 
 const styles = StyleSheet.create({
+  exportMenuPopover: {
+    position: 'absolute',
+    left: isWeb ? '100%' : 0,
+    bottom: isWeb ? 0 : 80,
+    marginLeft: 8,
+    zIndex: 1000,
+    backgroundColor: colors.bgSurface,
+    borderRadius: 8,
+    paddingVertical: 4,
+    shadowColor: '#000',
+    shadowOpacity: 0.1,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 5,
+    minWidth: 150,
+  },
   // Thêm vào styles của NoteEditor_2.tsx
   tagMenuPopover: {
     position: 'absolute',
