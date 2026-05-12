@@ -5,6 +5,8 @@ import { Feather } from '@expo/vector-icons';
 import { colors } from '../../constants/colors';
 import { useLayoutStore } from '../../store/useLayoutStore';
 import { useNoteStore } from '../../store/useNoteStore';
+// THÊM: Import AppStore để lấy theme
+import { useAppStore } from '../../store/useAppStore'; 
 
 const LABELS = ['Personal', 'Work', 'Ideas'];
 
@@ -13,22 +15,37 @@ interface NavItemProps {
   label: string;
   href: string;
   active: boolean;
+  // THÊM: props màu động
+  isDark: boolean;
 }
 
-function NavItem({ icon, label, href, active }: NavItemProps) {
+function NavItem({ icon, label, href, active, isDark }: NavItemProps) {
   const router = useRouter();
+  
+  // Màu sắc động cho item
+  const activeBg = isDark ? '#064e3b' : colors.primarySubtle;
+  const activeTextColor = isDark ? '#34d399' : colors.primary;
+  const inactiveTextColor = isDark ? '#9ca3af' : colors.textSecondary;
+
   return (
     <TouchableOpacity
-      style={[styles.navItem, active && styles.navItemActive]}
+      style={[
+        styles.navItem, 
+        active && { backgroundColor: activeBg } // Ghi đè màu active
+      ]}
       onPress={() => router.push(href as any)}
       activeOpacity={0.7}
     >
       <Feather
         name={icon}
         size={18}
-        color={active ? colors.primary : colors.textSecondary}
+        color={active ? activeTextColor : inactiveTextColor}
       />
-      <Text style={[styles.navLabel, active && styles.navLabelActive]}>
+      <Text style={[
+        styles.navLabel, 
+        { color: inactiveTextColor },
+        active && { color: activeTextColor, fontFamily: 'Inter-Medium' }
+      ]}>
         {label}
       </Text>
     </TouchableOpacity>
@@ -41,7 +58,21 @@ export function Sidebar() {
   const router = useRouter();
   const { openCreateText, openCreateTodo } = useNoteStore();
   const [isNewNoteOpen, setIsNewNoteOpen] = React.useState(false);
-  if (!isSidebarOpen) return null; // Nếu đóng thì biến mất
+
+  // THÊM: Lấy theme từ AppStore
+  const { theme } = useAppStore();
+  const isDark = theme === 'dark';
+
+  // Bảng màu động cho Sidebar
+  const dynamicColors = {
+    bg: isDark ? '#111827' : colors.bgSurface,
+    border: isDark ? '#374151' : colors.borderDefault,
+    textMain: isDark ? '#f9fafb' : colors.textPrimary,
+    textSec: isDark ? '#9ca3af' : colors.textSecondary,
+    textTer: isDark ? '#6b7280' : colors.textTertiary,
+  };
+
+  if (!isSidebarOpen) return null;
 
   const handleCreateText = () => {
     setIsNewNoteOpen(false);
@@ -60,68 +91,69 @@ export function Sidebar() {
   };
 
   return (
-    <View style={styles.sidebar}>
+    <View style={[styles.sidebar, { backgroundColor: dynamicColors.bg, borderRightColor: dynamicColors.border }]}>
       <View style={styles.fixedTopNav}>
         {/* New note */}
         <View style={styles.newNoteWrapper}>
-          <TouchableOpacity style={styles.newNote} activeOpacity={0.8}
-            onPress={() => setIsNewNoteOpen(!isNewNoteOpen)} // Bấm để đóng/mở
+          <TouchableOpacity 
+            style={styles.newNote} 
+            activeOpacity={0.8}
+            onPress={() => setIsNewNoteOpen(!isNewNoteOpen)}
           >
-            <Feather name="plus" size={18} color={colors.textPrimary} />
-            <Text style={styles.newNoteText}>New note</Text>
-            {/* Thêm icon mũi tên để người dùng biết là có menu */}
+            <Feather name="plus" size={18} color={dynamicColors.textMain} />
+            <Text style={[styles.newNoteText, { color: dynamicColors.textMain }]}>New note</Text>
           </TouchableOpacity>
-          {/* Phần menu xổ xuống */}
+
           {isNewNoteOpen && (
-            <View style={styles.dropdownContent}>
+            <View style={[styles.dropdownContent, { borderLeftColor: dynamicColors.border }]}>
               <TouchableOpacity
                 style={styles.dropdownItem}
                 onPress={handleCreateText}
               >
-                <Feather name="type" size={14} color={colors.textSecondary} />
-                <Text style={styles.dropdownItemText}>Văn bản</Text>
+                <Feather name="type" size={14} color={dynamicColors.textSec} />
+                <Text style={[styles.dropdownItemText, { color: dynamicColors.textSec }]}>Văn bản</Text>
               </TouchableOpacity>
 
               <TouchableOpacity
                 style={styles.dropdownItem}
                 onPress={handleCreateTodo}
               >
-                <Feather name="check-square" size={14} color={colors.textSecondary} />
-                <Text style={styles.dropdownItemText}>To-do list</Text>
+                <Feather name="check-square" size={14} color={dynamicColors.textSec} />
+                <Text style={[styles.dropdownItemText, { color: dynamicColors.textSec }]}>To-do list</Text>
               </TouchableOpacity>
             </View>
           )}
         </View>
 
         {/* Main nav */}
-        <NavItem icon="file-text" label="All notes" href="/(main)" active={pathname === '/'} />
-        <NavItem icon="bell" label="Reminders" href="/(main)/reminders" active={pathname === '/reminders'} />
+        <NavItem icon="file-text" label="All notes" href="/(main)" active={pathname === '/'} isDark={isDark} />
+        <NavItem icon="bell" label="Reminders" href="/(main)/reminders" active={pathname === '/reminders'} isDark={isDark} />
 
-        <View style={styles.divider} />
+        <View style={[styles.divider, { backgroundColor: dynamicColors.border }]} />
       </View>
 
-      {/* 3. Phần Labels - CÓ THỂ CUỘN */}
+      {/* 3. Phần Labels */}
       <View style={styles.scrollArea}>
         <ScrollView showsVerticalScrollIndicator={false} style={styles.scroll}>
-          <Text style={styles.sectionLabel}>LABELS</Text>
+          <Text style={[styles.sectionLabel, { color: dynamicColors.textTer }]}>LABELS</Text>
           {LABELS.map((label) => (
             <TouchableOpacity key={label} style={styles.navItem} activeOpacity={0.7}>
-              <Feather name="tag" size={16} color={colors.textSecondary} />
-              <Text style={styles.navLabel}>{label}</Text>
+              <Feather name="tag" size={16} color={dynamicColors.textSec} />
+              <Text style={[styles.navLabel, { color: dynamicColors.textSec }]}>{label}</Text>
             </TouchableOpacity>
           ))}
           <TouchableOpacity style={styles.editLabels}>
-            <Text style={styles.editLabelsText}>Edit labels</Text>
+            <Text style={[styles.editLabelsText, { color: dynamicColors.textTer }]}>Edit labels</Text>
           </TouchableOpacity>
         </ScrollView>
       </View>
 
-      {/* 4. Footer - CỐ ĐỊNH ở đáy */}
+      {/* 4. Footer */}
       <View style={styles.footer}>
-        <View style={styles.divider} />
-        <NavItem icon="archive" label="Archive" href="/(main)/archive" active={pathname === '/archive'} />
-        <NavItem icon="trash-2" label="Trash" href="/(main)/trash" active={pathname === '/trash'} />
-        <NavItem icon="settings" label="Settings" href="/(main)/settings" active={pathname === '/settings'} />
+        <View style={[styles.divider, { backgroundColor: dynamicColors.border }]} />
+        <NavItem icon="archive" label="Archive" href="/(main)/archive" active={pathname === '/archive'} isDark={isDark} />
+        <NavItem icon="trash-2" label="Trash" href="/(main)/trash" active={pathname === '/trash'} isDark={isDark} />
+        <NavItem icon="settings" label="Settings" href="/(main)/settings" active={pathname === '/settings'} isDark={isDark} />
       </View>
     </View>
   );
@@ -137,10 +169,9 @@ const styles = StyleSheet.create({
   },
   fixedTopNav: {
     paddingHorizontal: 18,
-    // Không có flex ở đây để nó chỉ chiếm vừa đủ diện tích của nó
   },
   scrollArea: {
-    flex: 1, // Chiếm toàn bộ không gian còn lại giữa TopNav và Footer
+    flex: 1,
     paddingHorizontal: 0,
   },
   footer: {
@@ -150,30 +181,6 @@ const styles = StyleSheet.create({
   scroll: {
     flex: 1,
     paddingHorizontal: 18,
-  },
-
-  logo: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    paddingHorizontal: 26,
-    paddingVertical: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.borderDefault,
-    height: 64, // Cố định chiều cao để header không bị nhảy khi mất logo
-  },
-  logoIcon: {
-    width: 32,
-    height: 32,
-    borderRadius: 8,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  logoText: {
-    fontFamily: 'Inter-SemiBold',
-    fontSize: 17,
-    color: colors.textPrimary,
-    letterSpacing: -0.3,
   },
   newNote: {
     flexDirection: 'row',
@@ -210,7 +217,6 @@ const styles = StyleSheet.create({
     fontSize: 15,
     color: colors.textPrimary,
   },
-  // ... các style còn lại (navItem, sectionLabel, divider...) giữ nguyên
   navItem: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -220,17 +226,10 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     marginBottom: 2,
   },
-  navItemActive: {
-    backgroundColor: colors.primarySubtle,
-  },
   navLabel: {
     fontFamily: 'Inter-Regular',
     fontSize: 15,
     color: colors.textSecondary,
-  },
-  navLabelActive: {
-    fontFamily: 'Inter-Medium',
-    color: colors.primary,
   },
   sectionLabel: {
     fontFamily: 'Inter-Medium',
