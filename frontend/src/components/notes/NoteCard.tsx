@@ -24,6 +24,16 @@ export interface TodoItemData {
   id: string; title: string; is_completed: boolean; subtasks?: TodoItemData[];
 }
 
+export interface Attachment {
+  id: string;
+  url: string;
+  name: string;
+  type: 'image' | 'document' | 'video' | 'other';
+  size?: number;
+  mimeType?: string;
+  status?: 'uploading' | 'done' | 'error';
+}
+
 export interface NoteCardData {
   id: string; type: 'text' | 'todo'; color: string;
   title?: string; content_text?: string; is_pinned?: boolean;
@@ -32,6 +42,7 @@ export interface NoteCardData {
   todo_completed?: number; date?: string; reminder?: string;
   images?: string[];
   labels?: string[];
+  attachments?: Attachment[];
 }
 
 interface NoteCardProps {
@@ -265,10 +276,16 @@ export function NoteCard({ note, isSelected, onSelect, isGridView, onPress, onUp
           </View>
         )}
 
-        {(localNote.collaborators?.length || localNote.date || localNote.todo_total != null) ? (
+        {(localNote.collaborators?.length || localNote.date || localNote.todo_total != null || (localNote.attachments && localNote.attachments.length > 0)) ? (
           <View style={styles.footer}>
             <Text style={styles.dateText}>{localNote.date ?? ''}</Text>
             <View style={styles.footerRight}>
+              {localNote.attachments && localNote.attachments.length > 0 && (
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 2 }}>
+                  <Icon source="paperclip" size={14} color={colors.textTertiary} />
+                  <Text style={styles.ratioText}>{localNote.attachments.length}</Text>
+                </View>
+              )}
               {localNote.collaborators && localNote.collaborators.length > 0 && (
                 <Avatars names={localNote.collaborators.map(c => c.name)} />
               )}

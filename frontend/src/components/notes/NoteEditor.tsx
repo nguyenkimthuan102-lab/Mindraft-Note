@@ -1,14 +1,34 @@
-import { View, Text, StyleSheet, TouchableOpacity, TextInput, ScrollView, useWindowDimensions, Platform } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, TextInput, ScrollView, useWindowDimensions, Platform, Image, ActivityIndicator } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { colors } from '../../constants/colors';
-import { NoteCardData, TodoItemData } from './NoteCard';
-import { useEffect, useState, useRef } from 'react';
+import { NoteCardData, TodoItemData, Attachment } from './NoteCard';
+import { useEffect, useState, useRef, memo } from 'react';
 import { useNoteStore } from '@/src/store/useNoteStore';
 import { TagMenu } from './TagMenu';
 import { exportToTxt, exportToPdf, exportToDocx } from '../../utils/exportNote';
+import * as DocumentPicker from 'expo-document-picker';
+import { uploadFileMock } from '../../services/uploadService';
 
 const isWeb = Platform.OS === 'web';
 const WebDiv = 'div' as any;
+
+const EditorWebDiv = memo(
+  ({ initialHtml, onInput, onKeyDown, onKeyUp, onMouseUp, onFocus, innerRef, style }: any) => (
+    <WebDiv
+      ref={innerRef}
+      contentEditable={true}
+      suppressContentEditableWarning={true}
+      dangerouslySetInnerHTML={{ __html: initialHtml }}
+      onInput={onInput}
+      onKeyDown={onKeyDown}
+      onKeyUp={onKeyUp}
+      onMouseUp={onMouseUp}
+      onFocus={onFocus}
+      style={style}
+    />
+  ),
+  (prevProps, nextProps) => prevProps.initialHtml === nextProps.initialHtml
+);
 
 const cardColorMap: Record<string, string> = {
   default: '#FFFFFF', red: '#FADADD', orange: '#FEEFC3', yellow: '#FEF7CD',
@@ -113,24 +133,56 @@ export function NoteEditor({ visible, mode, note, onClose, onSave }: NoteEditorP
   const [showExportMenu, setShowExportMenu] = useState(false);
   const { allTags, addTagToSystem } = useNoteStore();
   const [noteTags, setNoteTags] = useState<string[]>(note?.labels ?? []); // Trong code của bạn dùng 'labels'[cite: 7]
+  const [attachments, setAttachments] = useState<Attachment[]>([]);
 
   const contentRef = useRef<any>(null);
 
   useEffect(() => {
     if (!visible) return;
     setTitle(note?.title ?? '');
-    setContent(note?.content_text ?? '');
+    
+    let initialContent = note?.content_text ?? '';
+    // Xử lý chuyển đổi HTML sang hiển thị văn bản thường cho Mobile
+    if (!isWeb && /<[a-z][\s\S]*>/i.test(initialContent)) {
+      let text = initialContent;
+      let inOl = false;
+      let olIndex = 1;
+      text = text.replace(/<(ul|ol)[^>]*>/gi, (match, p1) => {
+        if (p1.toLowerCase() === 'ol') { inOl = true; olIndex = 1; }
+        else { inOl = false; }
+        return '\n';
+      });
+      text = text.replace(/<\/li>/gi, '\n');
+      text = text.replace(/<li[^>]*>/gi, () => {
+        if (inOl) { return `${olIndex++}. `; } 
+        else { return '• '; }
+      });
+      text = text.replace(/<\/(ul|ol)>/gi, '\n');
+      text = text.replace(/<br\s*[\/]?>/gi, '\n');
+      text = text.replace(/<\/div>/gi, '\n');
+      text = text.replace(/<p[^>]*>/gi, '\n');
+      text = text.replace(/<[^>]*>?/gm, '');
+      text = text.replace(/&nbsp;/g, ' ');
+      text = text.replace(/&lt;/g, '<');
+      text = text.replace(/&gt;/g, '>');
+      text = text.replace(/&amp;/g, '&');
+      text = text.replace(/\n{3,}/g, '\n\n');
+      initialContent = text.trim();
+    }
+    setContent(initialContent);
+
     setTodoItems(note?.todo_items?.length ? note.todo_items : [
       { id: `${Date.now()}-1`, title: '', is_completed: false },
     ]);
     setIsPinned(note?.is_pinned ?? false);
     setNoteColor(note?.color ?? 'default');
+    setAttachments(note?.attachments ?? []);
 
     setEditorMode(mode);
     setShowColorPicker(false);
     setShowMoreMenu(false);
     setShowFormattingBar(false);
-    setIsContentEmpty(!note?.content_text);
+    setIsContentEmpty(!initialContent);
   }, [visible, note, mode]);
 
   const { width } = useWindowDimensions();
@@ -203,6 +255,83 @@ export function NoteEditor({ visible, mode, note, onClose, onSave }: NoteEditorP
     setShowMoreMenu(false);
   };
 
+  const handleTextChange = (val: string) => {
+    let newText = val;
+    if (!isWeb) {
+      const oldLines = content.split('\n');
+      const newLines = val.split('\n');
+      
+      if (newLines.length === oldLines.length + 1) {
+         for (let i = 1; i < newLines.length; i++) {
+             if (newLines[i] === '' && oldLines[i-1] === newLines[i-1]) {
+                 const prevLine = newLines[i - 1];
+                 if (prevLine.match(/^•\s.+/)) {
+                     newLines[i] = '• ';
+                 } else if (prevLine.match(/^•\s?$/)) {
+                     newLines[i - 1] = '';
+                     newLines[i] = '';
+                 } else {
+                     const match = prevLine.match(/^(\d+)\.\s.+/);
+                     if (match) {
+                         const nextNum = parseInt(match[1], 10) + 1;
+                         newLines[i] = `${nextNum}. `;
+                     } else if (prevLine.match(/^\d+\.\s?$/)) {
+                         newLines[i - 1] = '';
+                         newLines[i] = '';
+                     }
+                 }
+             }
+         }
+         newText = newLines.join('\n');
+      }
+      
+      newText = newText.replace(/^-\s/gm, '• ');
+      newText = newText.replace(/^•$/gm, '');
+      newText = newText.replace(/^(\d+)\.$/gm, '');
+    }
+    setContent(newText);
+    if (isWeb) setIsContentEmpty(!newText.trim());
+  };
+
+  const handleWebKeyDown = (e: any) => {
+    if (!isWeb) return;
+    
+    if (e.key === ' ') {
+      const sel = window.getSelection();
+      if (!sel || !sel.rangeCount) return;
+      const node = sel.anchorNode;
+      if (node && node.nodeType === 3) {
+        const text = node.textContent || '';
+        const offset = sel.anchorOffset;
+        if (text === '-' && offset === 1) {
+          e.preventDefault();
+          sel.modify('extend', 'backward', 'character');
+          document.execCommand('delete');
+          document.execCommand('insertUnorderedList');
+        } else if (text === '1.' && offset === 2) {
+          e.preventDefault();
+          sel.modify('extend', 'backward', 'character');
+          sel.modify('extend', 'backward', 'character');
+          document.execCommand('delete');
+          document.execCommand('insertOrderedList');
+        }
+      }
+    } else if (e.key === 'Backspace') {
+      const sel = window.getSelection();
+      if (!sel || !sel.rangeCount) return;
+      const node = sel.anchorNode;
+      let li: any = node?.nodeType === 3 ? node.parentNode : node;
+      if (li && li.nodeName === 'LI') {
+        if (li.textContent === '' || li.textContent === '\u200B') {
+          e.preventDefault();
+          const parent = li.parentNode;
+          const isOrdered = parent && parent.nodeName === 'OL';
+          document.execCommand('outdent');
+        }
+      }
+    }
+  };
+
   const closePopups = () => {
     setShowColorPicker(false);
     setShowMoreMenu(false);
@@ -241,6 +370,44 @@ export function NoteEditor({ visible, mode, note, onClose, onSave }: NoteEditorP
   const handleCreateTag = async (tag: string) => {
     await addTagToSystem(tag);
     handleToggleTag(tag);
+  };
+
+  const handlePickFile = async () => {
+    closePopups();
+    try {
+      const result = await DocumentPicker.getDocumentAsync({
+        type: '*/*',
+        copyToCacheDirectory: true,
+      });
+
+      if (!result.canceled && result.assets && result.assets.length > 0) {
+        const file = result.assets[0];
+        const newAttachment: Attachment = {
+          id: `temp-${Date.now()}`,
+          url: file.uri,
+          name: file.name,
+          type: file.mimeType?.startsWith('image/') ? 'image' : 'document',
+          size: file.size,
+          mimeType: file.mimeType,
+          status: 'uploading',
+        };
+
+        setAttachments(prev => [...prev, newAttachment]);
+
+        try {
+          const uploaded = await uploadFileMock(file.uri, file.name, file.mimeType, file.size);
+          setAttachments(prev => prev.map(a => a.id === newAttachment.id ? { ...uploaded, status: 'done' } : a));
+        } catch (e) {
+          setAttachments(prev => prev.map(a => a.id === newAttachment.id ? { ...a, status: 'error' } : a));
+        }
+      }
+    } catch (err) {
+      console.log('Pick file error', err);
+    }
+  };
+
+  const handleRemoveAttachment = (id: string) => {
+    setAttachments(prev => prev.filter(a => a.id !== id));
   };
 
   const handleExport = async (format: 'txt' | 'pdf' | 'docx') => {
@@ -282,7 +449,7 @@ export function NoteEditor({ visible, mode, note, onClose, onSave }: NoteEditorP
         ...item,
         subtasks: item.subtasks?.filter(sub => sub.title.trim().length > 0)
       }));
-    const hasContent = title.trim() || (editorMode === 'text' ? currentContent.trim().replace(/<[^>]*>?/gm, '') : cleanedTodoItems.length > 0);
+    const hasContent = title.trim() || (editorMode === 'text' ? currentContent.trim().replace(/<[^>]*>?/gm, '') : cleanedTodoItems.length > 0) || attachments.length > 0;
 
     if (!hasContent) {
       onClose();
@@ -301,6 +468,7 @@ export function NoteEditor({ visible, mode, note, onClose, onSave }: NoteEditorP
       todo_completed: editorMode === 'todo' ? cleanedTodoItems.filter((item) => item.is_completed).length : undefined,
       labels: noteTags, // Gán danh sách nhãn đã chỉnh sửa vào đây
       is_pinned: isPinned,
+      attachments: attachments,
     };
 
     onSave(updatedNote);
@@ -316,6 +484,38 @@ export function NoteEditor({ visible, mode, note, onClose, onSave }: NoteEditorP
     <View style={styles.overlay}>
       <TouchableOpacity style={styles.backdrop} activeOpacity={1} onPress={handleSaveAndClose} />
       <View style={[styles.panel, isCompact ? styles.panelFull : styles.panelPopup, { backgroundColor: bg }]}>
+
+        {attachments.length > 0 && (
+          <View style={{ paddingHorizontal: 20, paddingTop: 16, flexDirection: 'row', flexWrap: 'wrap', gap: 12 }}>
+            {attachments.map(att => (
+              <View key={att.id} style={{ position: 'relative', marginBottom: 8 }}>
+                {att.type === 'image' ? (
+                  <View style={{ borderRadius: 8, overflow: 'hidden', borderWidth: 1, borderColor: colors.borderDefault, backgroundColor: colors.bgPage }}>
+                    <Image source={{ uri: att.url }} style={{ width: 80, height: 80, opacity: att.status === 'uploading' ? 0.5 : 1 }} resizeMode="cover" />
+                  </View>
+                ) : (
+                  <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: colors.bgPage, padding: 8, borderRadius: 8, borderWidth: 1, borderColor: colors.borderDefault, maxWidth: 200 }}>
+                    <MaterialCommunityIcons name="file-document-outline" size={24} color={colors.textSecondary} />
+                    <Text style={{ fontFamily: 'Inter-Regular', fontSize: 13, color: colors.textPrimary, marginLeft: 8, flexShrink: 1 }} numberOfLines={1}>{att.name}</Text>
+                  </View>
+                )}
+                
+                {att.status === 'uploading' && (
+                  <View style={{ position: 'absolute', inset: 0, justifyContent: 'center', alignItems: 'center' }}>
+                     <ActivityIndicator size="small" color={colors.primary} />
+                  </View>
+                )}
+
+                <TouchableOpacity 
+                  onPress={() => handleRemoveAttachment(att.id)}
+                  style={{ position: 'absolute', top: -8, right: -8, backgroundColor: colors.textSecondary, borderRadius: 12, padding: 2, zIndex: 10 }}
+                >
+                  <MaterialCommunityIcons name="close" size={12} color="#FFF" />
+                </TouchableOpacity>
+              </View>
+            ))}
+          </View>
+        )}
 
         {/* Header */}
         <View style={styles.headerRow}>
@@ -355,12 +555,20 @@ export function NoteEditor({ visible, mode, note, onClose, onSave }: NoteEditorP
                       Tạo ghi chú...
                     </Text>
                   )}
-                  <WebDiv
-                    ref={contentRef}
-                    contentEditable={true}
-                    suppressContentEditableWarning={true}
-                    dangerouslySetInnerHTML={{ __html: content ? content.replace(/\n/g, '<br>') : '' }}
+                  {isWeb && (
+                    <style>{`
+                      div[contenteditable] ul, div[contenteditable] ol {
+                        padding-left: 20px;
+                        margin-top: 0;
+                        margin-bottom: 0;
+                      }
+                    `}</style>
+                  )}
+                  <EditorWebDiv
+                    innerRef={contentRef}
+                    initialHtml={content ? content.replace(/\n/g, '<br>') : ''}
                     onInput={(e: any) => setIsContentEmpty(!e.currentTarget.textContent?.trim())}
+                    onKeyDown={handleWebKeyDown}
                     onKeyUp={updateFormattingState}
                     onMouseUp={updateFormattingState}
                     onFocus={(e: any) => { updateFormattingState(); closePopups(); }}
@@ -385,7 +593,7 @@ export function NoteEditor({ visible, mode, note, onClose, onSave }: NoteEditorP
                   </Text>
                   <TextInput
                     value={content}
-                    onChangeText={setContent}
+                    onChangeText={handleTextChange}
                     placeholder="Tạo ghi chú..."
                     placeholderTextColor={colors.textPlaceholder}
                     style={[styles.contentInput, styles.textarea, { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }]}
@@ -489,10 +697,13 @@ export function NoteEditor({ visible, mode, note, onClose, onSave }: NoteEditorP
         {/* Footer */}
         <View style={styles.footer}>
           <View style={styles.toolbarLeft}>
+            {editorMode === 'text' && (
+              <ToolbarBtn icon="format-text" onPress={() => { setShowFormattingBar(!showFormattingBar); closePopups(); }} isActive={showFormattingBar} label="Tùy chọn định dạng" />
+            )}
+            <ToolbarBtn icon="palette-outline" onPress={() => { setShowColorPicker(!showColorPicker); setShowMoreMenu(false); setShowTagMenu(false); }} label="Tùy chọn nền" />
             <ToolbarBtn icon="bell-plus-outline" onPress={() => { alert('Nhắc nhở sẽ được lưu qua API'); closePopups(); }} label="Nhắc nhở" />
             <ToolbarBtn icon="account-plus-outline" onPress={() => { alert('Cộng tác viên sẽ được gọi API'); closePopups(); }} label="Cộng tác viên" />
-            <ToolbarBtn icon="palette-outline" onPress={() => { setShowColorPicker(!showColorPicker); setShowMoreMenu(false); setShowTagMenu(false); }} label="Tùy chọn nền" />
-            <ToolbarBtn icon="image-outline" onPress={() => { alert('Thêm hình ảnh sẽ xử lý upload file'); closePopups(); }} label="Thêm hình ảnh" />
+            <ToolbarBtn icon="paperclip" onPress={handlePickFile} label="Đính kèm file" />
             <ToolbarBtn icon="archive-arrow-down-outline" onPress={() => { alert('Ghi chú đã được lưu trữ (Cần API)'); closePopups(); }} label="Lưu trữ" />
 
             <View style={{ position: 'relative', zIndex: 300 }}>
@@ -557,20 +768,16 @@ export function NoteEditor({ visible, mode, note, onClose, onSave }: NoteEditorP
                 </View>
               )}
             </View>
-
-            {editorMode === 'text' && (
-              <ToolbarBtn icon="format-text" onPress={() => { setShowFormattingBar(!showFormattingBar); closePopups(); }} isActive={showFormattingBar} label="Tùy chọn định dạng" />
-            )}
           </View>
 
           <View style={styles.toolbarRight}>
+            <ToolbarBtn icon="undo" onPress={handleUndo} label="Hoàn tác" />
+            <ToolbarBtn icon="redo" onPress={handleRedo} label="Làm lại" />
             <Tooltip label={note?.date ? `Đã tạo ${note.date}` : "Đã tạo lúc nãy"}>
               <Text style={styles.editedTimeText}>
                 {note?.date ? `Đã chỉnh sửa ${note.date}` : "Đã chỉnh sửa lúc nãy"}
               </Text>
             </Tooltip>
-            <ToolbarBtn icon="undo" onPress={handleUndo} label="Hoàn tác" />
-            <ToolbarBtn icon="redo" onPress={handleRedo} label="Làm lại" />
             <TouchableOpacity onPress={handleSaveAndClose} style={styles.closeBtn}>
               <Text style={styles.closeText}>Đóng</Text>
             </TouchableOpacity>
