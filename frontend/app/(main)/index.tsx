@@ -68,7 +68,8 @@ const MOCK_NOTES: NoteCardData[] = [
 ];
 
 export default function HomeScreen() {
-  const { viewMode } = useAppStore();
+  // THÊM: Lấy theme từ useAppStore
+  const { theme } = useAppStore();
   const { setSyncing, setDone, setError } = useSyncStore();
   const [notes, setNotes] = useState<NoteCardData[]>([]);
   const {
@@ -82,6 +83,10 @@ export default function HomeScreen() {
   } = useNoteStore();
 
   const { selectedIds, toggleSelect, clearSelection } = useSelectionStore();
+
+  // THÊM: Xác định màu sắc động
+  const isDark = theme === 'dark';
+  const dynamicBg = isDark ? '#111827' : colors.bgPage;
 
   useEffect(() => {
     clearSelection();
@@ -141,16 +146,18 @@ export default function HomeScreen() {
   const others = notes.filter(n => !n.is_pinned);
 
   return (
-    <View style={{ flex: 1 }}>
+    // THÊM: Style mảng để gán màu nền động
+    <View style={[{ flex: 1 }, { backgroundColor: dynamicBg }]}>
       <ScrollView
-        style={styles.scroll}
+        // THÊM: Style mảng để gán màu nền động
+        style={[styles.scroll, { backgroundColor: dynamicBg }]}
         contentContainerStyle={styles.container}
         showsVerticalScrollIndicator={false}
       >
         <View style={styles.inner}>
           <QuickCapture onCreateText={openCreateText} onCreateTodo={openCreateTodo} />
 
-          {/* 2. Thay thế render cũ bằng NoteList mới */}
+          {/* 2. Thay thế render cũ bằng NoteList mới - THÊM: truyền viewMode */}
           <NoteList
             title="Đã ghim"
             notes={pinned}
@@ -164,7 +171,7 @@ export default function HomeScreen() {
 
           <NoteList
             title="Khác"
-            notes={others}
+            notes={others}           
             onPressNote={openEditNote}
             onUpdateNote={handleUpdate}
             onDeleteNote={handleDelete}
