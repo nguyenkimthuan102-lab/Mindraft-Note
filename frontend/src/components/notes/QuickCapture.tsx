@@ -1,8 +1,11 @@
 import { View, TextInput, StyleSheet, TouchableOpacity, Platform } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { colors } from '../../constants/colors';
+<<<<<<< HEAD
 // THÊM: Import AppStore để lấy trạng thái theme
 import { useAppStore } from '../../store/useAppStore';
+=======
+>>>>>>> 07cda75d68652b08f9f3356682296e9ea4400122
 
 interface QuickCaptureProps {
   onCreateText?: () => void;
@@ -10,6 +13,7 @@ interface QuickCaptureProps {
 }
 
 export function QuickCapture({ onCreateText, onCreateTodo }: QuickCaptureProps) {
+<<<<<<< HEAD
   // THÊM: Lấy theme và xác định bảng màu động
   const { theme } = useAppStore();
   const isDark = theme === 'dark';
@@ -33,12 +37,24 @@ export function QuickCapture({ onCreateText, onCreateTodo }: QuickCaptureProps) 
         style={styles.input}
         placeholder="Ghi chú..."
         placeholderTextColor={dynamic.placeholder}
+=======
+  return (
+    <TouchableOpacity style={styles.wrap} onPress={onCreateText} activeOpacity={0.8}>
+      <TextInput
+        style={styles.input}
+        placeholder="Ghi chú..."
+        placeholderTextColor={colors.textPlaceholder}
+>>>>>>> 07cda75d68652b08f9f3356682296e9ea4400122
         editable={false}
         pointerEvents="none"
       />
       <TouchableOpacity onPress={onCreateTodo} style={styles.todoBtn} activeOpacity={0.7}>
+<<<<<<< HEAD
         {/* CẬP NHẬT: Màu icon lấy theo màu động */}
         <Feather name="check-square" size={18} color={dynamic.icon} />
+=======
+        <Feather name="check-square" size={18} color={colors.textTertiary} />
+>>>>>>> 07cda75d68652b08f9f3356682296e9ea4400122
       </TouchableOpacity>
     </TouchableOpacity>
   );

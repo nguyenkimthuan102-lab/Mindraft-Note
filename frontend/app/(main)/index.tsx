@@ -68,8 +68,12 @@ const MOCK_NOTES: NoteCardData[] = [
 ];
 
 export default function HomeScreen() {
+<<<<<<< HEAD
   // THÊM: Lấy theme từ useAppStore
   const { theme } = useAppStore();
+=======
+  const { viewMode } = useAppStore();
+>>>>>>> 07cda75d68652b08f9f3356682296e9ea4400122
   const { setSyncing, setDone, setError } = useSyncStore();
   const [notes, setNotes] = useState<NoteCardData[]>([]);
   const {
@@ -84,10 +88,13 @@ export default function HomeScreen() {
 
   const { selectedIds, toggleSelect, clearSelection } = useSelectionStore();
 
+<<<<<<< HEAD
   // THÊM: Xác định màu sắc động
   const isDark = theme === 'dark';
   const dynamicBg = isDark ? '#111827' : colors.bgPage;
 
+=======
+>>>>>>> 07cda75d68652b08f9f3356682296e9ea4400122
   useEffect(() => {
     clearSelection();
     setSyncing();
@@ -146,18 +153,28 @@ export default function HomeScreen() {
   const others = notes.filter(n => !n.is_pinned);
 
   return (
+<<<<<<< HEAD
     // THÊM: Style mảng để gán màu nền động
     <View style={[{ flex: 1 }, { backgroundColor: dynamicBg }]}>
       <ScrollView
         // THÊM: Style mảng để gán màu nền động
         style={[styles.scroll, { backgroundColor: dynamicBg }]}
+=======
+    <View style={{ flex: 1 }}>
+      <ScrollView
+        style={styles.scroll}
+>>>>>>> 07cda75d68652b08f9f3356682296e9ea4400122
         contentContainerStyle={styles.container}
         showsVerticalScrollIndicator={false}
       >
         <View style={styles.inner}>
           <QuickCapture onCreateText={openCreateText} onCreateTodo={openCreateTodo} />
 
+<<<<<<< HEAD
           {/* 2. Thay thế render cũ bằng NoteList mới - THÊM: truyền viewMode */}
+=======
+          {/* 2. Thay thế render cũ bằng NoteList mới */}
+>>>>>>> 07cda75d68652b08f9f3356682296e9ea4400122
           <NoteList
             title="Đã ghim"
             notes={pinned}
@@ -171,7 +188,11 @@ export default function HomeScreen() {
 
           <NoteList
             title="Khác"
+<<<<<<< HEAD
             notes={others}           
+=======
+            notes={others}
+>>>>>>> 07cda75d68652b08f9f3356682296e9ea4400122
             onPressNote={openEditNote}
             onUpdateNote={handleUpdate}
             onDeleteNote={handleDelete}
