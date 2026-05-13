@@ -1,14 +1,14 @@
 import { Feather } from '@expo/vector-icons';
 import { usePathname, useRouter } from 'expo-router';
 import { useState } from 'react';
-import { Image, Platform, StyleSheet, Text, TextInput, TouchableOpacity, View, LayoutAnimation, UIManager, Modal } from 'react-native';
-import { Icon, IconButton, Menu, Divider } from 'react-native-paper';
+import { Image, Platform, StyleSheet, Text, TextInput, TouchableOpacity, View, LayoutAnimation } from 'react-native';
+import { Icon, Menu, Divider } from 'react-native-paper';
 import { colors } from '../../constants/colors';
 import { useLayoutStore } from '../../store/useLayoutStore';
 import { useSyncStore } from '../../store/useSyncStore';
 import { SyncIndicator } from '../ui/SyncIndicator';
-import { useSelectionStore } from '../../store/useSelectionStore'; // Import store
-import { useAppStore, DEFAULT_SORT, SortOption } from '../../store/useAppStore';
+import { useSelectionStore } from '../../store/useSelectionStore';
+import { useAppStore, DEFAULT_SORT } from '../../store/useAppStore';
 
 interface TopbarProps {
   viewMode?: 'list' | 'grid';
@@ -17,18 +17,17 @@ interface TopbarProps {
 
 const logoIcon = require('../../../assets/images/icon.png');
 
-function ActionBtn({ icon, label }: { icon: string; label: string }) {
+function ActionBtn({ icon, label, isDark }: { icon: string; label: string; isDark?: boolean }) {
   return (
     <TouchableOpacity style={styles.iconBtn}>
-      <Icon source={icon} size={20} color={colors.textSecondary} />
+      <Icon source={icon} size={20} color={isDark ? '#9ca3af' : colors.textSecondary} />
     </TouchableOpacity>
   );
 }
 
 export function Topbar({ onViewModeChange }: TopbarProps) {
-  const { sort, setSort } = useAppStore();
-  const [menuVisible, setMenuVisible] = useState(false); // State cho dropdown
-  //const [sortVisible, setSortVisible] = useState(false);
+  const { sort, setSort, viewMode, setViewMode, theme } = useAppStore(); // THÊM theme
+  const [menuVisible, setMenuVisible] = useState(false);
   const isSortActive = sort.field !== DEFAULT_SORT.field || sort.direction !== DEFAULT_SORT.direction;
 
   const openMenu = () => setMenuVisible(true);
@@ -41,9 +40,18 @@ export function Topbar({ onViewModeChange }: TopbarProps) {
   const isSettings = pathname.includes('settings');
   const router = useRouter();
   const { status: syncStatus } = useSyncStore();
-  const { viewMode, setViewMode } = useAppStore();
 
-  // Tự động lấy trạng thái từ Store
+  // THÊM: Logic màu sắc động cho Dark Mode
+  const isDark = theme === 'dark';
+  const dynamicColors = {
+    bg: isDark ? '#111827' : colors.bgSurface,
+    text: isDark ? '#f9fafb' : colors.textPrimary,
+    textSec: isDark ? '#9ca3af' : colors.textSecondary,
+    border: isDark ? '#374151' : colors.borderDefault,
+    searchBg: isDark ? '#1f2937' : colors.gray100,
+    placeholder: isDark ? '#6b7280' : colors.textPlaceholder,
+  };
+
   const { selectedIds, clearSelection } = useSelectionStore();
   const selectedCount = selectedIds.length;
 
@@ -53,15 +61,10 @@ export function Topbar({ onViewModeChange }: TopbarProps) {
   };
 
   const handleToggle = () => {
-    // 1. Xác định chế độ tiếp theo
     const nextMode = viewMode === 'list' ? 'grid' : 'list';
-
-    // 2. Chỉ chạy LayoutAnimation trên Mobile (Web hỗ trợ kém)
     if (Platform.OS !== 'web') {
       LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
     }
-
-    // 3. Cập nhật State
     setViewMode(nextMode);
     onViewModeChange?.(nextMode);
   };
@@ -76,43 +79,40 @@ export function Topbar({ onViewModeChange }: TopbarProps) {
     return 'Mindraft Note';
   };
 
-
   if (selectedCount > 0) {
     return (
-      <View style={[styles.topbar, { backgroundColor: colors.bgSurface }]}>
+      <View style={[styles.topbar, { backgroundColor: dynamicColors.bg, borderBottomColor: dynamicColors.border }]}>
         <View style={styles.selectionSection}>
           <TouchableOpacity onPress={clearSelection} style={styles.menuBtn}>
-            {/* Đổi Feather name="x" thành Icon source="close" */}
-            <Icon source="close" size={22} color={colors.textPrimary} />
+            <Icon source="close" size={22} color={dynamicColors.text} />
           </TouchableOpacity>
-          <Text style={styles.selectionText}>{selectedCount} đã chọn</Text>
+          <Text style={[styles.selectionText, { color: dynamicColors.text }]}>{selectedCount} đã chọn</Text>
         </View>
 
         <View style={styles.selectionActions}>
-          {/* Cập nhật tên icon theo Material Design (kèm hậu tố -outline cho đồng bộ) */}
-          <ActionBtn icon="pin-outline" label="Ghim" />
-          <ActionBtn icon="bell-outline" label="Nhắc nhở" />
-          <ActionBtn icon="palette-outline" label="Màu" />
-          <ActionBtn icon="archive-arrow-down-outline" label="Lưu trữ" />
-          <ActionBtn icon="delete-outline" label="Xóa" />
+          <ActionBtn icon="pin-outline" label="Ghim" isDark={isDark} />
+          <ActionBtn icon="bell-outline" label="Nhắc nhở" isDark={isDark} />
+          <ActionBtn icon="palette-outline" label="Màu" isDark={isDark} />
+          <ActionBtn icon="archive-arrow-down-outline" label="Lưu trữ" isDark={isDark} />
+          <ActionBtn icon="delete-outline" label="Xóa" isDark={isDark} />
         </View>
       </View>
     );
   }
 
   return (
-    <View style={styles.topbar}>
+    <View style={[styles.topbar, { backgroundColor: dynamicColors.bg, borderBottomColor: dynamicColors.border }]}>
 
       <View style={styles.leftSection}>
         <TouchableOpacity onPress={toggleSidebar} style={styles.menuBtn}>
-          <Feather name="menu" size={22} color={colors.textSecondary} />
+          <Feather name="menu" size={22} color={dynamicColors.textSec} />
         </TouchableOpacity>
-        {/* Bọc cụm Logo/Brand vào TouchableOpacity để click được */}
+        
         <TouchableOpacity
           activeOpacity={0.7}
           style={styles.logoContainer}
+          disabled={isSettings}
           onPress={() => {
-            // Nếu đang ở Home thì replace để reload, nếu ở trang khác thì push về Home
             if (isHome) {
               router.replace('/(main)');
             } else {
@@ -123,121 +123,107 @@ export function Topbar({ onViewModeChange }: TopbarProps) {
           {isHome ? (
             <>
               <Image source={logoIcon} style={styles.logoImg} />
-              <Text style={styles.brandText}>Mindraft Note</Text>
+              <Text style={[styles.brandText, { color: dynamicColors.text }]}>Mindraft Note</Text>
             </>
           ) : (
-            <Text style={styles.areaTitle}>{getAreaTitle()}</Text>
+            <Text style={[styles.areaTitle, { color: dynamicColors.textSec }]}>{getAreaTitle()}</Text>
           )}
         </TouchableOpacity>
       </View>
 
-      {/* Search */}
-      <View style={styles.searchWrap}>
-        <Feather name="search" size={16} color={colors.textTertiary} style={styles.searchIcon} />
+      <View style={[styles.searchWrap, { backgroundColor: dynamicColors.searchBg }]}>
+        <Feather name="search" size={16} color={dynamicColors.textSec} style={styles.searchIcon} />
         <TextInput
-          style={styles.searchInput}
+          style={[styles.searchInput, { color: dynamicColors.text }]}
           value={search}
           onChangeText={setSearch}
           placeholder="Search notes, tags, or text..."
-          placeholderTextColor={colors.textPlaceholder}
+          placeholderTextColor={dynamicColors.placeholder}
         />
       </View>
 
-      {/* Right actions */}
       <View style={styles.actions}>
-
-        {/* Sync - gần search nhất */}
         <SyncIndicator status={syncStatus} />
 
-        {/* View mode toggle */}
-        <TouchableOpacity
-          style={styles.iconBtn}
-          onPress={handleToggle}
-        >{/* Nếu đang là list thì hiện icon grid (để bấm chuyển sang grid) và ngược lại */}
-          <Feather
-            name={viewMode === 'list' ? "grid" : "list"}
-            size={20}
-            color={colors.textSecondary}
-          />
+        <TouchableOpacity style={styles.iconBtn} onPress={handleToggle}>
+          <Feather name={viewMode === 'list' ? "grid" : "list"} size={20} color={dynamicColors.textSec} />
         </TouchableOpacity>
 
-        {/* SORT DROPDOWN (Thay thế Modal) */}
         <Menu
           visible={menuVisible}
           onDismiss={closeMenu}
           anchor={
             <TouchableOpacity
-              style={[styles.iconBtn, isSortActive && styles.iconBtnActive]}
+              style={[styles.iconBtn, isSortActive && styles.iconBtnActive, isSortActive && isDark && { backgroundColor: '#374151' }]}
               onPress={openMenu}
             >
-              <Icon
-                source="sort-variant"
-                size={22}
-                color={isSortActive ? colors.primary : colors.textSecondary}
-              />
+              <Icon source="sort-variant" size={22} color={isSortActive ? colors.primary : dynamicColors.textSec} />
               {isSortActive && <View style={styles.sortDot} />}
             </TouchableOpacity>
           }
-          contentStyle={{ backgroundColor: colors.bgSurface }}
+          contentStyle={{ backgroundColor: dynamicColors.bg }}
         >
-          <Menu.Item title="SẮP XẾP THEO" titleStyle={styles.menuHeader} disabled />
+          <Menu.Item title="SẮP XẾP THEO" titleStyle={[styles.menuHeader, { color: isDark ? '#6b7280' : colors.textTertiary }]} disabled />
 
-          {/* Lựa chọn Tùy chỉnh mới */}
           <Menu.Item
-            leadingIcon="drag-variant" // Icon gợi ý việc kéo thả/tùy chỉnh
+            leadingIcon="drag-variant"
             onPress={() => handleSortChange('custom', 'desc')}
             title="Thứ tự tùy chỉnh"
+            titleStyle={{ color: dynamicColors.text }}
             trailingIcon={sort.field === 'custom' ? "check" : undefined}
           />
 
-          <Divider />
+          <Divider style={{ backgroundColor: dynamicColors.border }} />
 
           <Menu.Item
             leadingIcon="update"
             onPress={() => handleSortChange('updated_at', 'desc')}
             title="Sửa đổi: Mới nhất"
+            titleStyle={{ color: dynamicColors.text }}
             trailingIcon={sort.field === 'updated_at' && sort.direction === 'desc' ? "check" : undefined}
           />
           <Menu.Item
             leadingIcon="update"
             onPress={() => handleSortChange('updated_at', 'asc')}
             title="Sửa đổi: Cũ nhất"
+            titleStyle={{ color: dynamicColors.text }}
             trailingIcon={sort.field === 'updated_at' && sort.direction === 'asc' ? "check" : undefined}
           />
 
-          <Divider />
+          <Divider style={{ backgroundColor: dynamicColors.border }} />
 
           <Menu.Item
             leadingIcon="calendar-plus"
             onPress={() => handleSortChange('created_at', 'desc')}
             title="Ngày tạo: Mới nhất"
+            titleStyle={{ color: dynamicColors.text }}
             trailingIcon={sort.field === 'created_at' && sort.direction === 'desc' ? "check" : undefined}
           />
           <Menu.Item
             leadingIcon="calendar-plus"
             onPress={() => handleSortChange('created_at', 'asc')}
             title="Ngày tạo: Cũ nhất"
+            titleStyle={{ color: dynamicColors.text }}
             trailingIcon={sort.field === 'created_at' && sort.direction === 'asc' ? "check" : undefined}
           />
 
-          <Divider />
+          <Divider style={{ backgroundColor: dynamicColors.border }} />
 
           <Menu.Item
             leadingIcon="restore"
             onPress={() => handleSortChange(DEFAULT_SORT.field, DEFAULT_SORT.direction)}
             title="Đặt lại mặc định"
+            titleStyle={{ color: dynamicColors.text }}
           />
         </Menu>
 
-        {/* Notification */}
         <TouchableOpacity style={styles.iconBtn}>
           <View>
-            <Feather name="bell" size={20} color={colors.textSecondary} />
+            <Feather name="bell" size={20} color={dynamicColors.textSec} />
             <View style={styles.notifDot} />
           </View>
         </TouchableOpacity>
 
-        {/* Avatar */}
         <TouchableOpacity style={styles.avatar}>
           <Text style={styles.avatarText}>U</Text>
         </TouchableOpacity>
@@ -249,14 +235,13 @@ export function Topbar({ onViewModeChange }: TopbarProps) {
 const styles = StyleSheet.create({
   selectionSection: { flexDirection: 'row', alignItems: 'center' },
   selectionText: { fontSize: 18, fontFamily: 'Inter-Medium', marginLeft: 15 },
-  selectionActions: { flexDirection: 'row', gap: 10 }, // Đã thêm dấu phẩy
+  selectionActions: { flexDirection: 'row', gap: 10 },
   topbar: {
     height: 66,
     justifyContent: 'space-between',
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 20,
-    //gap: 16,
     borderBottomWidth: 1,
     borderBottomColor: colors.borderDefault,
     backgroundColor: colors.bgSurface,
@@ -264,7 +249,7 @@ const styles = StyleSheet.create({
   leftSection: {
     flexDirection: 'row',
     alignItems: 'center',
-    width: 250, // Giữ cố định để thanh search không bị nhảy
+    width: 250,
   },
   menuBtn: {
     padding: 8,
@@ -291,8 +276,8 @@ const styles = StyleSheet.create({
     marginLeft: 12,
   },
   searchWrap: {
-    width: '100%', // Dùng width kết hợp maxWidth
-    maxWidth: 800, // Độ rộng bạn muốn
+    width: '100%',
+    maxWidth: 800,
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: colors.gray100,
@@ -352,8 +337,6 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#fff',
   },
-
-
   menuHeader: {
     fontSize: 11,
     color: colors.textTertiary,
