@@ -5,7 +5,7 @@ import { TagChip } from '../ui/TagChip';
 import { colors } from '../../constants/colors';
 import { HoverBtn } from '../ui/HoverBtn';
 // THÊM: Import AppStore để lấy trạng thái theme
-import { useAppStore } from '../../store/useAppStore'; 
+import { useAppStore } from '../../store/useAppStore';
 
 // Bảng màu cho Chế độ Sáng (Giữ nguyên của bạn)
 const cardColorMap: Record<string, string> = {
@@ -192,7 +192,7 @@ export function NoteCard({ note, isSelected, onSelect, isGridView, onPress, onUp
   };
 
   // Logic chọn bảng màu bg
-  const bg = isDark 
+  const bg = isDark
     ? (darkCardColorMap[localNote.color] ?? darkCardColorMap.default)
     : (cardColorMap[localNote.color] ?? cardColorMap.default);
 
@@ -308,20 +308,29 @@ export function NoteCard({ note, isSelected, onSelect, isGridView, onPress, onUp
           {!isTodo && <ActionBtn icon="bell-outline" label="Nhắc nhở" onPress={() => { }} />}
           <ActionBtn icon="account-plus-outline" label="Thêm CTV" onPress={() => { }} />
           <ActionBtn icon="archive-arrow-down-outline" label="Lưu trữ" onPress={() => onArchive?.(note.id)} />
-          
+
           <View ref={dotBtnRef}>
             <ActionBtn
               icon="dots-vertical"
-              label="Thêm"
+              label="Thêm tùy chọn"
               onPress={() => {
                 dotBtnRef.current?.measureInWindow((x, y, w, h) => {
+                  const screenHeight = Dimensions.get('window').height;
+                  const menuHeight = isTodo ? 280 : 200;
+                  const spaceBelow = screenHeight - (y + h);
+                  if (spaceBelow < menuHeight) {
+                    setDotMenuPos({ x: x - 160, y: y - menuHeight });
+                  } else {
+                    setDotMenuPos({ x: x - 160, y: y + h + 4 });
+                  }
                   setDotMenuPos({ x: x - 160, y: y + h + 4 });
                 });
                 setShowDotMenu(v => !v);
+                setShowColorPicker(false);
               }}
             />
           </View>
-          <Modal visible={showDotMenu} transparent animationType="none">
+          <Modal visible={showDotMenu} transparent animationType="none" onRequestClose={() => setShowDotMenu(false)}>
             <TouchableOpacity style={StyleSheet.absoluteFillObject} onPress={() => setShowDotMenu(false)} activeOpacity={1} />
             <View style={[styles.dotMenu, { position: 'absolute', top: dotMenuPos.y, left: dotMenuPos.x }]}>
               <DotMenu isTodo={isTodo} onAction={handleDotAction} onClose={() => setShowDotMenu(false)} isDark={isDark} />
@@ -344,22 +353,26 @@ export function NoteCard({ note, isSelected, onSelect, isGridView, onPress, onUp
 const styles = StyleSheet.create({
   card: {
     borderRadius: 8, marginBottom: 16, position: 'relative', borderWidth: 1, borderColor: colors.borderDefault, overflow: 'visible', zIndex: 1,
-    ...Platform.select({ web: { cursor: 'pointer' } as any }),
+    ...Platform.select({ web: { cursor: 'pointer', overflow: 'visible', } as any }),
   },
   cardHovered: {
     ...Platform.select({
-      web: { boxShadow: '0 1px 2px 0 rgba(0,0,0,0.30), 0 1px 3px 1px rgba(0,0,0,0.15)' } as any,
+      web: { boxShadow: '0 1px 2px 0 rgba(60,64,67,0.30), 0 1px 3px 1px rgba(60,64,67,0.15)' } as any,
       default: { shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.12, shadowRadius: 8, elevation: 4 },
     }),
   },
   cardContent: { padding: 16, paddingTop: 20 },
+  checkboxCorner: {
+    position: 'absolute', top: -12, left: -12, zIndex: 1,
+    width: 28, height: 28, alignItems: 'center', justifyContent: 'center',
+  },
   checkboxWrapper: { position: 'absolute', top: -10, left: -10, zIndex: 99 },
   pinCorner: { position: 'absolute', top: 1, right: 10, zIndex: 10, width: 28, height: 28, alignItems: 'center', justifyContent: 'center' },
   title: { fontFamily: 'Inter-SemiBold', fontSize: 16, color: colors.textPrimary, marginBottom: 6, paddingRight: 20 },
   content: { fontFamily: 'Inter-Regular', fontSize: 14, color: colors.textSecondary, lineHeight: 21, marginBottom: 10 },
   todoList: { gap: 6, marginBottom: 10 },
   todoRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  checkbox: { width: 16, height: 16, borderRadius: 8, borderWidth: 1.5, borderColor: colors.gray400, alignItems: 'center', justifyContent: 'center' },
+  checkbox: { width: 16, height: 16, borderRadius: 8, borderWidth: 1.5, borderColor: colors.gray400, alignItems: 'center', justifyContent: 'center', flexShrink: 0, },
   checkboxDone: { backgroundColor: colors.primary, borderColor: colors.primary },
   todoText: { fontFamily: 'Inter-Regular', fontSize: 14, flex: 1 },
   todoTextDone: { textDecorationLine: 'line-through', opacity: 0.5 },
@@ -375,12 +388,28 @@ const styles = StyleSheet.create({
   avatarText: { fontFamily: 'Inter-SemiBold', fontSize: 9, color: '#fff' },
   avatarExtra: { backgroundColor: colors.gray300 },
   avatarExtraText: { fontFamily: 'Inter-Regular', fontSize: 8, color: colors.textSecondary },
-  toolbar: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 8, paddingVertical: 4, borderTopWidth: 1, gap: 2 },
-  actionBtn: { width: 32, height: 32, borderRadius: 6, alignItems: 'center', justifyContent: 'center' },
-  colorPicker: { position: 'absolute', bottom: 36, left: 0, flexDirection: 'row', flexWrap: 'wrap', backgroundColor: colors.bgSurface, borderRadius: 10, padding: 8, gap: 6, width: 172, zIndex: 9999, borderWidth: 1, borderColor: colors.borderDefault },
-  dotMenu: { backgroundColor: colors.bgSurface, borderRadius: 8, paddingVertical: 4, minWidth: 200, borderWidth: 1, borderColor: colors.borderDefault },
-  dotMenuItem: { paddingHorizontal: 16, paddingVertical: 10 },
+  toolbar: {
+    flexDirection: 'row', alignItems: 'center', paddingHorizontal: 8, paddingVertical: 4, borderTopWidth: 1, gap: 2, ...Platform.select({
+      web: { overflow: 'visible' } as any,
+    }),
+  },
+  actionBtn: { width: 32, height: 32, borderRadius: 6, alignItems: 'center', justifyContent: 'center', ...Platform.select({ web: { cursor: 'pointer' } as any }), },
+  colorPicker: {
+    position: 'absolute', bottom: 36, left: 0, flexDirection: 'row', flexWrap: 'wrap', backgroundColor: colors.bgSurface, borderRadius: 10, padding: 8, gap: 6, width: 172, zIndex: 9999, borderWidth: 1, borderColor: colors.borderDefault, ...Platform.select({
+      web: { boxShadow: '0 4px 16px rgba(0,0,0,0.12)' } as any,
+    }),
+  },
+  colorDot: {
+    width: 24, height: 24, borderRadius: 12,
+    ...Platform.select({ web: { cursor: 'pointer' } as any }),
+  },
+  dotMenu: {
+    backgroundColor: colors.bgSurface, borderRadius: 8, paddingVertical: 4, minWidth: 200, borderWidth: 1, borderColor: colors.borderDefault, ...Platform.select({
+      web: { boxShadow: '0 4px 16px rgba(0,0,0,0.12)' } as any,
+    }),
+  },
+  dotMenuItem: { paddingHorizontal: 16, paddingVertical: 10, ...Platform.select({ web: { cursor: 'pointer' } as any }), },
   dotMenuText: { fontFamily: 'Inter-Regular', fontSize: 14, color: colors.textSecondary },
-  tooltip: { position: 'absolute', bottom: '100%', left: '50%', backgroundColor: 'rgba(0,0,0,0.75)', borderRadius: 4, paddingHorizontal: 8, paddingVertical: 4, zIndex: 999, marginBottom: 4, ...Platform.select({ web: { transform: 'translateX(-50%)' } as any }) },
+  tooltip: { position: 'absolute', bottom: '100%', left: '50%', backgroundColor: 'rgba(0,0,0,0.75)', borderRadius: 4, paddingHorizontal: 8, paddingVertical: 4, zIndex: 999, marginBottom: 4, ...Platform.select({ web: { transform: 'translateX(-50%)' } as any }) } as any,
   tooltipText: { fontFamily: 'Inter-Regular', fontSize: 12, color: '#fff' },
 });
