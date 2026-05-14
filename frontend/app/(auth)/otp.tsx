@@ -6,6 +6,7 @@ import {
   TextInput,
   TouchableOpacity,
   Platform,
+  useWindowDimensions,
 } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { AuthCard } from '../../src/components/ui/AuthCard';
@@ -18,6 +19,8 @@ export default function OtpScreen() {
   const { email, mode } = useLocalSearchParams<{ email: string; mode?: string }>();
   const [otp, setOtp] = useState<string[]>(Array(OTP_LENGTH).fill(''));
   const [loading, setLoading] = useState(false);
+  const { width } = useWindowDimensions();
+  const isMobile = width < 400;
   const inputRefs = useRef<(TextInput | null)[]>([]);
 
   const handleChange = (text: string, index: number) => {
@@ -79,13 +82,14 @@ export default function OtpScreen() {
       <View style={{ height: 28 }} />
 
       {/* OTP Boxes */}
-      <View style={styles.otpRow}>
+      <View style={[styles.otpRow, isMobile && { gap: 6 }]}>
         {Array(OTP_LENGTH).fill(null).map((_, i) => (
           <TextInput
             key={i}
             ref={(r) => { inputRefs.current[i] = r; }}
             style={[
               styles.otpBox,
+              isMobile && styles.otpBoxMobile,
               otp[i] ? styles.otpBoxFilled : styles.otpBoxEmpty,
             ]}
             value={otp[i]}
@@ -161,6 +165,16 @@ const styles = StyleSheet.create({
         outlineColor: colors.primary,
         outlineWidth: 2,
         lineHeight: '56px',
+      } as any,
+    }),
+  },
+  otpBoxMobile: {
+    width: 42,
+    height: 48,
+    fontSize: 20,
+    ...Platform.select({
+      web: {
+        lineHeight: '48px',
       } as any,
     }),
   },

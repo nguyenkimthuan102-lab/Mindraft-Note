@@ -1,5 +1,5 @@
 import React, { useRef, useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Platform } from 'react-native';
 import { router } from 'expo-router';
 import { AuthCard } from '../../src/components/ui/AuthCard';
 import { Input } from '../../src/components/ui/Input';
@@ -43,7 +43,10 @@ export default function RegisterScreen() {
   };
 
   return (
-    <AuthCard topLabel="Mindraft Note">
+    <AuthCard 
+      topLabel="Mindraft Note"
+      extraScrollHeight={Platform.OS === 'android' ? 120 : 100}
+    >
       <Text style={styles.title}>Create account</Text>
 
       <View style={{ height: 24 }} />

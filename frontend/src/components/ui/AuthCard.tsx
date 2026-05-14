@@ -1,28 +1,43 @@
 import React from 'react';
-import { View, Text, StyleSheet, Platform, ScrollView } from 'react-native';
+import { View, Text, StyleSheet, Platform, useWindowDimensions } from 'react-native';
+import { KeyboardAwareScrollView } from 'react-native-keyboard-aware-scroll-view';
+import { useSafeAreaInsets, SafeAreaView } from 'react-native-safe-area-context';
 import { colors } from '../../constants/colors';
 
 interface AuthCardProps {
   children: React.ReactNode;
   topLabel?: string;
+  extraScrollHeight?: number;
 }
 
-export function AuthCard({ children, topLabel }: AuthCardProps) {
+export function AuthCard({ children, topLabel, extraScrollHeight }: AuthCardProps) {
+  const insets = useSafeAreaInsets();
+  const { width } = useWindowDimensions();
+  const isMobile = width < 768;
+
   return (
-    <View style={styles.screen}>
-      <ScrollView
-        contentContainerStyle={styles.scroll}
+    <SafeAreaView style={styles.screen}>
+      <KeyboardAwareScrollView
+        contentContainerStyle={[
+          styles.scroll,
+          {
+            paddingTop: Math.max(insets.top, 48),
+            paddingBottom: Math.max(insets.bottom, 48)
+          }
+        ]}
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
+        enableOnAndroid={true}
+        extraScrollHeight={extraScrollHeight}
       >
         {topLabel && (
           <Text style={styles.appName}>{topLabel}</Text>
         )}
-        <View style={styles.card}>
+        <View style={[styles.card, isMobile && styles.cardMobile]}>
           {children}
         </View>
-      </ScrollView>
-    </View>
+      </KeyboardAwareScrollView>
+    </SafeAreaView>
   );
 }
 
@@ -35,7 +50,6 @@ const styles = StyleSheet.create({
     flexGrow: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 48,
     paddingHorizontal: 16,
   },
   appName: {
@@ -64,5 +78,9 @@ const styles = StyleSheet.create({
         elevation: 4,
       },
     }),
+  },
+  cardMobile: {
+    paddingHorizontal: 24,
+    paddingVertical: 32,
   },
 });
