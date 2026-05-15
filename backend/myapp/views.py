@@ -4,11 +4,11 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from rest_framework import status
-from .models import Note
+from .models import Notes
 from .serializers import NoteSerializer
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework.pagination import PageNumberPagination
-from .models import ChecklistItem,Label,Collaborator
+from .models import TodoItems,Tags, NoteCollaborators
 from django.db.models import Q
 
 class CustomPagination(PageNumberPagination):
@@ -89,7 +89,7 @@ def note_create(request):
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def note_list(request):
-    notes = Note.objects.filter(user=request.user, is_deleted=False)
+    notes = Notes.objects.filter(user=request.user, is_deleted=False)
 
     paginator = CustomPagination()
     result_page = paginator.paginate_queryset(notes, request)
@@ -102,8 +102,8 @@ def note_list(request):
 @permission_classes([IsAuthenticated])
 def note_detail(request, id):
     try:
-        note = Note.objects.get(id=id, user=request.user)
-    except Note.DoesNotExist:
+        note = Notes.objects.get(id=id, user=request.user)
+    except Notes.DoesNotExist:
         return Response({"error": "Không tìm thấy note"}, status=404)
 
     serializer = NoteSerializer(note)
@@ -115,8 +115,8 @@ def note_detail(request, id):
 @permission_classes([IsAuthenticated])
 def note_update(request, id):
     try:
-        note = Note.objects.get(id=id, user=request.user)
-    except Note.DoesNotExist:
+        note = Notes.objects.get(id=id, user=request.user)
+    except Notes.DoesNotExist:
         return Response({"error": "Không tìm thấy note"}, status=404)
 
     serializer = NoteSerializer(note, data=request.data, partial=True)
@@ -133,8 +133,8 @@ def note_update(request, id):
 @permission_classes([IsAuthenticated])
 def note_delete(request, id):
     try:
-        note = Note.objects.get(id=id, user=request.user)
-    except Note.DoesNotExist:
+        note = Notes.objects.get(id=id, user=request.user)
+    except Notes.DoesNotExist:
         return Response({"error": "Không tìm thấy note"}, status=404)
 
     note.is_deleted = True
@@ -148,7 +148,7 @@ def note_delete(request, id):
 def search_notes(request):
     query = request.GET.get('q', '')
 
-    notes = Note.objects.filter(
+    notes = Notes.objects.filter(
         Q(title__icontains=query) | Q(content__icontains=query),
         user=request.user,
         is_deleted=False
@@ -160,21 +160,21 @@ def search_notes(request):
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def pinned_notes(request):
-    notes = Note.objects.filter(user=request.user, is_pinned=True, is_deleted=False)
+    notes = Notes.objects.filter(user=request.user, is_pinned=True, is_deleted=False)
     return Response(NoteSerializer(notes, many=True).data)
 
 
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def archived_notes(request):
-    notes = Note.objects.filter(user=request.user, is_archived=True)
+    notes = Notes.objects.filter(user=request.user, is_archived=True)
     return Response(NoteSerializer(notes, many=True).data)
 
 
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def trash_notes(request):
-    notes = Note.objects.filter(user=request.user, is_deleted=True)
+    notes = Notes.objects.filter(user=request.user, is_deleted=True)
     return Response(NoteSerializer(notes, many=True).data)
 
 @api_view(['POST'])
@@ -182,14 +182,14 @@ def trash_notes(request):
 def label_create(request):
     name = request.data.get("name")
 
-    label = Label.objects.create(user=request.user, name=name)
+    label = Tags.objects.create(user=request.user, name=name)
     return Response({"id": label.id, "name": label.name})
 
 
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def label_list(request):
-    labels = Label.objects.filter(user=request.user)
+    labels = Tags.objects.filter(user=request.user)
     return Response([{"id": l.id, "name": l.name} for l in labels])
 
 
@@ -199,11 +199,11 @@ def checklist_create(request, note_id):
     content = request.data.get("content")
 
     try:
-        note = Note.objects.get(id=note_id, user=request.user)
-    except Note.DoesNotExist:
+        note = Notes.objects.get(id=note_id, user=request.user)
+    except Notes.DoesNotExist:
         return Response({"error": "Không có quyền hoặc không tồn tại"}, status=404)
 
-    item = ChecklistItem.objects.create(
+    item = TodoItems.objects.create(
         note=note,
         content=content
     )
@@ -218,8 +218,8 @@ def checklist_create(request, note_id):
 @permission_classes([IsAuthenticated])
 def checklist_toggle(request, item_id):
     try:
-        item = ChecklistItem.objects.get(id=item_id)
-    except ChecklistItem.DoesNotExist:
+        item = TodoItems.objects.get(id=item_id)
+    except TodoItems.DoesNotExist:
         return Response({"error": "Không tìm thấy item"}, status=404)
 
     item.is_completed = not item.is_completed
@@ -237,10 +237,10 @@ def add_collaborator(request, note_id):
     user_id = request.data.get("user_id")
 
     try:
-        note = Note.objects.get(id=note_id, user=request.user)
-    except Note.DoesNotExist:
+        note = Notes.objects.get(id=note_id, user=request.user)
+    except Notes.DoesNotExist:
         return Response({"error": "Không tìm thấy note"}, status=404)
 
-    Collaborator.objects.get_or_create(note=note, user_id=user_id)
+    NoteCollaborators.objects.get_or_create(note=note, user_id=user_id)
 
     return Response({"message": "Đã thêm collaborator"})

@@ -1,16 +1,16 @@
 from rest_framework import serializers
-from .models import Note,ChecklistItem
+from .models import Notes, TodoItems
 
 class ChecklistItemSerializer(serializers.ModelSerializer):
     class Meta:
-        model = ChecklistItem
+        model = TodoItems
         fields = ['id', 'content', 'is_completed']
 
 class NoteSerializer(serializers.ModelSerializer):
     checklist_items = ChecklistItemSerializer(many=True, read_only=True)
 
     class Meta:
-        model = Note
+        model = Notes
         fields = '__all__'
         read_only_fields = ['user']
 

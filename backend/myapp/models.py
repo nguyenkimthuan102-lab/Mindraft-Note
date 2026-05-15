@@ -1,81 +1,230 @@
 from django.db import models
 from django.contrib.auth.models import AbstractUser
+from django.db.models import CompositePrimaryKey
 
-# 1. Bảng Users 
-class User(AbstractUser):
-    username = models.CharField(max_length=50, unique=True)
-    email = models.EmailField(max_length=100, unique=True)
-    # Django mặc định đã có password_hash (password)
-    avatar_url = models.TextField(blank=True, null=True)
-    created_at = models.DateTimeField(auto_now_add=True)
 
-    class Meta:
-        db_table = 'users'
-
-# 2. Bảng Settings (Quan hệ 1-1 với User)
-class Setting(models.Model):
-    user = models.OneToOneField(User, on_delete=models.CASCADE, primary_key=True, related_name='settings')
-    dark_mode = models.BooleanField(default=False)
-    notify_reminder = models.BooleanField(default=True)
-    notify_collaboration = models.BooleanField(default=True)
+class Media(models.Model):
+    id = models.CharField(primary_key=True, max_length=36)
+    note = models.ForeignKey('Notes', models.DO_NOTHING)
+    uploaded_by = models.ForeignKey('Users', models.DO_NOTHING, db_column='uploaded_by')
+    file_url = models.CharField(max_length=2048)
+    file_type = models.CharField(max_length=100)
+    file_size = models.IntegerField()
+    is_deleted = models.IntegerField()
+    created_at = models.DateTimeField()
+    updated_at = models.DateTimeField()
 
     class Meta:
-        db_table = 'settings'
+        managed = False
+        db_table = 'media'
 
-# 3. Bảng Notes
-class Note(models.Model):
-    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='notes')
-    title = models.CharField(max_length=255)
-    content = models.TextField(blank=True, null=True)
-    is_pinned = models.BooleanField(default=False)
-    is_archived = models.BooleanField(default=False)
-    is_deleted = models.BooleanField(default=False)
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
+
+class NoteCollaborators(models.Model):
+    id = models.CharField(primary_key=True, max_length=36)
+    note = models.ForeignKey('Notes', models.DO_NOTHING)
+    user = models.ForeignKey('Users', models.DO_NOTHING)
+    invited_by = models.ForeignKey('Users', models.DO_NOTHING, db_column='invited_by', related_name='notecollaborators_invited_by_set')
+    is_pinned = models.IntegerField()
+    is_archived = models.IntegerField()
+    is_trashed = models.IntegerField()
+    accepted_at = models.DateTimeField(blank=True, null=True)
+    created_at = models.DateTimeField()
+    updated_at = models.DateTimeField()
 
     class Meta:
+        managed = False
+        db_table = 'note_collaborators'
+        unique_together = (('note', 'user'),)
+
+
+class NoteTags(models.Model):
+    pk = models.CompositePrimaryKey('note_id', 'tag_id')
+    note = models.ForeignKey('Notes', models.DO_NOTHING)
+    tag = models.ForeignKey('Tags', models.DO_NOTHING)
+    is_deleted = models.IntegerField()
+    updated_at = models.DateTimeField()
+
+    class Meta:
+        managed = False
+        db_table = 'note_tags'
+
+
+class NoteVersionEditors(models.Model):
+    pk = models.CompositePrimaryKey('version_id', 'user_id')
+    version = models.ForeignKey('NoteVersions', models.DO_NOTHING)
+    user = models.ForeignKey('Users', models.DO_NOTHING)
+
+    class Meta:
+        managed = False
+        db_table = 'note_version_editors'
+
+
+class NoteVersions(models.Model):
+    id = models.CharField(primary_key=True, max_length=36)
+    note = models.ForeignKey('Notes', models.DO_NOTHING)
+    title = models.CharField(max_length=1000, blank=True, null=True)
+    content = models.JSONField(blank=True, null=True)
+    saved_at = models.DateTimeField()
+
+    class Meta:
+        managed = False
+        db_table = 'note_versions'
+
+
+class Notes(models.Model):
+    id = models.CharField(primary_key=True, max_length=36)
+    user = models.ForeignKey('Users', models.DO_NOTHING)
+    title = models.CharField(max_length=1000, blank=True, null=True)
+    content = models.JSONField(blank=True, null=True)
+    content_text = models.TextField(blank=True, null=True)
+    type = models.CharField(max_length=20)
+    color = models.CharField(max_length=20)
+    is_pinned = models.IntegerField()
+    is_archived = models.IntegerField()
+    is_trashed = models.IntegerField()
+    is_deleted = models.IntegerField()
+    deleted_at = models.DateTimeField(blank=True, null=True)
+    position = models.CharField(max_length=255)
+    created_at = models.DateTimeField()
+    server_updated_at = models.DateTimeField()
+    client_updated_at = models.DateTimeField()
+    trashed_at = models.DateTimeField(blank=True, null=True)
+
+    class Meta:
+        managed = False
         db_table = 'notes'
 
-# 4. Bảng Labels
-class Label(models.Model):
-    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='labels')
-    name = models.CharField(max_length=100)
+
+class Notifications(models.Model):
+    id = models.CharField(primary_key=True, max_length=36)
+    user = models.ForeignKey('Users', models.DO_NOTHING)
+    type = models.CharField(max_length=21)
+    note = models.ForeignKey(Notes, models.DO_NOTHING, blank=True, null=True)
+    payload = models.JSONField(blank=True, null=True)
+    is_read = models.IntegerField()
+    created_at = models.DateTimeField()
 
     class Meta:
-        db_table = 'labels'
+        managed = False
+        db_table = 'notifications'
 
-# 5. Bảng trung gian Note_Labels (Many-to-Many giữa Note và Label)
-class NoteLabel(models.Model):
-    note = models.ForeignKey(Note, on_delete=models.CASCADE)
-    label = models.ForeignKey(Label, on_delete=models.CASCADE)
+
+class OtpVerifications(models.Model):
+    id = models.CharField(primary_key=True, max_length=36)
+    email = models.CharField(max_length=255)
+    otp_hash = models.CharField(max_length=512)
+    purpose = models.CharField(max_length=14)
+    expires_at = models.DateTimeField()
+    used_at = models.DateTimeField(blank=True, null=True)
+    created_at = models.DateTimeField()
 
     class Meta:
-        db_table = 'note_labels'
-        unique_together = ('note', 'label')
+        managed = False
+        db_table = 'otp_verifications'
 
-# 6. Bảng Reminders
-class Reminder(models.Model):
-    note = models.ForeignKey(Note, on_delete=models.CASCADE, related_name='reminders')
+
+class RefreshTokens(models.Model):
+    id = models.CharField(primary_key=True, max_length=36)
+    user = models.ForeignKey('Users', models.DO_NOTHING)
+    token_hash = models.CharField(max_length=512)
+    expires_at = models.DateTimeField()
+    created_at = models.DateTimeField()
+    revoked_at = models.DateTimeField(blank=True, null=True)
+
+    class Meta:
+        managed = False
+        db_table = 'refresh_tokens'
+
+
+class Reminders(models.Model):
+    id = models.CharField(primary_key=True, max_length=36)
+    note = models.ForeignKey(Notes, models.DO_NOTHING)
+    user = models.ForeignKey('Users', models.DO_NOTHING)
     remind_at = models.DateTimeField()
-    is_sent = models.BooleanField(default=False)
+    repeat_type = models.CharField(max_length=7)
+    is_notified = models.IntegerField()
+    is_deleted = models.IntegerField()
+    updated_at = models.DateTimeField()
 
     class Meta:
+        managed = False
         db_table = 'reminders'
+        unique_together = (('note', 'user'),)
 
-# 7. Bảng Collaborators (Cộng tác viên)
-class Collaborator(models.Model):
-    note = models.ForeignKey(Note, on_delete=models.CASCADE, related_name='collaborators')
-    user = models.ForeignKey(User, on_delete=models.CASCADE)
 
-    class Meta:
-        db_table = 'collaborators'
-        unique_together = ('note', 'user')
-
-# 8. Bảng Checklist_Items
-class ChecklistItem(models.Model):
-    note = models.ForeignKey(Note, on_delete=models.CASCADE, related_name='checklist_items')
-    content = models.TextField()
-    is_completed = models.BooleanField(default=False)
+class ResetTokens(models.Model):
+    id = models.CharField(primary_key=True, max_length=36)
+    user = models.ForeignKey('Users', models.DO_NOTHING)
+    token_hash = models.CharField(max_length=512)
+    expires_at = models.DateTimeField()
+    used_at = models.DateTimeField(blank=True, null=True)
+    created_at = models.DateTimeField()
 
     class Meta:
-        db_table = 'checklist_items'
+        managed = False
+        db_table = 'reset_tokens'
+
+
+class Tags(models.Model):
+    id = models.CharField(primary_key=True, max_length=36)
+    owner = models.ForeignKey('Users', models.DO_NOTHING)
+    name = models.CharField(max_length=100)
+    is_deleted = models.IntegerField()
+    created_at = models.DateTimeField()
+    updated_at = models.DateTimeField()
+
+    class Meta:
+        managed = False
+        db_table = 'tags'
+        unique_together = (('owner', 'name'),)
+
+
+class TodoItems(models.Model):
+    id = models.CharField(primary_key=True, max_length=36)
+    note = models.ForeignKey(Notes, models.DO_NOTHING)
+    parent = models.ForeignKey('self', models.DO_NOTHING, blank=True, null=True)
+    title = models.CharField(max_length=255, blank=True, null=True)
+    content = models.TextField(blank=True, null=True)
+    is_completed = models.IntegerField()
+    position = models.CharField(max_length=255)
+    remind_at = models.DateTimeField(blank=True, null=True)
+    repeat_type = models.CharField(max_length=7)
+    is_notified = models.IntegerField()
+    created_at = models.DateTimeField()
+    updated_at = models.DateTimeField()
+
+    class Meta:
+        managed = False
+        db_table = 'todo_items'
+
+
+class UserSettings(models.Model):
+    user = models.OneToOneField('Users', models.DO_NOTHING, primary_key=True)
+    theme = models.CharField(max_length=6)
+    notifications_enabled = models.IntegerField()
+    notify_reminder = models.IntegerField()
+    notify_collaboration = models.IntegerField()
+    default_note_view = models.CharField(max_length=4)
+    sort_by = models.CharField(max_length=50)
+    updated_at = models.DateTimeField()
+
+    class Meta:
+        managed = False
+        db_table = 'user_settings'
+
+
+class Users(models.Model):
+    id = models.CharField(primary_key=True, max_length=36)
+    name = models.CharField(unique=True, max_length=255)
+    email = models.CharField(unique=True, max_length=255)
+    password_hash = models.CharField(max_length=512, blank=True, null=True)
+    status_token = models.CharField(max_length=50, blank=True, null=True)
+    google_id = models.CharField(unique=True, max_length=255, blank=True, null=True)
+    is_verified = models.IntegerField()
+    avatar_url = models.TextField(blank=True, null=True)
+    created_at = models.DateTimeField()
+    updated_at = models.DateTimeField()
+
+    class Meta:
+        managed = False
+        db_table = 'users'

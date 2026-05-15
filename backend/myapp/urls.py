@@ -13,7 +13,7 @@ urlpatterns = [
     path('notes/trash/', views.trash_notes),
     path('labels/', views.label_list),
     path('labels/create/', views.label_create),
-    path('notes/<int:note_id>/add-label/', views.add_label_to_note),
+    #path('notes/<int:note_id>/add-label/', views.add_label_to_note),
     path('notes/<int:note_id>/checklist/', views.checklist_create),
     path('checklist/<int:item_id>/toggle/', views.checklist_toggle),
     path('notes/<int:note_id>/add-collab/', views.add_collaborator),
