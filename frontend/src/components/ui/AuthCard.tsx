@@ -28,6 +28,7 @@ export function AuthCard({ children, topLabel, extraScrollHeight }: AuthCardProp
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
         enableOnAndroid={true}
+        enableAutomaticScroll={true}
         extraScrollHeight={extraScrollHeight}
       >
         {topLabel && (

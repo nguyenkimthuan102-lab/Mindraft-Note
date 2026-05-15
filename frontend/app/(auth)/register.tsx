@@ -43,9 +43,13 @@ export default function RegisterScreen() {
   };
 
   return (
-    <AuthCard 
+    <AuthCard
       topLabel="Mindraft Note"
-      extraScrollHeight={Platform.OS === 'android' ? 120 : 100}
+      extraScrollHeight={Platform.select({
+        ios: 80,
+        android: 120,
+        default: 0 // Web không cần quan tâm
+      })}
     >
       <Text style={styles.title}>Create account</Text>
 
@@ -108,7 +112,7 @@ export default function RegisterScreen() {
 
       <AuthButton
         label="Continue with Google"
-        onPress={() => {}}
+        onPress={() => { }}
         variant="secondary"
       />
 

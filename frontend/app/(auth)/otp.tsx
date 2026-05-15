@@ -176,6 +176,10 @@ const styles = StyleSheet.create({
       web: {
         lineHeight: '48px',
       } as any,
+      ios: {
+      lineHeight: 48,   // iOS cần số, không phải string
+      paddingVertical: 0, // fix iOS TextInput tự thêm padding
+    },
     }),
   },
   otpBoxEmpty: {
