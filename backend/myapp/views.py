@@ -1,41 +1,144 @@
-from django.contrib.auth import get_user_model
-User = get_user_model()
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from rest_framework import status
-from .models import Notes
+
+from .models import Notes, Users, OtpVerifications, TodoItems,Tags, NoteCollaborators
+import uuid, hashlib, secrets, string
+from datetime import timedelta
+from django.utils import timezone
+from django.core.mail import send_mail
+from django.contrib.auth.hashers import make_password
+from django.core.cache import cache
+from rest_framework.throttling import SimpleRateThrottle
+
 from .serializers import NoteSerializer
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework.pagination import PageNumberPagination
-from .models import TodoItems,Tags, NoteCollaborators
 from django.db.models import Q
 
 class CustomPagination(PageNumberPagination):
     page_size = 10
-    
+
 #  REGISTER
 @api_view(['POST'])
 def register_view(request):
-    username = request.data.get("username")
+    name = request.data.get("name")
+    email = request.data.get("email")
     password = request.data.get("password")
 
-    if not username or not password:
-        return Response({"error": "Thiếu dữ liệu"}, status=400)
+    if not name or not email or not password:
+        return Response({"error": "INVALID_FORMAT"}, status=422)
 
-    if User.objects.filter(username=username).exists():
-        return Response({"error": "Username đã tồn tại"}, status=400)
+    if Users.objects.filter(name=name).exists():
+        return Response({"error": "NAME_ALREADY_EXISTS"}, status=409)
+    
+    if Users.objects.filter(email=email).exists():
+        return Response({"error": "EMAIL_ALREADY_EXISTS"}, status=409)
 
-    user = User.objects.create_user(username=username, password=password)
+    # Tạo OTP 6 số
+    otp = ''.join(secrets.choices(string.digits) for _ in range(6))
+    otp_hash = hashlib.sha256(otp.encode()).hexdigest()
 
-    #  tạo token luôn
-    refresh = RefreshToken.for_user(user)
+    # Lưu vào bảng otp_verifications (xoá OTP cũ nếu có)
+    OtpVerifications.objects.filter(email=email, purpose='register').delete()
+    OtpVerifications.objects.create(
+        id=str(uuid.uuid4()),
+        email=email,
+        otp_hash=otp_hash,
+        purpose='register',
+        expires_at=timezone.now() + timedelta(minutes=5),
+        created_at=timezone.now(),
+    )
+
+    # Gửi email (cần cấu hình EMAIL_BACKEND trong settings.py)
+    send_mail(
+        subject='Xác thực tài khoản Mindraft',
+        message=f'Mã OTP của bạn là: {otp}. Hết hạn sau 5 phút.',
+        from_email='no-reply@mindraft.app',
+        recipient_list=[email],
+        fail_silently=False,
+    )
+
+
+    # Tạm lưu name + password_hash vào session hoặc cache để dùng lúc verify
+    # Đơn giản nhất: lưu vào payload của OTP record (bảng đang có managed=False nên không sửa được)
+    # → Giải pháp: lưu thêm vào Django cache
+
+    cache.set(f"pending_register:{email}", {
+    "name": name,
+    "password": password
+    }, timeout=300)  # 5 phút
 
     return Response({
-        "message": "Đăng ký thành công",
-        "access": str(refresh.access_token),
-        "refresh": str(refresh)
-    }, status=201)
+        "data": {
+            "message": "OTP đã được gửi tới email. Vui lòng xác thực trong 5 phút."
+        }
+    }, status=200)
+
+
+@api_view(['POST'])
+def verify_otp_view(request):
+    email = request.data.get("email")
+    otp = request.data.get("otp")
+    purpose = request.data.get("purpose")
+
+    otp_hash = hashlib.sha256(otp.encode()).hexdigest()
+
+    try:
+        record = OtpVerifications.objects.get(
+            email=email,
+            otp_hash=otp_hash,
+            purpose=purpose,
+            used_at__isnull=True
+        )
+    except OtpVerifications.DoesNotExist:
+        return Response({"error": "OTP_INVALID"}, status=400)
+
+    if timezone.now() > record.expires_at:
+        return Response({"error": "OTP_EXPIRED"}, status=400)
+
+    # Đánh dấu đã dùng
+    record.used_at = timezone.now()
+    record.save()
+
+    if purpose == 'register':
+        # Lấy name/password từ cache (xem ghi chú bên dưới)
+        # Tạo user
+        user = Users.objects.create(
+            id=str(uuid.uuid4()),
+            name=...,  # lấy từ cache
+            email=email,
+            password_hash=make_password(...),  # lấy từ cache
+            is_verified=1,
+            created_at=timezone.now(),
+            updated_at=timezone.now(),
+        )
+
+        refresh = RefreshToken.for_user(user)
+        is_mobile = request.headers.get('X-Platform') == 'mobile'
+
+        data = {
+            "access_token": str(refresh.access_token),
+            "expires_in": 900,
+            "user": {
+                "id": user.id,
+                "name": user.name,
+                "email": user.email,
+                "avatar_url": user.avatar_url,
+            }
+        }
+        if is_mobile:
+            data["refresh_token"] = str(refresh)
+
+        response = Response({"data": data}, status=201)
+        if not is_mobile:
+            response.set_cookie('refresh_token', str(refresh), httponly=True)
+        return response
+
+
+
+
 
 
 #  LOGIN
