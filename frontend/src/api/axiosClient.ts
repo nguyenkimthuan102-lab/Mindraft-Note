@@ -21,7 +21,12 @@ const api = axios.create({
 // ---------- Token helpers (mobile only) ----------
 const getStoredAccessToken = () => SecureStore.getItemAsync('access_token');
 const getStoredRefreshToken = () => SecureStore.getItemAsync('refresh_token');
-const saveAccessToken = (token: string) => SecureStore.setItemAsync('access_token', token);
+export const saveAccessToken = (token: string) => SecureStore.setItemAsync('access_token', token);
+
+export const saveTokens = async (accessToken: string, refreshToken: string) => {
+  await SecureStore.setItemAsync('access_token', accessToken);
+  await SecureStore.setItemAsync('refresh_token', refreshToken);
+};
 const clearTokens = () => {
   SecureStore.deleteItemAsync('access_token');
   SecureStore.deleteItemAsync('refresh_token');

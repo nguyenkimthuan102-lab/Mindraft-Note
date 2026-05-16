@@ -12,6 +12,8 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { AuthCard } from '../../src/components/ui/AuthCard';
 import { AuthButton } from '../../src/components/ui/AuthButton';
 import { colors } from '../../src/constants/colors';
+import { verifyOtp, resendOtp } from '../../src/api/auth/authApi';
+import { saveTokens } from '../../src/api/axiosClient';
 
 const OTP_LENGTH = 6;
 
@@ -48,25 +50,81 @@ export default function OtpScreen() {
   const handleVerify = async () => {
     const code = otp.join('');
     if (code.length < OTP_LENGTH) return;
+    if (!email) {
+      alert('Không tìm thấy thông tin email để xác thực.');
+      return;
+    }
+
     setLoading(true);
     try {
-      // TODO: apiRequest('/auth/verify-otp', { method: 'POST', body: JSON.stringify({ email, code }) })
-      if (mode === 'reset') {
-        router.push('/(auth)/reset-password');
+      const isResetMode = mode === 'reset';
+
+      const response = await verifyOtp({
+        email: email,
+        otp: code,
+        purpose: isResetMode ? 'reset_password' : 'register',
+      });
+
+      if (isResetMode) {
+        // Trường hợp khôi phục mật khẩu: chuyển sang màn reset kèm single-use token
+        router.push({
+          pathname: '/(auth)/reset-password',
+          params: { reset_token: response.data.reset_token }
+        });
       } else {
+        // Trường hợp Đăng ký thành công (Status 201)
+        if (Platform.OS !== 'web') {
+          // Mobile: Bắt buộc lấy access_token và refresh_token từ JSON body để lưu trữ
+          const accessToken = response.data?.access_token;
+          const refreshToken = response.data?.refresh_token;
+
+          if (accessToken && refreshToken) {
+            await saveTokens(accessToken, refreshToken);
+          } else {
+            throw new Error('Không nhận được token hợp lệ từ hệ thống.');
+          }
+        } else {
+          // Web: Đã được backend tự động xử lý qua httpOnly cookie nên không cần lưu bằng tay
+        }
+
+        // Điều hướng vào thẳng bên trong ứng dụng
         router.replace('/(main)');
       }
-    } catch (e) {
+    } catch (e: any) {
       console.error(e);
+      const errorStatus = e.response?.status;
+      // Bắt lỗi mã OTP_INVALID hoặc OTP_EXPIRED (Status 400)
+      if (errorStatus === 400) {
+        alert('Mã OTP không chính xác hoặc đã hết hạn.');
+      } else {
+        alert('Xác thực thất bại. Vui lòng thử lại.');
+      }
     } finally {
       setLoading(false);
     }
   };
 
   const handleResend = async () => {
-    // TODO: apiRequest('/auth/resend-otp', ...)
-    setOtp(Array(OTP_LENGTH).fill(''));
-    inputRefs.current[0]?.focus();
+    if (!email) {
+      alert('Không tìm thấy thông tin email để gửi lại mã.');
+      return;
+    }
+
+    try {
+      const purpose = mode === 'reset' ? 'reset_password' : 'register';
+      await resendOtp(email, purpose);
+
+      alert('Mã OTP mới đã được gửi vào hòm thư của bạn.');
+      setOtp(Array(OTP_LENGTH).fill(''));
+      inputRefs.current[0]?.focus();
+    } catch (e: any) {
+      console.error(e);
+      if (e.response?.status === 404) {
+        alert('Email không tồn tại trên hệ thống.');
+      } else {
+        alert('Không thể gửi lại mã OTP lúc này. Vui lòng thử lại sau.');
+      }
+    }
   };
 
   return (
@@ -177,9 +235,9 @@ const styles = StyleSheet.create({
         lineHeight: '48px',
       } as any,
       ios: {
-      lineHeight: 48,   // iOS cần số, không phải string
-      paddingVertical: 0, // fix iOS TextInput tự thêm padding
-    },
+        lineHeight: 48,   // iOS cần số, không phải string
+        paddingVertical: 0, // fix iOS TextInput tự thêm padding
+      },
     }),
   },
   otpBoxEmpty: {

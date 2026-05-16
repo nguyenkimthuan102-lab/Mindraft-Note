@@ -5,6 +5,7 @@ import { AuthCard } from '../../src/components/ui/AuthCard';
 import { Input } from '../../src/components/ui/Input';
 import { AuthButton } from '../../src/components/ui/AuthButton';
 import { colors } from '../../src/constants/colors';
+import { register } from '../../src/api/auth/authApi';
 
 export default function RegisterScreen() {
   const [email, setEmail] = useState('');
@@ -31,11 +32,39 @@ export default function RegisterScreen() {
   const handleSignUp = async () => {
     if (!validate()) return;
     setLoading(true);
+    setErrors({}); // Xóa sạch lỗi cũ trước khi gọi API
+
     try {
-      // TODO: apiRequest('/auth/register')
-      // Then navigate to OTP verification
-      router.push('/(auth)/otp');
-    } catch (e) {
+      // Gọi API Đăng ký từ authApi
+      await register({
+        email: email.trim(),
+        password,
+        name: nickname.trim(),
+      });
+
+      // Điều hướng sang màn hình OTP kèm params chuẩn cú pháp Expo Router
+      router.push({
+        pathname: '/(auth)/otp',
+        params: { email: email.trim(), mode: 'register' },
+      });
+    } catch (e: any) {
+      // Xử lý bắt lỗi từ phía Backend trả về
+      const errorStatus = e.response?.status;
+      const errorCode = e.response?.data?.error;
+
+      if (errorStatus === 409) {
+        if (errorCode === 'EMAIL_ALREADY_EXISTS') {
+          setErrors({ email: 'Email này đã được sử dụng.' });
+        } else if (errorCode === 'NAME_ALREADY_EXISTS') {
+          setErrors({ nickname: 'Nickname này đã tồn tại.' });
+        } else {
+          setErrors({ email: 'Tài khoản hoặc nickname đã trùng lặp.' });
+        }
+      } else if (errorStatus === 422) {
+        alert('Định dạng dữ liệu không hợp lệ. Vui lòng kiểm tra lại.');
+      } else {
+        alert('Đã xảy ra lỗi hệ thống. Vui lòng thử lại sau.');
+      }
       console.error(e);
     } finally {
       setLoading(false);
