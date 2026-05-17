@@ -6,11 +6,17 @@ import { AuthCard } from '../../src/components/ui/AuthCard';
 import { Input } from '../../src/components/ui/Input';
 import { colors } from '../../src/constants/colors';
 
+import { useGoogleAuth } from '../../src/api/auth/googleAuth';
+
 export default function LoginScreen() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const passwordRef = useRef<any>(null);
+
+  // Trạng thái cho Google Login
+  const [googleLoading, setGoogleLoading] = useState(false);
+  const { signIn: googleSignIn, request: googleRequest } = useGoogleAuth();
 
   const handleLogin = async () => {
     if (!email || !password) return;
@@ -22,6 +28,22 @@ export default function LoginScreen() {
       console.error(e);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleGoogleLogin = async () => {
+    setGoogleLoading(true);
+    try {
+      const authData = await googleSignIn();
+      if (authData) {
+        // Đăng nhập thành công, chuyển hướng
+        router.replace('/(main)');
+      }
+    } catch (e) {
+      // Ở đây nên dùng Alert hoặc Toast để báo lỗi cho user thay vì chỉ console.log
+      console.error('Google Sign In Error:', JSON.stringify(e)); 
+    } finally {
+      setGoogleLoading(false);
     }
   };
 
@@ -65,6 +87,7 @@ export default function LoginScreen() {
         label="Sign In"
         onPress={handleLogin}
         loading={loading}
+        disabled={googleLoading} // Tránh bấm lúc Google đang quay
       />
 
       {/* OR Divider */}
@@ -77,8 +100,11 @@ export default function LoginScreen() {
       {/* Google */}
       <AuthButton
         label="Continue with Google"
-        onPress={() => {}}
+        onPress={() => handleGoogleLogin()}
         variant="secondary"
+        loading={googleLoading}
+        // Thực tế: Nếu request chưa sẵn sàng, KHÔNG cho phép bấm
+        disabled={!googleRequest || loading}
       />
 
       {/* Sign up link */}
