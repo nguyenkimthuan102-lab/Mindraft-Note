@@ -38,7 +38,7 @@ SECRET_KEY = config('SECRET_KEY')
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-ALLOWED_HOSTS = []
+ALLOWED_HOSTS = ['*']  # Cho phép tất cả các IP trong giai đoạn dev
 
 
 # Application definition
@@ -70,6 +70,7 @@ MIDDLEWARE = [
 CORS_ALLOWED_ORIGINS = [
     "http://localhost:8081",
     "http://127.0.0.1:8081",
+    "http://192.168.1.9:8081"
 ]
 
 CORS_ALLOW_CREDENTIALS = True
