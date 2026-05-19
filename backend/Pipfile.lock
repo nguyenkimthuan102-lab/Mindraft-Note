@@ -1,7 +1,7 @@
 {
     "_meta": {
         "hash": {
-            "sha256": "cd62e69cc0542e411bcd1c1c142a0885841c115699ecc5515f76ae87ba630a45"
+            "sha256": "14d7ea8e8776a94d8243665c49ce10925cb3fa5f76ffd4a0d38e85a5ec782661"
         },
         "pipfile-spec": 6,
         "requires": {
@@ -423,8 +423,6 @@
             "index": "pypi",
             "version": "==3.8"
         },
-<<<<<<< HEAD
-=======
         "requests": {
             "hashes": [
                 "sha256:2a0d60c172f83ac6ab31e4554906c0f3b3588d37b5cb939b1c061f4907e278e0",
@@ -434,7 +432,6 @@
             "markers": "python_version >= '3.10'",
             "version": "==2.34.2"
         },
->>>>>>> 6e33e14 (Chao buoi sang)
         "sqlparse": {
             "hashes": [
                 "sha256:12a08b3bf3eec877c519589833aed092e2444e68240a3577e8e26148acc7b1ba",

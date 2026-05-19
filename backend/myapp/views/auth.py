@@ -8,7 +8,6 @@ from ..utils.response import success, error
 from rest_framework.decorators import api_view, throttle_classes, authentication_classes, permission_classes
 from rest_framework.response import Response
 from ..models import Users, OtpVerifications
-from rest_framework_simplejwt.tokens import AccessToken
 from ..utils.token import *
 from django.core.cache import cache
 from rest_framework.permissions import AllowAny
@@ -92,7 +91,7 @@ def verify_otp_view(request):
         is_mobile = request.headers.get('X-Platform') == 'mobile'
 
         data = {
-            "access_token": str(AccessToken.for_user(user)),
+            "access_token": make_access_token(user),
             "expires_in": 900,
             "user": {
                 "id": user.id,
@@ -173,7 +172,7 @@ def refresh_token_view(request):
     save_refresh_token(user.id, new_raw)
 
     data = {
-        "access_token": str(AccessToken.for_user(user)),
+        "access_token": make_access_token(user),
         "expires_in": 900,
     }
     if is_mobile:
@@ -221,7 +220,7 @@ def google_login_view(request):
     is_mobile = request.headers.get('X-Platform') == 'mobile'
 
     data = {
-        "access_token": str(AccessToken.for_user(user)),
+        "access_token": make_access_token(user),
         "expires_in":   900,
         "user": {
             "id":         user.id,
@@ -278,7 +277,7 @@ def login_view(request):
     is_mobile = request.headers.get('X-Platform') == 'mobile'
 
     data = {
-        "access_token": str(AccessToken.for_user(user)),
+        "access_token": make_access_token(user),
         "expires_in":   900,
         "user": {
             "id":         user.id,
@@ -367,13 +366,19 @@ def reset_password_view(request):
     # Xoá reset_token khỏi cache — dùng 1 lần duy nhất
     cache.delete(f"reset_token:{reset_token}")
 
-    # Vô hiệu hoá toàn bộ refresh token cũ nếu user yêu cầu
+    # Vô hiệu hoá toàn bộ refresh token cũ + xoay status_token nếu user yêu cầu
     if logout_all:
+        import secrets
         from ..models import RefreshTokens
         RefreshTokens.objects.filter(
             user_id=user.id,
             revoked_at__isnull=True,
         ).update(revoked_at=timezone.now())
+
+        # Xoay status_token → vô hiệu hóa tất cả access token cũ trên mọi thiết bị
+        user.status_token = secrets.token_hex(16)
+        user.updated_at   = timezone.now()
+        user.save(update_fields=['password_hash', 'status_token', 'updated_at'])
 
     # Cấp token mới — cấu trúc giống hệt login_view (1.4)
     raw_refresh = generate_refresh_token()
@@ -382,7 +387,7 @@ def reset_password_view(request):
     is_mobile = request.headers.get('X-Platform') == 'mobile'
 
     data = {
-        "access_token": str(AccessToken.for_user(user)),
+        "access_token": make_access_token(user),
         "expires_in":   900,
         "user": {
             "id":         user.id,
