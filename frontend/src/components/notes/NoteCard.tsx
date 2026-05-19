@@ -352,12 +352,27 @@ export function NoteCard({ note, isSelected, onSelect, isGridView, onPress, onUp
 
 const styles = StyleSheet.create({
   card: {
-    borderRadius: 8, marginBottom: 16, position: 'relative', borderWidth: 1, borderColor: colors.borderDefault, overflow: 'visible', zIndex: 1,
+    borderRadius: 8,
+    marginBottom: 16, // Giữ lại cái này để có khoảng cách giữa các thẻ trên dưới
+    position: 'relative',
+    borderWidth: 1,
+    borderColor: colors.borderDefault,
+    overflow: 'visible',
+    zIndex: 1,
+
+    // XÓA width: 260, flexGrow, flexShrink và marginRight đi
+    // Trả lại width 100% để FlashList tự động tính toán kích thước cột
+    width: '100%',
+
     ...Platform.select({ web: { cursor: 'pointer', overflow: 'visible', } as any }),
   },
   cardHovered: {
     ...Platform.select({
-      web: { boxShadow: '0 1px 2px 0 rgba(60,64,67,0.30), 0 1px 3px 1px rgba(60,64,67,0.15)' } as any,
+      web: {
+        boxShadow: '0 1px 2px 0 rgba(60,64,67,0.30), 0 1px 3px 1px rgba(60,64,67,0.15)',
+        // Thêm transition để hiệu ứng hover mượt mà hơn như bản gốc
+        transition: 'box-shadow 0.2s ease-in-out'
+      } as any,
       default: { shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.12, shadowRadius: 8, elevation: 4 },
     }),
   },
