@@ -1,6 +1,7 @@
 from django.db import models
 from django.contrib.auth.models import AbstractUser
 from django.db.models import CompositePrimaryKey
+from django.contrib.auth.models import AbstractBaseUser, BaseUserManager
 
 
 class Media(models.Model):
@@ -212,18 +213,39 @@ class UserSettings(models.Model):
         managed = False
         db_table = 'user_settings'
 
+class UsersManager(BaseUserManager):
+    def create_user(self, email, password=None, **extra_fields):
+        raise NotImplementedError("Dùng register_view để tạo user.")
 
-class Users(models.Model):
-    id = models.CharField(primary_key=True, max_length=36)
-    name = models.CharField(unique=True, max_length=255)
-    email = models.CharField(unique=True, max_length=255)
+    def create_superuser(self, email, password=None, **extra_fields):
+        raise NotImplementedError("Không hỗ trợ superuser qua manager này.")
+
+class Users(AbstractBaseUser):
+    # AbstractBaseUser tự thêm field `password` (ẩn) và `last_login`.
+    # Chúng ta KHÔNG dùng chúng (password lưu ở password_hash, last_login bỏ qua)
+    # nhưng phải để Django/simplejwt nhận ra đây là user model hợp lệ.
+
+    id            = models.CharField(primary_key=True, max_length=36)
+    name          = models.CharField(unique=True, max_length=255)
+    email         = models.CharField(unique=True, max_length=255)
     password_hash = models.CharField(max_length=512, blank=True, null=True)
-    status_token = models.CharField(max_length=50, blank=True, null=True)
-    google_id = models.CharField(unique=True, max_length=255, blank=True, null=True)
-    is_verified = models.IntegerField()
-    avatar_url = models.TextField(blank=True, null=True)
-    created_at = models.DateTimeField()
-    updated_at = models.DateTimeField()
+    status_token  = models.CharField(max_length=50, blank=True, null=True)
+    google_id     = models.CharField(unique=True, max_length=255, blank=True, null=True)
+    is_verified   = models.IntegerField()
+    avatar_url    = models.TextField(blank=True, null=True)
+    created_at    = models.DateTimeField()
+    updated_at    = models.DateTimeField()
+
+    # AbstractBaseUser yêu cầu khai báo 2 thứ này:
+    USERNAME_FIELD  = 'email'   # field dùng để định danh user
+    REQUIRED_FIELDS = ['name']  # chỉ dùng khi createsuperuser, bỏ qua trong dự án này
+
+    objects = UsersManager()
+
+    # Tắt field `last_login` mà AbstractBaseUser tự thêm vào —
+    # bảng DB không có cột này nên phải override thành None.
+    last_login = None
+    password   = None   # Tắt field password ảo của AbstractBaseUser
 
     class Meta:
         managed = False

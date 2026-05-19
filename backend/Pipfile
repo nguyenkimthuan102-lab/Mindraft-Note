@@ -8,6 +8,11 @@ django = "*"
 django-environ = "*"
 pymysql = "*"
 python-decouple = "*"
+djangorestframework = "*"
+django-cors-headers = "*"
+djangorestframework-simplejwt = "*"
+google-auth = "*"
+requests = "*"
 
 [dev-packages]
 

@@ -15,7 +15,6 @@ from pathlib import Path
 from datetime import timedelta
 import environ
 from decouple import config
-
 env = environ.Env()
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
@@ -151,7 +150,10 @@ STATIC_URL = 'static/'
 
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': (
-        'rest_framework_simplejwt.authentication.JWTAuthentication',
+        'myapp.authentication.StatusTokenJWTAuthentication',
+    ),
+    'DEFAULT_PERMISSION_CLASSES': (
+        'rest_framework.permissions.AllowAny',
     ),
     'DEFAULT_THROTTLE_CLASSES': [],
     'DEFAULT_THROTTLE_RATES': {
@@ -161,6 +163,9 @@ REST_FRAMEWORK = {
 }
 SIMPLE_JWT = {
     'ACCESS_TOKEN_LIFETIME': timedelta(minutes=60),
+    'REFRESH_TOKEN_LIFETIME': timedelta(days=7),
+    'USER_ID_FIELD': 'id',  
+    'USER_ID_CLAIM': 'user_id', 
 }
 CACHES = {
     "default": {
@@ -181,3 +186,4 @@ EMAIL_HOST_PASSWORD = config('EMAIL_HOST_PASSWORD')
 DEFAULT_FROM_EMAIL = EMAIL_HOST_USER
 
 GOOGLE_CLIENT_ID = env('GOOGLE_CLIENT_ID')
+AUTH_USER_MODEL = 'myapp.Users' 

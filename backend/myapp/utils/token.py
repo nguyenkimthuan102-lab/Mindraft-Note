@@ -2,7 +2,7 @@ import hashlib, secrets, uuid
 from datetime import timedelta
 from django.utils import timezone
 from ..models import RefreshTokens
-from rest_framework_simplejwt.tokens import AccessToken as BaseAccessToken
+from rest_framework_simplejwt.tokens import AccessToken as _AccessToken  # dùng cho make_access_token
 
 def generate_refresh_token() -> str:
     """Sinh raw token gửi cho client."""
@@ -40,10 +40,7 @@ def revoke_refresh_token(raw_token: str) -> None:
         token_hash=hash_token(raw_token)
     ).update(revoked_at=timezone.now())
 
-class AccessToken(BaseAccessToken):
-    @classmethod
-    def for_user(cls, user):
-        token = super().for_user(user)
-        token['user_id'] = str(user.id)
-        token['status_token'] = user.status_token  # field trong bảng users
-        return token
+def make_access_token(user) -> str:
+    token = _AccessToken.for_user(user)
+    token['status_token'] = user.status_token or ''
+    return str(token)

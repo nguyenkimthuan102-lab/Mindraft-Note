@@ -1,23 +1,38 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet } from 'react-native';
+import { View, Text, StyleSheet, Alert } from 'react-native';
 import { router } from 'expo-router';
 import { AuthCard } from '../../src/components/ui/AuthCard';
 import { Input } from '../../src/components/ui/Input';
 import { AuthButton } from '../../src/components/ui/AuthButton';
 import { colors } from '../../src/constants/colors';
+import { forgotPassword } from '../../src/api/auth/authApi';
 
 export default function ForgotPasswordScreen() {
   const [email, setEmail] = useState('');
   const [loading, setLoading] = useState(false);
 
   const handleSendCode = async () => {
-    if (!email) return;
+    const trimmed = email.trim();
+    if (!trimmed) return;
+
     setLoading(true);
     try {
-      // TODO: apiRequest('/auth/forgot-password', { method: 'POST', body: JSON.stringify({ email }) })
-      router.push({ pathname: '/(auth)/otp', params: { email, mode: 'reset' } });
-    } catch (e) {
-      console.error(e);
+      await forgotPassword({ email: trimmed });
+
+      // Chuyển sang màn OTP, truyền email và mode='reset' qua router params
+      router.push({
+        pathname: '/(auth)/otp',
+        params: { email: trimmed, mode: 'reset' },
+      });
+    } catch (e: any) {
+      const code = e.response?.data?.error?.code;
+      if (code === 'EMAIL_NOT_FOUND') {
+        Alert.alert('Không tìm thấy email', 'Email này chưa được đăng ký trong hệ thống.');
+      } else if (e.response?.status === 429) {
+        Alert.alert('Thử lại sau', 'Bạn đã gửi quá nhiều yêu cầu. Vui lòng đợi một lúc.');
+      } else {
+        Alert.alert('Lỗi', 'Không thể gửi mã lúc này. Vui lòng thử lại.');
+      }
     } finally {
       setLoading(false);
     }
@@ -30,7 +45,7 @@ export default function ForgotPasswordScreen() {
       <View style={{ height: 24 }} />
 
       <Text style={styles.description}>
-        Enter your gmail address to receive a 6-digit verification code
+        Enter your email address to receive a 6-digit verification code
       </Text>
 
       <View style={{ height: 20 }} />

@@ -1,12 +1,16 @@
 import React, { useRef, useState } from 'react';
-import { View, Text, StyleSheet } from 'react-native';
-import { router } from 'expo-router';
+import { View, Text, StyleSheet, Alert } from 'react-native';
+import { router, useLocalSearchParams } from 'expo-router';
 import { AuthCard } from '../../src/components/ui/AuthCard';
 import { Input } from '../../src/components/ui/Input';
 import { AuthButton } from '../../src/components/ui/AuthButton';
 import { colors } from '../../src/constants/colors';
+import { resetPassword } from '../../src/api/auth/authApi';
 
 export default function ResetPasswordScreen() {
+  // reset_token được truyền từ OTP screen qua router params
+  const { reset_token } = useLocalSearchParams<{ reset_token: string }>();
+
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [loading, setLoading] = useState(false);
@@ -14,7 +18,8 @@ export default function ResetPasswordScreen() {
 
   const confirmRef = useRef<any>(null);
 
-  const validate = () => {
+  // ─── Validate client-side ──────────────────────────────────────────────────
+  const validate = (): boolean => {
     const e: Record<string, string> = {};
     if (password.length < 8) e.password = 'Must have at least 8 characters';
     if (password !== confirmPassword) e.confirm = 'Passwords do not match';
@@ -22,17 +27,63 @@ export default function ResetPasswordScreen() {
     return Object.keys(e).length === 0;
   };
 
-  const handleUpdate = async () => {
-    if (!validate()) return;
+  // ─── Gọi API sau khi user chọn logout_all_devices ────────────────────────
+  const callResetApi = async (logoutAll: boolean) => {
     setLoading(true);
     try {
-      // TODO: apiRequest('/auth/reset-password', { method: 'POST', body: JSON.stringify({ password }) })
-      router.replace('/(auth)/login');
-    } catch (e) {
-      console.error(e);
+      await resetPassword({
+        reset_token,
+        new_password: password,
+        logout_all_devices: logoutAll,
+      });
+
+      Alert.alert('Thành công', 'Đổi mật khẩu thành công!', [
+        { text: 'OK', onPress: () => router.replace('/(auth)/login') },
+      ]);
+    } catch (e: any) {
+      const code = e.response?.data?.error?.code;
+      if (code === 'RESET_TOKEN_EXPIRED') {
+        Alert.alert(
+          'Phiên hết hạn',
+          'Token đặt lại mật khẩu đã hết hạn. Vui lòng thực hiện lại.',
+          [{ text: 'OK', onPress: () => router.replace('/(auth)/forgot-password') }]
+        );
+      } else if (code === 'SAME_PASSWORD') {
+        setErrors({ password: 'New password must be different from the old one' });
+      } else {
+        Alert.alert('Lỗi', 'Không thể cập nhật mật khẩu. Vui lòng thử lại.');
+      }
     } finally {
       setLoading(false);
     }
+  };
+
+  // ─── Validate → hỏi logout_all → gọi API ─────────────────────────────────
+  const handleUpdate = () => {
+    if (!validate()) return;
+
+    if (!reset_token) {
+      Alert.alert('Lỗi', 'Phiên đặt lại mật khẩu không hợp lệ. Vui lòng thực hiện lại từ đầu.');
+      router.replace('/(auth)/forgot-password');
+      return;
+    }
+
+    Alert.alert(
+      'Đăng xuất các thiết bị khác?',
+      'Bạn có muốn đăng xuất khỏi tất cả thiết bị đang đăng nhập không?',
+      [
+        {
+          text: 'Chỉ thiết bị này',
+          style: 'cancel',
+          onPress: () => callResetApi(false),
+        },
+        {
+          text: 'Tất cả thiết bị',
+          style: 'destructive',
+          onPress: () => callResetApi(true),
+        },
+      ]
+    );
   };
 
   return (
@@ -45,7 +96,10 @@ export default function ResetPasswordScreen() {
       <Input
         label="New password"
         value={password}
-        onChangeText={setPassword}
+        onChangeText={(t) => {
+          setPassword(t);
+          if (errors.password) setErrors((prev) => ({ ...prev, password: '' }));
+        }}
         secureTextEntry
         returnKeyType="next"
         onSubmitEditing={() => confirmRef.current?.focus()}
@@ -56,7 +110,10 @@ export default function ResetPasswordScreen() {
         ref={confirmRef}
         label="Confirm password"
         value={confirmPassword}
-        onChangeText={setConfirmPassword}
+        onChangeText={(t) => {
+          setConfirmPassword(t);
+          if (errors.confirm) setErrors((prev) => ({ ...prev, confirm: '' }));
+        }}
         secureTextEntry
         returnKeyType="done"
         onSubmitEditing={handleUpdate}
