@@ -6,11 +6,10 @@ import { QuickCapture } from '../../src/components/notes/QuickCapture';
 
 import { colors } from '../../src/constants/colors';
 import { useSyncStore } from '../../src/store/useSyncStore';
-import { useSelectionStore } from '../../src/store/useSelectionStore'; // Import store
+import { useSelectionStore } from '../../src/store/useSelectionStore';
 import { useNoteStore } from '../../src/store/useNoteStore';
 import { NoteList } from '../../src/components/notes/NoteList';
 import { useAppStore } from '@/src/store/useAppStore';
-
 
 const MOCK_NOTES: NoteCardData[] = [
   {
@@ -65,11 +64,35 @@ const MOCK_NOTES: NoteCardData[] = [
     todo_total: 3,
     todo_completed: 1,
   },
+  {
+    id: '5',
+    type: 'text',
+    color: 'purple',
+    title: 'YOLOv8 License Plate',
+    content_text: 'Cần review lại dataset trên Roboflow cho chuẩn.\n\nChạy thử pipeline train khoảng 50 epochs xem model nhận diện các biển số bị mờ ở góc có tốt hơn không. Nhớ check kỹ phần Confusion Matrix.',
+    tags: ['project', 'machine-learning'],
+  },
+  {
+    id: '6',
+    type: 'todo',
+    color: 'red',
+    title: 'Kế hoạch học tập',
+    is_pinned: true,
+    tags: ['academic', 'huce'],
+    date: '20/5/2026',
+    todo_items: [
+      { id: 'k1', title: 'Đăng ký học các môn mới', is_completed: false },
+      { id: 'k2', title: 'Ôn tập thuật toán Apriori & K-means', is_completed: true },
+      { id: 'k3', title: 'Cấu hình lại 3-node Hadoop cluster', is_completed: true },
+      { id: 'k4', title: 'Push code Mindraft Note lên GitHub', is_completed: false },
+    ],
+    todo_total: 4,
+    todo_completed: 2,
+  },
 ];
 
 export default function HomeScreen() {
-  // THÊM: Lấy theme từ useAppStore
-  const { theme } = useAppStore();
+  const { theme, viewMode, isSidebarOpen } = useAppStore();
   const { setSyncing, setDone, setError } = useSyncStore();
   const [notes, setNotes] = useState<NoteCardData[]>([]);
   const {
@@ -84,7 +107,6 @@ export default function HomeScreen() {
 
   const { selectedIds, toggleSelect, clearSelection } = useSelectionStore();
 
-  // THÊM: Xác định màu sắc động
   const isDark = theme === 'dark';
   const dynamicBg = isDark ? '#111827' : colors.bgPage;
 
@@ -113,7 +135,6 @@ export default function HomeScreen() {
 
   const handleArchive = (id: string) => {
     setNotes(prev => prev.filter(n => n.id !== id));
-    // TODO: apiRequest(`/notes/${id}`, { method: 'PATCH', body: JSON.stringify({ is_archived: true }) })
   };
 
   const openCreateText = () => {
@@ -145,19 +166,32 @@ export default function HomeScreen() {
   const pinned = notes.filter(n => n.is_pinned);
   const others = notes.filter(n => !n.is_pinned);
 
+  const isGrid = viewMode === 'grid';
+
   return (
-    // THÊM: Style mảng để gán màu nền động
     <View style={[{ flex: 1 }, { backgroundColor: dynamicBg }]}>
       <ScrollView
-        // THÊM: Style mảng để gán màu nền động
         style={[styles.scroll, { backgroundColor: dynamicBg }]}
         contentContainerStyle={styles.container}
         showsVerticalScrollIndicator={false}
       >
-        <View style={styles.inner}>
-          <QuickCapture onCreateText={openCreateText} onCreateTodo={openCreateTodo} />
+        <View style={[
+          styles.inner,
+          // CẬP NHẬT: Xóa tính toán gridMaxWidth phức tạp đi. 
+          // Cho phép vùng chứa mở rộng 100% để bám lề, kích thước thẻ đã được NoteList quản lý.
+          // isGrid ? { maxWidth: '100%' } : { maxWidth: 720 }
 
-          {/* 2. Thay thế render cũ bằng NoteList mới - THÊM: truyền viewMode */}
+          // FIX: Grid neo lề trái cố định (alignSelf: flex-start), không giãn theo container.
+          // List vẫn căn giữa như cũ (maxWidth: 720, alignSelf: center).
+          // Đảm bảo khoảng cách từ sidebar/lề trái không đổi khi sidebar mở/đóng.
+          isGrid
+            ? { maxWidth: '100%', alignSelf: 'flex-start' }
+            : { maxWidth: 720, alignSelf: 'center' }
+        ]}>
+          <View style={styles.quickCaptureWrapper}>
+            <QuickCapture onCreateText={openCreateText} onCreateTodo={openCreateTodo} />
+          </View>
+
           <NoteList
             title="Đã ghim"
             notes={pinned}
@@ -171,7 +205,7 @@ export default function HomeScreen() {
 
           <NoteList
             title="Khác"
-            notes={others}           
+            notes={others}
             onPressNote={openEditNote}
             onUpdateNote={handleUpdate}
             onDeleteNote={handleDelete}
@@ -200,13 +234,16 @@ const styles = StyleSheet.create({
   },
   container: {
     flexGrow: 1,
-    alignItems: 'center',
     paddingVertical: 24,
-    paddingHorizontal: 16,
-    //width: '100%',
+    paddingHorizontal: 30,
   },
   inner: {
     width: '100%',
+  },
+  quickCaptureWrapper: {
+    width: '100%',
     maxWidth: 720,
+    marginBottom: 30,
+    alignSelf: 'center',
   },
 });
