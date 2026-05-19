@@ -237,20 +237,6 @@ def google_login_view(request):
         response.set_cookie('refresh_token', raw_refresh, httponly=True)
     return response
 
-# ══════════════════════════════════════════════════════════════════════
-# COPY ĐOẠN NÀY DÁN VÀO CUỐI FILE myapp/views/auth.py
-#
-# Trước khi dán, thêm 1 dòng vào PHẦN IMPORT ở đầu auth.py:
-#   from django.contrib.auth.hashers import check_password
-# (make_password đã có sẵn rồi, không cần thêm lại)
-# ══════════════════════════════════════════════════════════════════════
-
-
-# ─────────────────────────────────────────────────────────────────────
-# 1.4  ĐĂNG NHẬP THƯỜNG
-# POST /auth/login/
-# ─────────────────────────────────────────────────────────────────────
-
 @api_view(['POST'])
 @authentication_classes([])
 @permission_classes([AllowAny])
@@ -270,7 +256,7 @@ def login_view(request):
     if not user.is_verified:
         return error("ACCOUNT_NOT_VERIFIED", "Tài khoản chưa được xác thực OTP.", 403)
 
-    # Cấp token — dùng đúng hàm helper của Leader
+    # Cấp token — dùng đúng hàm helper
     raw_refresh = generate_refresh_token()
     save_refresh_token(user.id, raw_refresh)
 

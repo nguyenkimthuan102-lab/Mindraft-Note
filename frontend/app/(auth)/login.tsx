@@ -114,7 +114,7 @@ export default function LoginScreen() {
 
       <AuthButton
         label="Continue with Google"
-        onPress={handleGoogleLogin}
+        onPress={() => handleGoogleLogin()}
         variant="secondary"
         loading={googleLoading}
         disabled={!googleRequest || loading}

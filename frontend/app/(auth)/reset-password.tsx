@@ -27,26 +27,19 @@ export default function ResetPasswordScreen() {
     return Object.keys(e).length === 0;
   };
 
-  // ─── Gọi API reset password ────────────────────────────────────────────────
-  const handleUpdate = async () => {
-    if (!validate()) return;
-
-    if (!reset_token) {
-      Alert.alert('Lỗi', 'Phiên đặt lại mật khẩu không hợp lệ. Vui lòng thực hiện lại từ đầu.');
-      router.replace('/(auth)/forgot-password');
-      return;
-    }
-
+  // ─── Gọi API sau khi user chọn logout_all_devices ────────────────────────
+  const callResetApi = async (logoutAll: boolean) => {
     setLoading(true);
     try {
       await resetPassword({
         reset_token,
         new_password: password,
-        logout_all_devices: true,
+        logout_all_devices: logoutAll,
       });
 
-      Alert.alert('Thành công', 'Đổi mật khẩu thành công!');
-      router.replace('/(auth)/login');
+      Alert.alert('Thành công', 'Đổi mật khẩu thành công!', [
+        { text: 'OK', onPress: () => router.replace('/(auth)/login') },
+      ]);
     } catch (e: any) {
       const code = e.response?.data?.error?.code;
       if (code === 'RESET_TOKEN_EXPIRED') {
@@ -63,6 +56,34 @@ export default function ResetPasswordScreen() {
     } finally {
       setLoading(false);
     }
+  };
+
+  // ─── Validate → hỏi logout_all → gọi API ─────────────────────────────────
+  const handleUpdate = () => {
+    if (!validate()) return;
+
+    if (!reset_token) {
+      Alert.alert('Lỗi', 'Phiên đặt lại mật khẩu không hợp lệ. Vui lòng thực hiện lại từ đầu.');
+      router.replace('/(auth)/forgot-password');
+      return;
+    }
+
+    Alert.alert(
+      'Đăng xuất các thiết bị khác?',
+      'Bạn có muốn đăng xuất khỏi tất cả thiết bị đang đăng nhập không?',
+      [
+        {
+          text: 'Chỉ thiết bị này',
+          style: 'cancel',
+          onPress: () => callResetApi(false),
+        },
+        {
+          text: 'Tất cả thiết bị',
+          style: 'destructive',
+          onPress: () => callResetApi(true),
+        },
+      ]
+    );
   };
 
   return (
