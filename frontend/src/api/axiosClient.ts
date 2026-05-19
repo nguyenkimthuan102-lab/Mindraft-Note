@@ -96,14 +96,14 @@ api.interceptors.response.use(
 
       if (Platform.OS === 'web') {
         // Web: refresh via cookie (no body)
-        await axios.post(`${getBaseUrl()}/auth/refresh`, {}, { withCredentials: true });
+        await axios.post(`${getBaseUrl()}/auth/refresh/`, {}, { withCredentials: true });
         // no token to save – cookie handles it
       } else {
         const refreshToken = await getStoredRefreshToken();
         if (!refreshToken) throw new Error('No refresh token');
 
         const { data } = await axios.post(
-          `${getBaseUrl()}/auth/refresh`,
+          `${getBaseUrl()}/auth/refresh/`,
           { refresh_token: refreshToken },
           { headers: { 'Content-Type': 'application/json', 'X-Platform': 'mobile' } }
         );

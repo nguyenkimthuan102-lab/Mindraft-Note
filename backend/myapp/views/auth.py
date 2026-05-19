@@ -4,7 +4,8 @@ from django.utils import timezone
 from ..utils.otp import (generate_otp, hash_otp, save_and_send_otp, cache_pending_register, pop_pending_register,
     OtpSendThrottle, OtpVerifyThrottle,)
 from ..utils.response import success, error
-from rest_framework.decorators import api_view, throttle_classes
+from rest_framework.permissions import AllowAny
+from rest_framework.decorators import api_view, throttle_classes, permission_classes
 from rest_framework.response import Response
 from ..models import Users, OtpVerifications
 from rest_framework_simplejwt.tokens import AccessToken
@@ -17,6 +18,7 @@ from ..utils.google import verify_google_token
 
 #  REGISTER
 @api_view(['POST'])
+@permission_classes([AllowAny])
 @throttle_classes([OtpSendThrottle])
 def register_view(request):
     name = request.data.get("name")
