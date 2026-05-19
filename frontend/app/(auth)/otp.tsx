@@ -7,6 +7,7 @@ import {
   TouchableOpacity,
   Platform,
   useWindowDimensions,
+  Alert,
 } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { AuthCard } from '../../src/components/ui/AuthCard';
@@ -14,25 +15,27 @@ import { AuthButton } from '../../src/components/ui/AuthButton';
 import { colors } from '../../src/constants/colors';
 import { verifyOtp, resendOtp } from '../../src/api/auth/authApi';
 import { saveTokens } from '../../src/api/axiosClient';
+import type { VerifyOtpRegisterResponse, VerifyOtpResetResponse } from '../../src/api/auth/authApi';
 
 const OTP_LENGTH = 6;
 
 export default function OtpScreen() {
   const { email, mode } = useLocalSearchParams<{ email: string; mode?: string }>();
+  const isResetMode = mode === 'reset';
+
   const [otp, setOtp] = useState<string[]>(Array(OTP_LENGTH).fill(''));
   const [loading, setLoading] = useState(false);
   const { width } = useWindowDimensions();
   const isMobile = width < 400;
   const inputRefs = useRef<(TextInput | null)[]>([]);
 
+  // ─── Xử lý nhập OTP ────────────────────────────────────────────────────────
   const handleChange = (text: string, index: number) => {
-    // Only accept digits
     const digit = text.replace(/[^0-9]/g, '').slice(-1);
     const next = [...otp];
     next[index] = digit;
     setOtp(next);
 
-    // Auto advance
     if (digit && index < OTP_LENGTH - 1) {
       inputRefs.current[index + 1]?.focus();
     }
@@ -47,82 +50,87 @@ export default function OtpScreen() {
     }
   };
 
+  // ─── Xác thực OTP ──────────────────────────────────────────────────────────
   const handleVerify = async () => {
     const code = otp.join('');
     if (code.length < OTP_LENGTH) return;
+
     if (!email) {
-      alert('Không tìm thấy thông tin email để xác thực.');
+      Alert.alert('Lỗi', 'Không tìm thấy thông tin email để xác thực.');
       return;
     }
 
     setLoading(true);
     try {
-      const isResetMode = mode === 'reset';
-
-      const response = await verifyOtp({
-        email: email,
+      const responseData = await verifyOtp({
+        email,
         otp: code,
         purpose: isResetMode ? 'reset_password' : 'register',
       });
 
       if (isResetMode) {
-        // Trường hợp khôi phục mật khẩu: chuyển sang màn reset kèm single-use token
+        // ── Luồng quên mật khẩu: backend trả reset_token ──────────────────
+        const { reset_token } = responseData as VerifyOtpResetResponse;
         router.push({
           pathname: '/(auth)/reset-password',
-          params: { reset_token: response.data.reset_token }
+          params: { reset_token, email },
         });
       } else {
-        // Trường hợp Đăng ký thành công (Status 201)
-        if (Platform.OS !== 'web') {
-          // Mobile: Bắt buộc lấy access_token và refresh_token từ JSON body để lưu trữ
-          const accessToken = response.data?.access_token;
-          const refreshToken = response.data?.refresh_token;
+        // ── Luồng đăng ký: backend trả access_token + user ────────────────
+        const tokenData = responseData as VerifyOtpRegisterResponse;
 
-          if (accessToken && refreshToken) {
-            await saveTokens(accessToken, refreshToken);
+        if (Platform.OS !== 'web') {
+          const { access_token, refresh_token } = tokenData;
+          if (access_token && refresh_token) {
+            await saveTokens(access_token, refresh_token);
           } else {
             throw new Error('Không nhận được token hợp lệ từ hệ thống.');
           }
-        } else {
-          // Web: Đã được backend tự động xử lý qua httpOnly cookie nên không cần lưu bằng tay
         }
+        // Web: backend set HttpOnly cookie tự động
 
-        // Điều hướng vào thẳng bên trong ứng dụng
         router.replace('/(main)');
       }
     } catch (e: any) {
-      console.error(e);
-      const errorStatus = e.response?.status;
-      // Bắt lỗi mã OTP_INVALID hoặc OTP_EXPIRED (Status 400)
-      if (errorStatus === 400) {
-        alert('Mã OTP không chính xác hoặc đã hết hạn.');
+      const code = e.response?.data?.error?.code;
+      if (code === 'OTP_INVALID') {
+        Alert.alert('Sai mã OTP', 'Mã OTP không chính xác. Vui lòng kiểm tra lại.');
+      } else if (code === 'OTP_EXPIRED') {
+        Alert.alert('Mã OTP hết hạn', 'Mã đã hết hạn. Vui lòng yêu cầu gửi lại mã mới.');
+      } else if (code === 'SESSION_EXPIRED') {
+        Alert.alert('Phiên hết hạn', 'Phiên đăng ký đã hết hạn. Vui lòng đăng ký lại.');
+        router.replace('/(auth)/register');
       } else {
-        alert('Xác thực thất bại. Vui lòng thử lại.');
+        Alert.alert('Xác thực thất bại', 'Vui lòng thử lại.');
       }
     } finally {
       setLoading(false);
     }
   };
 
+  // ─── Gửi lại OTP ───────────────────────────────────────────────────────────
   const handleResend = async () => {
     if (!email) {
-      alert('Không tìm thấy thông tin email để gửi lại mã.');
+      Alert.alert('Lỗi', 'Không tìm thấy thông tin email để gửi lại mã.');
       return;
     }
 
     try {
-      const purpose = mode === 'reset' ? 'reset_password' : 'register';
+      const purpose = isResetMode ? 'reset_password' : 'register';
       await resendOtp(email, purpose);
 
-      alert('Mã OTP mới đã được gửi vào hòm thư của bạn.');
+      Alert.alert('Đã gửi', 'Mã OTP mới đã được gửi vào hòm thư của bạn.');
       setOtp(Array(OTP_LENGTH).fill(''));
       inputRefs.current[0]?.focus();
     } catch (e: any) {
-      console.error(e);
-      if (e.response?.status === 404) {
-        alert('Email không tồn tại trên hệ thống.');
+      const status = e.response?.status;
+      const code = e.response?.data?.error?.code;
+      if (code === 'EMAIL_NOT_FOUND' || status === 404) {
+        Alert.alert('Không tìm thấy', 'Email không tồn tại trên hệ thống.');
+      } else if (status === 429) {
+        Alert.alert('Thử lại sau', 'Bạn gửi quá nhiều yêu cầu. Vui lòng đợi một lúc.');
       } else {
-        alert('Không thể gửi lại mã OTP lúc này. Vui lòng thử lại sau.');
+        Alert.alert('Lỗi', 'Không thể gửi lại mã OTP lúc này. Vui lòng thử lại sau.');
       }
     }
   };
@@ -134,7 +142,9 @@ export default function OtpScreen() {
       <View style={{ height: 24 }} />
 
       <Text style={styles.description}>
-        A 6-digit code has been sent to your inbox. Enter it below to continue recovering your account
+        {isResetMode
+          ? 'A 6-digit code has been sent to your inbox. Enter it below to continue recovering your account.'
+          : 'A 6-digit code has been sent to your inbox. Enter it below to complete registration.'}
       </Text>
 
       <View style={{ height: 28 }} />
@@ -231,13 +241,8 @@ const styles = StyleSheet.create({
     height: 48,
     fontSize: 20,
     ...Platform.select({
-      web: {
-        lineHeight: '48px',
-      } as any,
-      ios: {
-        lineHeight: 48,   // iOS cần số, không phải string
-        paddingVertical: 0, // fix iOS TextInput tự thêm padding
-      },
+      web: { lineHeight: '48px' } as any,
+      ios: { lineHeight: 48, paddingVertical: 0 },
     }),
   },
   otpBoxEmpty: {

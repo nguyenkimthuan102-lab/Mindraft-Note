@@ -1,47 +1,63 @@
 import { router } from 'expo-router';
 import React, { useRef, useState } from 'react';
-import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Alert, Platform, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { AuthButton } from '../../src/components/ui/AuthButton';
 import { AuthCard } from '../../src/components/ui/AuthCard';
 import { Input } from '../../src/components/ui/Input';
 import { colors } from '../../src/constants/colors';
-
+import { loginWithEmail } from '../../src/api/auth/authApi';
+import { saveTokens } from '../../src/api/axiosClient';
 import { useGoogleAuth } from '../../src/api/auth/googleAuth';
 
 export default function LoginScreen() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
-  const passwordRef = useRef<any>(null);
-
-  // Trạng thái cho Google Login
   const [googleLoading, setGoogleLoading] = useState(false);
+
+  const passwordRef = useRef<any>(null);
   const { signIn: googleSignIn, request: googleRequest } = useGoogleAuth();
 
+  // ─── Đăng nhập thường ──────────────────────────────────────────────────────
   const handleLogin = async () => {
-    if (!email || !password) return;
+    if (!email.trim() || !password) return;
+
     setLoading(true);
     try {
-      // TODO: integrate apiRequest('/auth/login')
+      const data = await loginWithEmail({ email: email.trim(), password });
+
+      // Mobile: lưu token vào SecureStore
+      if (Platform.OS !== 'web' && data.refresh_token) {
+        await saveTokens(data.access_token, data.refresh_token);
+      }
+      // Web: access_token nằm trong response, refresh_token trong HttpOnly Cookie —
+      //       axiosClient sẽ tự attach cookie cho mỗi request sau nhờ withCredentials.
+
       router.replace('/(main)');
-    } catch (e) {
-      console.error(e);
+    } catch (e: any) {
+      const code = e.response?.data?.error?.code;
+      if (code === 'INVALID_CREDENTIALS') {
+        Alert.alert('Đăng nhập thất bại', 'Email hoặc mật khẩu không đúng.');
+      } else if (code === 'ACCOUNT_NOT_VERIFIED') {
+        Alert.alert('Tài khoản chưa xác thực', 'Vui lòng xác thực OTP trước khi đăng nhập.');
+      } else {
+        Alert.alert('Lỗi', 'Không thể đăng nhập lúc này. Vui lòng thử lại.');
+      }
     } finally {
       setLoading(false);
     }
   };
 
+  // ─── Đăng nhập Google ──────────────────────────────────────────────────────
   const handleGoogleLogin = async () => {
     setGoogleLoading(true);
     try {
       const authData = await googleSignIn();
       if (authData) {
-        // Đăng nhập thành công, chuyển hướng
         router.replace('/(main)');
       }
     } catch (e) {
-      // Ở đây nên dùng Alert hoặc Toast để báo lỗi cho user thay vì chỉ console.log
-      console.error('Google Sign In Error:', JSON.stringify(e)); 
+      Alert.alert('Lỗi', 'Đăng nhập Google thất bại. Vui lòng thử lại.');
     } finally {
       setGoogleLoading(false);
     }
@@ -82,12 +98,11 @@ export default function LoginScreen() {
 
       <View style={{ height: 8 }} />
 
-      {/* Sign In */}
       <AuthButton
         label="Sign In"
         onPress={handleLogin}
         loading={loading}
-        disabled={googleLoading} // Tránh bấm lúc Google đang quay
+        disabled={googleLoading}
       />
 
       {/* OR Divider */}
@@ -97,13 +112,11 @@ export default function LoginScreen() {
         <View style={styles.line} />
       </View>
 
-      {/* Google */}
       <AuthButton
         label="Continue with Google"
-        onPress={() => handleGoogleLogin()}
+        onPress={handleGoogleLogin}
         variant="secondary"
         loading={googleLoading}
-        // Thực tế: Nếu request chưa sẵn sàng, KHÔNG cho phép bấm
         disabled={!googleRequest || loading}
       />
 

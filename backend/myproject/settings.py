@@ -15,7 +15,6 @@ from pathlib import Path
 from datetime import timedelta
 import environ
 from decouple import config
-
 env = environ.Env()
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
@@ -153,6 +152,9 @@ REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': (
         'rest_framework_simplejwt.authentication.JWTAuthentication',
     ),
+    'DEFAULT_PERMISSION_CLASSES': (
+        'rest_framework.permissions.AllowAny',  # ← thêm dòng này
+    ),
     'DEFAULT_THROTTLE_CLASSES': [],
     'DEFAULT_THROTTLE_RATES': {
         'otp_send': '10/hour',
@@ -161,6 +163,9 @@ REST_FRAMEWORK = {
 }
 SIMPLE_JWT = {
     'ACCESS_TOKEN_LIFETIME': timedelta(minutes=60),
+    'REFRESH_TOKEN_LIFETIME': timedelta(days=7),
+    'USER_ID_FIELD': 'id',        # tên field trong model của bạn
+    'USER_ID_CLAIM': 'user_id',   # tên claim trong JWT payload
 }
 CACHES = {
     "default": {
@@ -180,4 +185,5 @@ EMAIL_HOST_PASSWORD = config('EMAIL_HOST_PASSWORD')
 
 DEFAULT_FROM_EMAIL = EMAIL_HOST_USER
 
-GOOGLE_CLIENT_ID = env('GOOGLE_CLIENT_ID')
+GOOGLE_CLIENT_ID = env('GOOGLE_CLIENT_ID')# settings.py
+AUTH_USER_MODEL = 'myapp.Users'  # thay 'myapp' bằng tên app thực tế

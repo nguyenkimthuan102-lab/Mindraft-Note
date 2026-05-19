@@ -6,7 +6,7 @@ import { Platform } from 'react-native';
 // ---------- Base URL ----------
 const getBaseUrl = () => {
   if (__DEV__) {
-    if (Platform.OS === 'android') return 'http://192.168.1.9:8000/api';
+    if (Platform.OS === 'android') return 'http://192.168.38.70:8000/api'; //
     if (Platform.OS === 'ios') return 'http://192.168.1.9:8000/api';
     return 'http://localhost:8000/api';
   }
@@ -72,7 +72,7 @@ api.interceptors.response.use(
   async (error) => {
     const originalRequest = error.config;
 
-    if (error.response?.status !== 401 || originalRequest._retry) {
+    if (error.response?.status !== 401 || originalRequest._retry || originalRequest._skipRetry) {
       return Promise.reject(error);
     }
 
@@ -96,14 +96,14 @@ api.interceptors.response.use(
 
       if (Platform.OS === 'web') {
         // Web: refresh via cookie (no body)
-        await axios.post(`${getBaseUrl()}/auth/refresh`, {}, { withCredentials: true });
+        await axios.post(`${getBaseUrl()}/auth/refresh/`, {}, { withCredentials: true });
         // no token to save – cookie handles it
       } else {
         const refreshToken = await getStoredRefreshToken();
         if (!refreshToken) throw new Error('No refresh token');
 
         const { data } = await axios.post(
-          `${getBaseUrl()}/auth/refresh`,
+          `${getBaseUrl()}/auth/refresh/`,
           { refresh_token: refreshToken },
           { headers: { 'Content-Type': 'application/json', 'X-Platform': 'mobile' } }
         );
