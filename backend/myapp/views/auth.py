@@ -1,23 +1,24 @@
 import uuid
 from django.contrib.auth.hashers import make_password
+from django.contrib.auth.hashers import check_password
 from django.utils import timezone
 from ..utils.otp import (generate_otp, hash_otp, save_and_send_otp, cache_pending_register, pop_pending_register,
     OtpSendThrottle, OtpVerifyThrottle,)
 from ..utils.response import success, error
-from rest_framework.permissions import AllowAny
-from rest_framework.decorators import api_view, throttle_classes, permission_classes
+from rest_framework.decorators import api_view, throttle_classes, authentication_classes, permission_classes
 from rest_framework.response import Response
 from ..models import Users, OtpVerifications
 from rest_framework_simplejwt.tokens import AccessToken
 from ..utils.token import *
 from django.core.cache import cache
-
+from rest_framework.permissions import AllowAny
 from ..utils.google import verify_google_token
 
 
 
 #  REGISTER
 @api_view(['POST'])
+@authentication_classes([])
 @permission_classes([AllowAny])
 @throttle_classes([OtpSendThrottle])
 def register_view(request):
@@ -41,6 +42,8 @@ def register_view(request):
     return success({"message": "OTP đã được gửi tới email. Vui lòng xác thực trong 5 phút."})
 
 @api_view(['POST'])
+@authentication_classes([])
+@permission_classes([AllowAny])
 @throttle_classes([OtpVerifyThrottle])
 def verify_otp_view(request):
     email   = request.data.get("email")
@@ -115,6 +118,8 @@ def verify_otp_view(request):
 
 
 @api_view(['POST'])
+@authentication_classes([])
+@permission_classes([AllowAny])
 @throttle_classes([OtpSendThrottle])
 def resend_otp_view(request):
     email   = request.data.get("email")
@@ -137,6 +142,8 @@ def resend_otp_view(request):
     return success({"message": "OTP mới đã được gửi."})
 
 @api_view(['POST'])
+@authentication_classes([])
+@permission_classes([AllowAny])
 def refresh_token_view(request):
     is_mobile = request.headers.get('X-Platform') == 'mobile'
     raw_token = (
@@ -229,4 +236,169 @@ def google_login_view(request):
     response = success(data, 201 if created else 200)
     if not is_mobile:
         response.set_cookie('refresh_token', raw_refresh, httponly=True)
+    return response
+
+# ══════════════════════════════════════════════════════════════════════
+# COPY ĐOẠN NÀY DÁN VÀO CUỐI FILE myapp/views/auth.py
+#
+# Trước khi dán, thêm 1 dòng vào PHẦN IMPORT ở đầu auth.py:
+#   from django.contrib.auth.hashers import check_password
+# (make_password đã có sẵn rồi, không cần thêm lại)
+# ══════════════════════════════════════════════════════════════════════
+
+
+# ─────────────────────────────────────────────────────────────────────
+# 1.4  ĐĂNG NHẬP THƯỜNG
+# POST /auth/login/
+# ─────────────────────────────────────────────────────────────────────
+
+@api_view(['POST'])
+@authentication_classes([])
+@permission_classes([AllowAny])
+def login_view(request):
+    email    = request.data.get('email')
+    password = request.data.get('password')
+
+    if not email or not password:
+        return error("INVALID_FORMAT", "Dữ liệu sai định dạng.", 422)
+
+    user = Users.objects.filter(email=email).first()
+
+    # Không tìm thấy email hoặc mật khẩu sai → cùng 1 mã lỗi để chống dò email
+    if not user or not check_password(password, user.password_hash or ''):
+        return error("INVALID_CREDENTIALS", "Email hoặc mật khẩu không đúng.", 401)
+
+    if not user.is_verified:
+        return error("ACCOUNT_NOT_VERIFIED", "Tài khoản chưa được xác thực OTP.", 403)
+
+    # Cấp token — dùng đúng hàm helper của Leader
+    raw_refresh = generate_refresh_token()
+    save_refresh_token(user.id, raw_refresh)
+
+    is_mobile = request.headers.get('X-Platform') == 'mobile'
+
+    data = {
+        "access_token": str(AccessToken.for_user(user)),
+        "expires_in":   900,
+        "user": {
+            "id":         user.id,
+            "name":       user.name,
+            "email":      user.email,
+            "avatar_url": user.avatar_url,
+        },
+    }
+    if is_mobile:
+        data["refresh_token"] = raw_refresh
+
+    response = success(data)
+    if not is_mobile:
+        response.set_cookie(
+            'refresh_token', raw_refresh,
+            httponly=True,
+            samesite='Lax',
+        )
+    return response
+
+
+# ─────────────────────────────────────────────────────────────────────
+# 1.8  QUÊN MẬT KHẨU — GỬI OTP
+# POST /auth/forgot-password/
+# ─────────────────────────────────────────────────────────────────────
+
+@api_view(['POST'])
+@authentication_classes([])
+@permission_classes([AllowAny])
+@throttle_classes([OtpSendThrottle])
+def forgot_password_view(request):
+    email = request.data.get('email')
+
+    if not email:
+        return error("INVALID_FORMAT", "Dữ liệu sai định dạng.", 422)
+
+    if not Users.objects.filter(email=email).exists():
+        return error("EMAIL_NOT_FOUND", "Email không tồn tại trong hệ thống.", 404)
+
+    # Tái dùng save_and_send_otp của Leader, purpose='reset_password'
+    # Sau khi user verify OTP (POST /auth/verify-otp/ với purpose='reset_password'),
+    # verify_otp_view sẽ tự set cache reset_token:{uuid} → email (15 phút).
+    otp = generate_otp()
+    save_and_send_otp(email, purpose='reset_password', otp=otp)
+
+    return success({"message": "OTP đã được gửi tới email."})
+
+
+# ─────────────────────────────────────────────────────────────────────
+# 1.9  ĐẶT LẠI MẬT KHẨU MỚI
+# POST /auth/reset-password/
+# ─────────────────────────────────────────────────────────────────────
+
+@api_view(['POST'])
+@authentication_classes([])
+@permission_classes([AllowAny])
+def reset_password_view(request):
+    reset_token  = request.data.get('reset_token')
+    new_password = request.data.get('new_password')
+    logout_all   = request.data.get('logout_all_devices', False)
+
+    if not reset_token or not new_password:
+        return error("INVALID_FORMAT", "Dữ liệu sai định dạng.", 422)
+
+    # reset_token được set bởi verify_otp_view (purpose='reset_password')
+    # cache key: "reset_token:{uuid}" → email
+    email = cache.get(f"reset_token:{reset_token}")
+
+    if not email:
+        # Không phân biệt invalid vs expired với client để tránh dò token
+        return error("RESET_TOKEN_EXPIRED", "Reset token hết hạn hoặc không hợp lệ.", 400)
+
+    user = Users.objects.filter(email=email).first()
+    if not user:
+        return error("RESET_TOKEN_INVALID", "Reset token không hợp lệ.", 400)
+
+    # Không cho đặt lại mật khẩu trùng mật khẩu cũ
+    if user.password_hash and check_password(new_password, user.password_hash):
+        return error("SAME_PASSWORD", "Mật khẩu mới không được trùng mật khẩu cũ.", 422)
+
+    # Cập nhật mật khẩu
+    user.password_hash = make_password(new_password)
+    user.updated_at    = timezone.now()
+    user.save(update_fields=['password_hash', 'updated_at'])
+
+    # Xoá reset_token khỏi cache — dùng 1 lần duy nhất
+    cache.delete(f"reset_token:{reset_token}")
+
+    # Vô hiệu hoá toàn bộ refresh token cũ nếu user yêu cầu
+    if logout_all:
+        from ..models import RefreshTokens
+        RefreshTokens.objects.filter(
+            user_id=user.id,
+            revoked_at__isnull=True,
+        ).update(revoked_at=timezone.now())
+
+    # Cấp token mới — cấu trúc giống hệt login_view (1.4)
+    raw_refresh = generate_refresh_token()
+    save_refresh_token(user.id, raw_refresh)
+
+    is_mobile = request.headers.get('X-Platform') == 'mobile'
+
+    data = {
+        "access_token": str(AccessToken.for_user(user)),
+        "expires_in":   900,
+        "user": {
+            "id":         user.id,
+            "name":       user.name,
+            "email":      user.email,
+            "avatar_url": user.avatar_url,
+        },
+    }
+    if is_mobile:
+        data["refresh_token"] = raw_refresh
+
+    response = success(data)
+    if not is_mobile:
+        response.set_cookie(
+            'refresh_token', raw_refresh,
+            httponly=True,
+            samesite='Lax',
+        )
     return response
