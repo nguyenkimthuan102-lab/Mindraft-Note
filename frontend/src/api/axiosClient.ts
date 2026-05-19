@@ -6,8 +6,8 @@ import { Platform } from 'react-native';
 // ---------- Base URL ----------
 const getBaseUrl = () => {
   if (__DEV__) {
-    if (Platform.OS === 'android') return 'http://192.168.1.9:8000/api';
-    if (Platform.OS === 'ios') return 'http://192.168.1.9:8000/api';
+    if (Platform.OS === 'android') return process.env.EXPO_PUBLIC_API_URL;
+    if (Platform.OS === 'ios') return process.env.EXPO_PUBLIC_API_URL;
     return 'http://localhost:8000/api';
   }
   return process.env.EXPO_PUBLIC_API_URL ?? 'https://api.mindraft.com/v1';
