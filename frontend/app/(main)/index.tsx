@@ -1,4 +1,5 @@
-import { ScrollView, StyleSheet, View } from 'react-native';
+import { ScrollView, StyleSheet, View, useWindowDimensions, TouchableOpacity, Text } from 'react-native';
+import { Icon } from 'react-native-paper';
 import { useState, useEffect } from 'react';
 import { NoteCard, NoteCardData } from '../../src/components/notes/NoteCard';
 import { NoteEditor } from '../../src/components/notes/NoteEditor';
@@ -72,6 +73,9 @@ export default function HomeScreen() {
   const { theme } = useAppStore();
   const { setSyncing, setDone, setError } = useSyncStore();
   const [notes, setNotes] = useState<NoteCardData[]>([]);
+  const { width } = useWindowDimensions();
+  const isMobile = width < 768;
+  const [fabMenuVisible, setFabMenuVisible] = useState(false);
   const {
     editorVisible,
     editorMode,
@@ -107,6 +111,26 @@ export default function HomeScreen() {
     setNotes(prev => prev.map(n => n.id === id ? { ...n, ...changes } : n));
   };
 
+  useEffect(() => {
+    useSelectionStore.getState().setHandlers({
+      batchUpdate: (changes) => {
+        const ids = useSelectionStore.getState().selectedIds;
+        setNotes(prev => prev.map(n => ids.includes(n.id) ? { ...n, ...changes } : n));
+        clearSelection();
+      },
+      batchDelete: () => {
+        const ids = useSelectionStore.getState().selectedIds;
+        setNotes(prev => prev.filter(n => !ids.includes(n.id)));
+        clearSelection();
+      },
+      batchArchive: () => {
+        const ids = useSelectionStore.getState().selectedIds;
+        setNotes(prev => prev.filter(n => !ids.includes(n.id)));
+        clearSelection(); // Should probably clear selection after archiving too
+      }
+    });
+  }, []);
+
   const handleDelete = (id: string) => {
     setNotes(prev => prev.filter(n => n.id !== id));
   };
@@ -125,7 +149,11 @@ export default function HomeScreen() {
   };
 
   const openEditNote = (note: NoteCardData) => {
-    openEditNoteStore(note);
+    if (selectedIds.length > 0) {
+      toggleSelect(note.id);
+    } else {
+      openEditNoteStore(note);
+    }
   };
 
   const closeEditor = () => {
@@ -151,11 +179,18 @@ export default function HomeScreen() {
       <ScrollView
         // THÊM: Style mảng để gán màu nền động
         style={[styles.scroll, { backgroundColor: dynamicBg }]}
-        contentContainerStyle={styles.container}
+        contentContainerStyle={[
+          styles.container,
+          isMobile && { paddingTop: 12, paddingHorizontal: 8, paddingBottom: 100 }
+        ]}
         showsVerticalScrollIndicator={false}
       >
         <View style={styles.inner}>
-          <QuickCapture onCreateText={openCreateText} onCreateTodo={openCreateTodo} />
+          {!isMobile && (
+            <View style={{ maxWidth: 700, width: '100%', alignSelf: 'center', marginBottom: 24 }}>
+              <QuickCapture onCreateText={openCreateText} onCreateTodo={openCreateTodo} />
+            </View>
+          )}
 
           {/* 2. Thay thế render cũ bằng NoteList mới - THÊM: truyền viewMode */}
           <NoteList
@@ -171,7 +206,7 @@ export default function HomeScreen() {
 
           <NoteList
             title="Khác"
-            notes={others}           
+            notes={others}
             onPressNote={openEditNote}
             onUpdateNote={handleUpdate}
             onDeleteNote={handleDelete}
@@ -189,6 +224,37 @@ export default function HomeScreen() {
         onClose={closeEditor}
         onSave={handleSaveNote}
       />
+
+      {isMobile && (
+        <>
+          {fabMenuVisible && (
+            <>
+              <TouchableOpacity
+                style={StyleSheet.absoluteFillObject}
+                activeOpacity={1}
+                onPress={() => setFabMenuVisible(false)}
+              />
+              <View style={[styles.fabMenu, isDark && { backgroundColor: '#1F2937' }]}>
+                <TouchableOpacity style={styles.fabMenuItem} onPress={() => { setFabMenuVisible(false); openCreateTodo(); }}>
+                  <Icon source="checkbox-marked-outline" size={20} color={isDark ? '#F9FAFB' : colors.textPrimary} />
+                  <Text style={[styles.fabMenuText, { color: isDark ? '#F9FAFB' : colors.textPrimary }]}>Danh sách việc cần làm</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.fabMenuItem} onPress={() => { setFabMenuVisible(false); openCreateText(); }}>
+                  <Icon source="text-box-outline" size={20} color={isDark ? '#F9FAFB' : colors.textPrimary} />
+                  <Text style={[styles.fabMenuText, { color: isDark ? '#F9FAFB' : colors.textPrimary }]}>Văn bản</Text>
+                </TouchableOpacity>
+              </View>
+            </>
+          )}
+          <TouchableOpacity
+            style={[styles.fab, { backgroundColor: colors.primary }]}
+            onPress={() => setFabMenuVisible(!fabMenuVisible)}
+            activeOpacity={0.8}
+          >
+            <Icon source={fabMenuVisible ? "close" : "plus"} size={28} color="#FFF" />
+          </TouchableOpacity>
+        </>
+      )}
     </View>
   );
 }
@@ -207,6 +273,45 @@ const styles = StyleSheet.create({
   },
   inner: {
     width: '100%',
-    maxWidth: 720,
+  },
+  fab: {
+    position: 'absolute',
+    bottom: 24,
+    right: 24,
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    alignItems: 'center',
+    justifyContent: 'center',
+    elevation: 6,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.27,
+    shadowRadius: 4.65,
+  },
+  fabMenu: {
+    position: 'absolute',
+    bottom: 96,
+    right: 24,
+    backgroundColor: colors.bgSurface,
+    borderRadius: 12,
+    paddingVertical: 8,
+    elevation: 8,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 5,
+    minWidth: 180,
+  },
+  fabMenuItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    gap: 12,
+  },
+  fabMenuText: {
+    fontFamily: 'Inter-Medium',
+    fontSize: 15,
   },
 });

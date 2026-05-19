@@ -1,7 +1,7 @@
 import { Feather } from '@expo/vector-icons';
 import { usePathname, useRouter } from 'expo-router';
 import { useState } from 'react';
-import { Image, Platform, StyleSheet, Text, TextInput, TouchableOpacity, View, LayoutAnimation } from 'react-native';
+import { Image, Platform, StyleSheet, Text, TextInput, TouchableOpacity, View, LayoutAnimation, useWindowDimensions } from 'react-native';
 import { Icon, Menu, Divider } from 'react-native-paper';
 import { colors } from '../../constants/colors';
 import { useLayoutStore } from '../../store/useLayoutStore';
@@ -17,9 +17,23 @@ interface TopbarProps {
 
 const logoIcon = require('../../../assets/images/icon.png');
 
-function ActionBtn({ icon, label, isDark }: { icon: string; label: string; isDark?: boolean }) {
+const NOTE_COLORS = [
+  { key: 'default', bg: '#FFFFFF' }, { key: 'red', bg: '#FADADD' },
+  { key: 'orange', bg: '#FEEFC3' }, { key: 'yellow', bg: '#FEF7CD' },
+  { key: 'green', bg: '#E2F3E8' }, { key: 'teal', bg: '#D0F4EE' },
+  { key: 'blue', bg: '#D3E3FD' }, { key: 'purple', bg: '#E8DEFC' },
+  { key: 'pink', bg: '#FDCFE8' }, { key: 'brown', bg: '#F0E6DA' },
+];
+
+const darkCardColorMap: Record<string, string> = {
+  default: '#1F2937', red: '#4C1D1D', orange: '#452A10', yellow: '#453510',
+  green: '#064E3B', teal: '#103E3E', blue: '#1E3A8A', purple: '#2E1065',
+  pink: '#4C1D35', brown: '#2D251F',
+};
+
+function ActionBtn({ icon, label, isDark, onPress }: { icon: string; label: string; isDark?: boolean; onPress?: () => void }) {
   return (
-    <TouchableOpacity style={styles.iconBtn}>
+    <TouchableOpacity style={styles.iconBtn} onPress={onPress}>
       <Icon source={icon} size={20} color={isDark ? '#9ca3af' : colors.textSecondary} />
     </TouchableOpacity>
   );
@@ -40,6 +54,10 @@ export function Topbar({ onViewModeChange }: TopbarProps) {
   const isSettings = pathname.includes('settings');
   const router = useRouter();
   const { status: syncStatus } = useSyncStore();
+  
+  const { width } = useWindowDimensions();
+  const isMobile = width < 768;
+  const [isMobileSearchActive, setIsMobileSearchActive] = useState(false);
 
   // THÊM: Logic màu sắc động cho Dark Mode
   const isDark = theme === 'dark';
@@ -52,8 +70,9 @@ export function Topbar({ onViewModeChange }: TopbarProps) {
     placeholder: isDark ? '#6b7280' : colors.textPlaceholder,
   };
 
-  const { selectedIds, clearSelection } = useSelectionStore();
+  const { selectedIds, clearSelection, batchUpdate, batchDelete, batchArchive } = useSelectionStore();
   const selectedCount = selectedIds.length;
+  const [showColorPicker, setShowColorPicker] = useState(false);
 
   const handleSortChange = (field: any, direction: any) => {
     setSort({ field, direction });
@@ -81,21 +100,35 @@ export function Topbar({ onViewModeChange }: TopbarProps) {
 
   if (selectedCount > 0) {
     return (
-      <View style={[styles.topbar, { backgroundColor: dynamicColors.bg, borderBottomColor: dynamicColors.border }]}>
+      <View style={[styles.topbar, { backgroundColor: dynamicColors.bg, borderBottomColor: dynamicColors.border, position: 'relative' }]}>
         <View style={styles.selectionSection}>
           <TouchableOpacity onPress={clearSelection} style={styles.menuBtn}>
             <Icon source="close" size={22} color={dynamicColors.text} />
           </TouchableOpacity>
-          <Text style={[styles.selectionText, { color: dynamicColors.text }]}>{selectedCount} đã chọn</Text>
+          <Text style={[styles.selectionText, { color: dynamicColors.text }]}>{selectedCount}</Text>
         </View>
 
-        <View style={styles.selectionActions}>
-          <ActionBtn icon="pin-outline" label="Ghim" isDark={isDark} />
-          <ActionBtn icon="bell-outline" label="Nhắc nhở" isDark={isDark} />
-          <ActionBtn icon="palette-outline" label="Màu" isDark={isDark} />
-          <ActionBtn icon="archive-arrow-down-outline" label="Lưu trữ" isDark={isDark} />
-          <ActionBtn icon="delete-outline" label="Xóa" isDark={isDark} />
+        <View style={[styles.selectionActions, isMobile && { gap: 4 }]}>
+          <ActionBtn icon="pin-outline" label="Ghim" isDark={isDark} onPress={() => batchUpdate?.({ is_pinned: true })} />
+          <ActionBtn icon="palette-outline" label="Màu" isDark={isDark} onPress={() => setShowColorPicker(!showColorPicker)} />
+          <ActionBtn icon="archive-arrow-down-outline" label="Lưu trữ" isDark={isDark} onPress={batchArchive} />
+          <ActionBtn icon="delete-outline" label="Xóa" isDark={isDark} onPress={batchDelete} />
         </View>
+
+        {showColorPicker && (
+          <View style={[styles.colorPicker, { backgroundColor: dynamicColors.bg, borderColor: dynamicColors.border }]}>
+            {NOTE_COLORS.map((c) => (
+              <TouchableOpacity
+                key={c.key}
+                style={[styles.colorDot, { backgroundColor: isDark ? (darkCardColorMap[c.key] || darkCardColorMap.default) : c.bg, borderColor: dynamicColors.border }]}
+                onPress={() => {
+                  batchUpdate?.({ color: c.key });
+                  setShowColorPicker(false);
+                }}
+              />
+            ))}
+          </View>
+        )}
       </View>
     );
   }
@@ -103,47 +136,82 @@ export function Topbar({ onViewModeChange }: TopbarProps) {
   return (
     <View style={[styles.topbar, { backgroundColor: dynamicColors.bg, borderBottomColor: dynamicColors.border }]}>
 
-      <View style={styles.leftSection}>
-        <TouchableOpacity onPress={toggleSidebar} style={styles.menuBtn}>
-          <Feather name="menu" size={22} color={dynamicColors.textSec} />
-        </TouchableOpacity>
-        
-        <TouchableOpacity
-          activeOpacity={0.7}
-          style={styles.logoContainer}
-          disabled={isSettings}
-          onPress={() => {
-            if (isHome) {
-              router.replace('/(main)');
-            } else {
-              router.push('/(main)');
-            }
-          }}
-        >
-          {isHome ? (
-            <>
-              <Image source={logoIcon} style={styles.logoImg} />
-              <Text style={[styles.brandText, { color: dynamicColors.text }]}>Mindraft Note</Text>
-            </>
-          ) : (
-            <Text style={[styles.areaTitle, { color: dynamicColors.textSec }]}>{getAreaTitle()}</Text>
+      {/* MOBILE FULL-WIDTH SEARCH OVERLAY */}
+      {isMobile && isMobileSearchActive ? (
+        <View style={[styles.mobileSearchOverlay, { backgroundColor: dynamicColors.bg }]}>
+          <TouchableOpacity onPress={() => setIsMobileSearchActive(false)} style={styles.menuBtn}>
+            <Feather name="arrow-left" size={22} color={dynamicColors.textSec} />
+          </TouchableOpacity>
+          
+          <View style={[styles.searchWrapMobile, { backgroundColor: dynamicColors.searchBg }]}>
+            <TextInput
+              style={[styles.searchInput, { color: dynamicColors.text }]}
+              value={search}
+              onChangeText={setSearch}
+              placeholder="Tìm kiếm..."
+              placeholderTextColor={dynamicColors.placeholder}
+              autoFocus
+            />
+            {search.length > 0 && (
+              <TouchableOpacity onPress={() => setSearch('')}>
+                <Feather name="x" size={16} color={dynamicColors.textSec} />
+              </TouchableOpacity>
+            )}
+          </View>
+        </View>
+      ) : (
+        <>
+          <View style={[styles.leftSection, isMobile && { width: 'auto' }]}>
+            <TouchableOpacity onPress={toggleSidebar} style={styles.menuBtn}>
+              <Feather name="menu" size={22} color={dynamicColors.textSec} />
+            </TouchableOpacity>
+            
+            {!isMobile && (
+              <TouchableOpacity
+                activeOpacity={0.7}
+                style={styles.logoContainer}
+                disabled={isSettings}
+                onPress={() => {
+                  if (isHome) {
+                    router.replace('/(main)');
+                  } else {
+                    router.push('/(main)');
+                  }
+                }}
+              >
+                {isHome ? (
+                  <>
+                    <Image source={logoIcon} style={styles.logoImg} />
+                    <Text style={[styles.brandText, { color: dynamicColors.text }]}>Mindraft Note</Text>
+                  </>
+                ) : (
+                  <Text style={[styles.areaTitle, { color: dynamicColors.textSec }]}>{getAreaTitle()}</Text>
+                )}
+              </TouchableOpacity>
+            )}
+          </View>
+
+          {!isMobile && (
+            <View style={[styles.searchWrap, { backgroundColor: dynamicColors.searchBg }]}>
+              <Feather name="search" size={16} color={dynamicColors.textSec} style={styles.searchIcon} />
+              <TextInput
+                style={[styles.searchInput, { color: dynamicColors.text }]}
+                value={search}
+                onChangeText={setSearch}
+                placeholder="Search notes, tags, or text..."
+                placeholderTextColor={dynamicColors.placeholder}
+              />
+            </View>
           )}
-        </TouchableOpacity>
-      </View>
 
-      <View style={[styles.searchWrap, { backgroundColor: dynamicColors.searchBg }]}>
-        <Feather name="search" size={16} color={dynamicColors.textSec} style={styles.searchIcon} />
-        <TextInput
-          style={[styles.searchInput, { color: dynamicColors.text }]}
-          value={search}
-          onChangeText={setSearch}
-          placeholder="Search notes, tags, or text..."
-          placeholderTextColor={dynamicColors.placeholder}
-        />
-      </View>
+          <View style={[styles.actions, isMobile && { flex: 1, justifyContent: 'space-between', marginLeft: 8 }]}>
+            {isMobile && (
+              <TouchableOpacity style={styles.iconBtn} onPress={() => setIsMobileSearchActive(true)}>
+                <Feather name="search" size={20} color={dynamicColors.textSec} />
+              </TouchableOpacity>
+            )}
 
-      <View style={styles.actions}>
-        <SyncIndicator status={syncStatus} />
+            <SyncIndicator status={syncStatus} />
 
         <TouchableOpacity style={styles.iconBtn} onPress={handleToggle}>
           <Feather name={viewMode === 'list' ? "grid" : "list"} size={20} color={dynamicColors.textSec} />
@@ -228,6 +296,8 @@ export function Topbar({ onViewModeChange }: TopbarProps) {
           <Text style={styles.avatarText}>U</Text>
         </TouchableOpacity>
       </View>
+      </>
+      )}
     </View>
   );
 }
@@ -276,8 +346,9 @@ const styles = StyleSheet.create({
     marginLeft: 12,
   },
   searchWrap: {
-    width: '100%',
+    flex: 1,
     maxWidth: 800,
+    marginHorizontal: 16,
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: colors.gray100,
@@ -285,6 +356,23 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     height: 44,
     gap: 8,
+  },
+  searchWrapMobile: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.gray100,
+    borderRadius: 8,
+    paddingHorizontal: 14,
+    height: 40,
+    gap: 8,
+  },
+  mobileSearchOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    zIndex: 10,
   },
   searchIcon: {
     flexShrink: 0,
@@ -353,5 +441,26 @@ const styles = StyleSheet.create({
     backgroundColor: colors.primary,
     borderWidth: 1,
     borderColor: colors.bgSurface,
+  },
+  colorPicker: {
+    position: 'absolute', 
+    top: 60, 
+    right: 20, 
+    flexDirection: 'row', 
+    flexWrap: 'wrap', 
+    borderRadius: 10, 
+    padding: 8, 
+    gap: 8, 
+    width: 220, 
+    zIndex: 9999, 
+    borderWidth: 1, 
+    ...Platform.select({
+      web: { boxShadow: '0 4px 16px rgba(0,0,0,0.12)' } as any,
+      default: { elevation: 5, shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.1, shadowRadius: 10 }
+    }),
+  },
+  colorDot: {
+    width: 32, height: 32, borderRadius: 16, borderWidth: 1,
+    ...Platform.select({ web: { cursor: 'pointer' } as any }),
   },
 });

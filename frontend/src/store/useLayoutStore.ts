@@ -6,6 +6,6 @@ interface LayoutState {
 }
 
 export const useLayoutStore = create<LayoutState>((set) => ({
-  isSidebarOpen: true, 
+  isSidebarOpen: false, 
   toggleSidebar: () => set((state) => ({ isSidebarOpen: !state.isSidebarOpen })),
 }));

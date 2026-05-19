@@ -1,10 +1,19 @@
-// src/store/useSelectionStore.ts
 import { create } from 'zustand';
+import type { NoteCardData } from '../components/notes/NoteCard';
 
 interface SelectionState {
   selectedIds: string[];
   toggleSelect: (id: string) => void;
   clearSelection: () => void;
+
+  batchUpdate?: (changes: Partial<NoteCardData>) => void;
+  batchDelete?: () => void;
+  batchArchive?: () => void;
+  setHandlers: (handlers: {
+    batchUpdate: (changes: Partial<NoteCardData>) => void;
+    batchDelete: () => void;
+    batchArchive: () => void;
+  }) => void;
 }
 
 export const useSelectionStore = create<SelectionState>((set) => ({
@@ -15,4 +24,5 @@ export const useSelectionStore = create<SelectionState>((set) => ({
       : [...state.selectedIds, id]
   })),
   clearSelection: () => set({ selectedIds: [] }),
+  setHandlers: (handlers) => set(handlers),
 }));

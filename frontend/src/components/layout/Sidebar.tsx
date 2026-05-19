@@ -1,10 +1,9 @@
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Platform } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Platform, useWindowDimensions } from 'react-native';
 import React from 'react';
 import { useRouter, usePathname } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
 import { colors } from '../../constants/colors';
 import { useLayoutStore } from '../../store/useLayoutStore';
-import { useNoteStore } from '../../store/useNoteStore';
 // THÊM: Import AppStore để lấy theme
 import { useAppStore } from '../../store/useAppStore'; 
 
@@ -17,9 +16,10 @@ interface NavItemProps {
   active: boolean;
   // THÊM: props màu động
   isDark: boolean;
+  onClose?: () => void;
 }
 
-function NavItem({ icon, label, href, active, isDark }: NavItemProps) {
+function NavItem({ icon, label, href, active, isDark, onClose }: NavItemProps) {
   const router = useRouter();
   
   // Màu sắc động cho item
@@ -33,7 +33,10 @@ function NavItem({ icon, label, href, active, isDark }: NavItemProps) {
         styles.navItem, 
         active && { backgroundColor: activeBg } // Ghi đè màu active
       ]}
-      onPress={() => router.push(href as any)}
+      onPress={() => {
+        router.push(href as any);
+        if (onClose) onClose();
+      }}
       activeOpacity={0.7}
     >
       <Feather
@@ -53,11 +56,16 @@ function NavItem({ icon, label, href, active, isDark }: NavItemProps) {
 }
 
 export function Sidebar() {
-  const { isSidebarOpen } = useLayoutStore();
+  const { isSidebarOpen, toggleSidebar } = useLayoutStore();
   const pathname = usePathname();
   const router = useRouter();
-  const { openCreateText, openCreateTodo } = useNoteStore();
-  const [isNewNoteOpen, setIsNewNoteOpen] = React.useState(false);
+
+  const { width } = useWindowDimensions();
+  const isMobile = width < 768;
+
+  const handleCloseIfMobile = () => {
+    if (isMobile && isSidebarOpen) toggleSidebar();
+  };
 
   // THÊM: Lấy theme từ AppStore
   const { theme } = useAppStore();
@@ -74,60 +82,12 @@ export function Sidebar() {
 
   if (!isSidebarOpen) return null;
 
-  const handleCreateText = () => {
-    setIsNewNoteOpen(false);
-    if (pathname !== '/') {
-      router.push('/(main)');
-    }
-    openCreateText();
-  };
-
-  const handleCreateTodo = () => {
-    setIsNewNoteOpen(false);
-    if (pathname !== '/') {
-      router.push('/(main)');
-    }
-    openCreateTodo();
-  };
-
   return (
     <View style={[styles.sidebar, { backgroundColor: dynamicColors.bg, borderRightColor: dynamicColors.border }]}>
       <View style={styles.fixedTopNav}>
-        {/* New note */}
-        <View style={styles.newNoteWrapper}>
-          <TouchableOpacity 
-            style={styles.newNote} 
-            activeOpacity={0.8}
-            onPress={() => setIsNewNoteOpen(!isNewNoteOpen)}
-          >
-            <Feather name="plus" size={18} color={dynamicColors.textMain} />
-            <Text style={[styles.newNoteText, { color: dynamicColors.textMain }]}>New note</Text>
-          </TouchableOpacity>
-
-          {isNewNoteOpen && (
-            <View style={[styles.dropdownContent, { borderLeftColor: dynamicColors.border }]}>
-              <TouchableOpacity
-                style={styles.dropdownItem}
-                onPress={handleCreateText}
-              >
-                <Feather name="type" size={14} color={dynamicColors.textSec} />
-                <Text style={[styles.dropdownItemText, { color: dynamicColors.textSec }]}>Văn bản</Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={styles.dropdownItem}
-                onPress={handleCreateTodo}
-              >
-                <Feather name="check-square" size={14} color={dynamicColors.textSec} />
-                <Text style={[styles.dropdownItemText, { color: dynamicColors.textSec }]}>To-do list</Text>
-              </TouchableOpacity>
-            </View>
-          )}
-        </View>
-
         {/* Main nav */}
-        <NavItem icon="file-text" label="All notes" href="/(main)" active={pathname === '/'} isDark={isDark} />
-        <NavItem icon="bell" label="Reminders" href="/(main)/reminders" active={pathname === '/reminders'} isDark={isDark} />
+        <NavItem icon="file-text" label="All notes" href="/(main)" active={pathname === '/'} isDark={isDark} onClose={handleCloseIfMobile} />
+        <NavItem icon="bell" label="Reminders" href="/(main)/reminders" active={pathname === '/reminders'} isDark={isDark} onClose={handleCloseIfMobile} />
 
         <View style={[styles.divider, { backgroundColor: dynamicColors.border }]} />
       </View>
@@ -151,9 +111,9 @@ export function Sidebar() {
       {/* 4. Footer */}
       <View style={styles.footer}>
         <View style={[styles.divider, { backgroundColor: dynamicColors.border }]} />
-        <NavItem icon="archive" label="Archive" href="/(main)/archive" active={pathname === '/archive'} isDark={isDark} />
-        <NavItem icon="trash-2" label="Trash" href="/(main)/trash" active={pathname === '/trash'} isDark={isDark} />
-        <NavItem icon="settings" label="Settings" href="/(main)/settings" active={pathname === '/settings'} isDark={isDark} />
+        <NavItem icon="archive" label="Archive" href="/(main)/archive" active={pathname === '/archive'} isDark={isDark} onClose={handleCloseIfMobile} />
+        <NavItem icon="trash-2" label="Trash" href="/(main)/trash" active={pathname === '/trash'} isDark={isDark} onClose={handleCloseIfMobile} />
+        <NavItem icon="settings" label="Settings" href="/(main)/settings" active={pathname === '/settings'} isDark={isDark} onClose={handleCloseIfMobile} />
       </View>
     </View>
   );
@@ -162,6 +122,7 @@ export function Sidebar() {
 const styles = StyleSheet.create({
   sidebar: {
     width: 250,
+    height: '100%',
     backgroundColor: colors.bgSurface,
     borderRightWidth: 1,
     borderRightColor: colors.borderDefault,
@@ -181,41 +142,6 @@ const styles = StyleSheet.create({
   scroll: {
     flex: 1,
     paddingHorizontal: 18,
-  },
-  newNote: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    paddingVertical: 12,
-    paddingHorizontal: 8,
-    marginTop: 8,
-  },
-  newNoteWrapper: {
-    marginTop: 8,
-    marginBottom: 4,
-  },
-  dropdownContent: {
-    marginLeft: 36,
-    marginTop: 2,
-    borderLeftWidth: 1,
-    borderLeftColor: colors.borderDefault,
-  },
-  dropdownItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    paddingVertical: 10,
-    paddingHorizontal: 12,
-  },
-  dropdownItemText: {
-    fontFamily: 'Inter-Regular',
-    fontSize: 14,
-    color: colors.textSecondary,
-  },
-  newNoteText: {
-    fontFamily: 'Inter-Medium',
-    fontSize: 15,
-    color: colors.textPrimary,
   },
   navItem: {
     flexDirection: 'row',

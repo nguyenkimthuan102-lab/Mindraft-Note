@@ -1,4 +1,4 @@
-import { View, Text, StyleSheet, TouchableOpacity, TextInput, ScrollView, useWindowDimensions, Platform } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, TextInput, ScrollView, useWindowDimensions, Platform, BackHandler } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { colors } from '../../constants/colors';
 import { NoteCardData, TodoItemData } from './NoteCard';
@@ -135,6 +135,25 @@ export function NoteEditor({ visible, mode, note, onClose, onSave }: NoteEditorP
 
   const { width } = useWindowDimensions();
   const isCompact = width < 720;
+  const isMobile = width < 768;
+
+  // Xử lý nút Back trên Android
+  const handleSaveAndCloseRef = useRef<() => void>(() => {});
+
+  useEffect(() => {
+    handleSaveAndCloseRef.current = handleSaveAndClose;
+  });
+
+  useEffect(() => {
+    if (visible && Platform.OS === 'android') {
+      const backAction = () => {
+        handleSaveAndCloseRef.current();
+        return true;
+      };
+      const backHandler = BackHandler.addEventListener('hardwareBackPress', backAction);
+      return () => backHandler.remove();
+    }
+  }, [visible]);
 
   const handleToggleTodo = (id: string, parentId?: string) => {
     if (parentId) {
@@ -319,6 +338,11 @@ export function NoteEditor({ visible, mode, note, onClose, onSave }: NoteEditorP
 
         {/* Header */}
         <View style={styles.headerRow}>
+          {isMobile && (
+            <TouchableOpacity onPress={handleSaveAndClose} style={styles.iconBtn}>
+              <MaterialCommunityIcons name="arrow-left" size={24} color={colors.textSecondary} />
+            </TouchableOpacity>
+          )}
           <TextInput
             value={title}
             onChangeText={setTitle}
@@ -571,9 +595,11 @@ export function NoteEditor({ visible, mode, note, onClose, onSave }: NoteEditorP
             </Tooltip>
             <ToolbarBtn icon="undo" onPress={handleUndo} label="Hoàn tác" />
             <ToolbarBtn icon="redo" onPress={handleRedo} label="Làm lại" />
-            <TouchableOpacity onPress={handleSaveAndClose} style={styles.closeBtn}>
-              <Text style={styles.closeText}>Đóng</Text>
-            </TouchableOpacity>
+            {!isMobile && (
+              <TouchableOpacity onPress={handleSaveAndClose} style={styles.closeBtn}>
+                <Text style={styles.closeText}>Đóng</Text>
+              </TouchableOpacity>
+            )}
           </View>
         </View>
 

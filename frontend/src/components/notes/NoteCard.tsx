@@ -1,5 +1,6 @@
-import { View, Text, StyleSheet, TouchableOpacity, Platform, Modal, Dimensions } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Platform, Modal, Dimensions, useWindowDimensions } from 'react-native';
 import { Icon } from 'react-native-paper';
+import { usePathname } from 'expo-router';
 import { useState, useRef } from 'react';
 import { TagChip } from '../ui/TagChip';
 import { colors } from '../../constants/colors';
@@ -165,7 +166,10 @@ function ActionBtn({ icon, label, onPress, color }: {
 
 export function NoteCard({ note, isSelected, onSelect, isGridView, onPress, onUpdate, onDelete, onArchive }: NoteCardProps) {
   const { theme } = useAppStore(); // Lấy theme hệ thống
+  const pathname = usePathname();
   const isDark = theme === 'dark';
+  const { width } = useWindowDimensions();
+  const isMobile = width < 768;
 
   const [hovered, setHovered] = useState(false);
   const [showColorPicker, setShowColorPicker] = useState(false);
@@ -212,14 +216,16 @@ export function NoteCard({ note, isSelected, onSelect, isGridView, onPress, onUp
       style={[
         styles.card,
         { backgroundColor: bg, borderColor: dynamicColors.border },
+        isMobile && { marginBottom: 8 },
+        !isGridView && !isMobile && { marginBottom: 0 },
         hovered && styles.cardHovered,
         isSelected && { borderColor: colors.primary, borderWidth: 2 },
         { zIndex: hovered ? 100 : 1 },
       ]}
       {...hoverProps}
     >
-      {(hovered || localNote.is_pinned) && (
-        <View style={[styles.pinCorner, { opacity: (hovered || localNote.is_pinned) ? 1 : 0 }]}>
+      {(hovered || localNote.is_pinned || isMobile) && (
+        <View style={[styles.pinCorner, { opacity: (hovered || localNote.is_pinned || isMobile) ? 1 : 0 }]}>
           <HoverBtn
             onPress={() => update({ is_pinned: !localNote.is_pinned })}
             label={localNote.is_pinned ? "Bỏ ghim" : "Ghim"}
@@ -236,6 +242,8 @@ export function NoteCard({ note, isSelected, onSelect, isGridView, onPress, onUp
       <TouchableOpacity
         style={styles.cardContent}
         onPress={onPress}
+        onLongPress={isMobile ? onSelect : undefined}
+        delayLongPress={isMobile ? 300 : undefined}
         activeOpacity={0.9}
       >
         {localNote.title ? (
@@ -288,8 +296,8 @@ export function NoteCard({ note, isSelected, onSelect, isGridView, onPress, onUp
         </View>
       </TouchableOpacity>
 
-      {hovered && (
-        <View style={[styles.toolbar, { borderTopColor: dynamicColors.border }]}>
+      {!isMobile && hovered && (
+        <View style={[styles.toolbar, { backgroundColor: bg.length === 7 ? `${bg}BF` : bg }]}>
           <View style={{ position: 'relative' }}>
             <ActionBtn
               icon="palette-outline"
@@ -305,7 +313,9 @@ export function NoteCard({ note, isSelected, onSelect, isGridView, onPress, onUp
               />
             )}
           </View>
-          {!isTodo && <ActionBtn icon="bell-outline" label="Nhắc nhở" onPress={() => { }} />}
+          {!(pathname?.includes('/archive') || pathname?.includes('/trash')) && (
+            <ActionBtn icon="bell-outline" label="Nhắc nhở" onPress={() => { }} />
+          )}
           <ActionBtn icon="account-plus-outline" label="Thêm CTV" onPress={() => { }} />
           <ActionBtn icon="archive-arrow-down-outline" label="Lưu trữ" onPress={() => onArchive?.(note.id)} />
 
@@ -323,7 +333,6 @@ export function NoteCard({ note, isSelected, onSelect, isGridView, onPress, onUp
                   } else {
                     setDotMenuPos({ x: x - 160, y: y + h + 4 });
                   }
-                  setDotMenuPos({ x: x - 160, y: y + h + 4 });
                 });
                 setShowDotMenu(v => !v);
                 setShowColorPicker(false);
@@ -389,11 +398,15 @@ const styles = StyleSheet.create({
   avatarExtra: { backgroundColor: colors.gray300 },
   avatarExtraText: { fontFamily: 'Inter-Regular', fontSize: 8, color: colors.textSecondary },
   toolbar: {
-    flexDirection: 'row', alignItems: 'center', paddingHorizontal: 8, paddingVertical: 4, borderTopWidth: 1, gap: 2, ...Platform.select({
+    position: 'absolute', bottom: 0, left: 0, right: 0,
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-evenly', flexWrap: 'wrap',
+    paddingHorizontal: 4, paddingVertical: 8, 
+    borderBottomLeftRadius: 8, borderBottomRightRadius: 8,
+    gap: 2, ...Platform.select({
       web: { overflow: 'visible' } as any,
     }),
   },
-  actionBtn: { width: 32, height: 32, borderRadius: 6, alignItems: 'center', justifyContent: 'center', ...Platform.select({ web: { cursor: 'pointer' } as any }), },
+  actionBtn: { width: 28, height: 28, borderRadius: 6, alignItems: 'center', justifyContent: 'center', ...Platform.select({ web: { cursor: 'pointer' } as any }), },
   colorPicker: {
     position: 'absolute', bottom: 36, left: 0, flexDirection: 'row', flexWrap: 'wrap', backgroundColor: colors.bgSurface, borderRadius: 10, padding: 8, gap: 6, width: 172, zIndex: 9999, borderWidth: 1, borderColor: colors.borderDefault, ...Platform.select({
       web: { boxShadow: '0 4px 16px rgba(0,0,0,0.12)' } as any,

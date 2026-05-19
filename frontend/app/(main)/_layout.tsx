@@ -1,28 +1,49 @@
-import { View, StyleSheet } from 'react-native';
+import { View, StyleSheet, useWindowDimensions, TouchableOpacity } from 'react-native';
 import { Slot } from 'expo-router';
 import { Sidebar } from '../../src/components/layout/Sidebar';
 import { Topbar } from '../../src/components/layout/Topbar';
 import { colors } from '../../src/constants/colors';
 import { useLayoutStore } from '../../src/store/useLayoutStore';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { useAppStore } from '../../src/store/useAppStore';
 
 export default function MainLayout() {
-  const { isSidebarOpen } = useLayoutStore(); // Lấy trạng thái đóng/mở
+  const { isSidebarOpen, toggleSidebar } = useLayoutStore(); // Lấy trạng thái đóng/mở
+  const { theme } = useAppStore();
+  const { width } = useWindowDimensions();
+  const isMobile = width < 768;
+  const isDark = theme === 'dark';
+  const dynamicBg = isDark ? '#111827' : colors.bgPage;
 
   return (
-    <View style={{ flex: 1 }}>
+    <SafeAreaView style={{ flex: 1, backgroundColor: dynamicBg }}>
       {/* Topbar nằm trên cùng, chiếm toàn bộ chiều ngang */}
       <Topbar /> 
       
-      <View style={{ flex: 1, flexDirection: 'row' }}>
-        {/* Sidebar nằm bên trái */}
-        <Sidebar />
-        
-        {/* Nội dung chính nằm bên phải */}
+      <View style={{ flex: 1, flexDirection: 'row', position: 'relative' }}>
+        {/* Backdrop overlay trên mobile khi sidebar mở */}
+        {isSidebarOpen && isMobile && (
+          <TouchableOpacity 
+            style={[StyleSheet.absoluteFillObject, { backgroundColor: 'rgba(0,0,0,0.5)', zIndex: 40 }]} 
+            activeOpacity={1} 
+            onPress={toggleSidebar} 
+          />
+        )}
+
+        {/* Sidebar */}
+        <View style={[
+          isSidebarOpen ? { display: 'flex' } : { display: 'none' },
+          isMobile ? styles.sidebarMobile : null
+        ]}>
+          <Sidebar />
+        </View>
+
+        {/* Nội dung chính luôn hiển thị full */}
         <View style={{ flex: 1 }}>
           <Slot />
         </View>
       </View>
-    </View>
+    </SafeAreaView>
   );
 }
 
@@ -46,5 +67,17 @@ const styles = StyleSheet.create({
   searchContainer: {
     flex: 1, // Để thanh search tự giãn rộng ra
     // ...
+  },
+  sidebarMobile: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    bottom: 0,
+    zIndex: 50,
+    shadowColor: '#000',
+    shadowOffset: { width: 4, height: 0 },
+    shadowOpacity: 0.2,
+    shadowRadius: 10,
+    elevation: 15,
   }
 });

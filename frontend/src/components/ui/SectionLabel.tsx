@@ -8,9 +8,9 @@ export function SectionLabel({ label }: { label: string }) {
 const styles = StyleSheet.create({
   text: {
     fontFamily: 'Inter-Medium',
-    fontSize: 10,
-    color: colors.textTertiary,
-    letterSpacing: 0.7,
+    fontSize: 12,
+    color: colors.textSecondary,
+    letterSpacing: 0.5,
     textTransform: 'uppercase',
     marginTop: 20,
     marginBottom: 10,

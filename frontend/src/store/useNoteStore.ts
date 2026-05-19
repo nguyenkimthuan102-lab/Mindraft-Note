@@ -1,4 +1,4 @@
-﻿import { create } from 'zustand';
+import { create } from 'zustand';
 import type { NoteCardData } from '../components/notes/NoteCard';
 
 type ViewMode = 'grid' | 'list';
