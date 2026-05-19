@@ -1,5 +1,5 @@
 import React, { useRef, useState } from 'react';
-import { View, Text, StyleSheet, Alert } from 'react-native';
+import { View, Text, StyleSheet, Alert, Platform } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { AuthCard } from '../../src/components/ui/AuthCard';
 import { Input } from '../../src/components/ui/Input';
@@ -37,21 +37,36 @@ export default function ResetPasswordScreen() {
         logout_all_devices: logoutAll,
       });
 
-      Alert.alert('Thành công', 'Đổi mật khẩu thành công!', [
-        { text: 'OK', onPress: () => router.replace('/(auth)/login') },
-      ]);
+      // Web: window.alert rồi redirect; Mobile: Alert với callback
+      if (Platform.OS === 'web') {
+        window.alert('Đổi mật khẩu thành công!');
+        router.replace('/(auth)/login');
+      } else {
+        Alert.alert('Thành công', 'Đổi mật khẩu thành công!', [
+          { text: 'OK', onPress: () => router.replace('/(auth)/login') },
+        ]);
+      }
     } catch (e: any) {
       const code = e.response?.data?.error?.code;
       if (code === 'RESET_TOKEN_EXPIRED') {
-        Alert.alert(
-          'Phiên hết hạn',
-          'Token đặt lại mật khẩu đã hết hạn. Vui lòng thực hiện lại.',
-          [{ text: 'OK', onPress: () => router.replace('/(auth)/forgot-password') }]
-        );
+        if (Platform.OS === 'web') {
+          window.alert('Token đặt lại mật khẩu đã hết hạn. Vui lòng thực hiện lại.');
+          router.replace('/(auth)/forgot-password');
+        } else {
+          Alert.alert(
+            'Phiên hết hạn',
+            'Token đặt lại mật khẩu đã hết hạn. Vui lòng thực hiện lại.',
+            [{ text: 'OK', onPress: () => router.replace('/(auth)/forgot-password') }]
+          );
+        }
       } else if (code === 'SAME_PASSWORD') {
         setErrors({ password: 'New password must be different from the old one' });
       } else {
-        Alert.alert('Lỗi', 'Không thể cập nhật mật khẩu. Vui lòng thử lại.');
+        if (Platform.OS === 'web') {
+          window.alert('Không thể cập nhật mật khẩu. Vui lòng thử lại.');
+        } else {
+          Alert.alert('Lỗi', 'Không thể cập nhật mật khẩu. Vui lòng thử lại.');
+        }
       }
     } finally {
       setLoading(false);
@@ -63,27 +78,39 @@ export default function ResetPasswordScreen() {
     if (!validate()) return;
 
     if (!reset_token) {
-      Alert.alert('Lỗi', 'Phiên đặt lại mật khẩu không hợp lệ. Vui lòng thực hiện lại từ đầu.');
+      if (Platform.OS === 'web') {
+        window.alert('Phiên đặt lại mật khẩu không hợp lệ. Vui lòng thực hiện lại từ đầu.');
+      } else {
+        Alert.alert('Lỗi', 'Phiên đặt lại mật khẩu không hợp lệ. Vui lòng thực hiện lại từ đầu.');
+      }
       router.replace('/(auth)/forgot-password');
       return;
     }
 
-    Alert.alert(
-      'Đăng xuất các thiết bị khác?',
-      'Bạn có muốn đăng xuất khỏi tất cả thiết bị đang đăng nhập không?',
-      [
-        {
-          text: 'Chỉ thiết bị này',
-          style: 'cancel',
-          onPress: () => callResetApi(false),
-        },
-        {
-          text: 'Tất cả thiết bị',
-          style: 'destructive',
-          onPress: () => callResetApi(true),
-        },
-      ]
-    );
+    // Web dùng window.confirm (trả về boolean); Mobile dùng Alert 2 nút
+    if (Platform.OS === 'web') {
+      const logoutAll = window.confirm(
+        'Bạn có muốn đăng xuất khỏi tất cả thiết bị đang đăng nhập không?\n\nOK = Tất cả thiết bị\nCancel = Chỉ thiết bị này'
+      );
+      callResetApi(logoutAll);
+    } else {
+      Alert.alert(
+        'Đăng xuất các thiết bị khác?',
+        'Bạn có muốn đăng xuất khỏi tất cả thiết bị đang đăng nhập không?',
+        [
+          {
+            text: 'Chỉ thiết bị này',
+            style: 'cancel',
+            onPress: () => callResetApi(false),
+          },
+          {
+            text: 'Tất cả thiết bị',
+            style: 'destructive',
+            onPress: () => callResetApi(true),
+          },
+        ]
+      );
+    }
   };
 
   return (
