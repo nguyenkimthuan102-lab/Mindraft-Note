@@ -70,21 +70,65 @@ class TagSerializer(serializers.ModelSerializer):
             "updated_at",
         ]
 
+from rest_framework import serializers
+from .models import Notes
+
+
 class UpdateNoteSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Notes
 
         fields = [
+            "title",
+            "content",
+            "content_text",
             "color",
             "position",
+            "is_pinned",
+            "is_archived",
+            "is_trashed",
+            "client_updated_at",
         ]
+
+        extra_kwargs = {
+            "title": {"required": False},
+            "content": {"required": False},
+            "content_text": {"required": False},
+            "color": {"required": False},
+            "position": {"required": False},
+            "is_pinned": {"required": False},
+            "is_archived": {"required": False},
+            "is_trashed": {"required": False},
+            "client_updated_at": {"required": False},
+        }
 
     def validate_color(self, value):
 
         if len(value) > 20:
+
             raise serializers.ValidationError(
                 "Invalid color"
+            )
+
+        return value
+
+    def validate_title(self, value):
+
+        if len(value) > 1000:
+
+            raise serializers.ValidationError(
+                "Title too long"
+            )
+
+        return value
+
+    def validate_position(self, value):
+
+        if len(value) > 255:
+
+            raise serializers.ValidationError(
+                "Invalid position"
             )
 
         return value
