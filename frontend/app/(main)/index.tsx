@@ -1,8 +1,10 @@
-import { ScrollView, StyleSheet, View, Alert } from 'react-native';
+import { ScrollView, StyleSheet, View, Alert, useWindowDimensions } from 'react-native';
 import { useState, useEffect } from 'react';
 import { NoteCardData } from '../../src/components/notes/NoteCard';
 import { NoteEditor } from '../../src/components/notes/NoteEditor';
 import { QuickCapture } from '../../src/components/notes/QuickCapture';
+import { FloatingActionButton } from '../../src/components/ui/FloatingActionButton';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { colors } from '../../src/constants/colors';
 import { useSyncStore } from '../../src/store/useSyncStore';
@@ -145,13 +147,23 @@ export default function HomeScreen() {
   const pinned = notes.filter(n => n.is_pinned);
   const others = notes.filter(n => !n.is_pinned);
 
+  const insets = useSafeAreaInsets();
+  const { width } = useWindowDimensions();
+  const isMobile = width < 720;
   const isGrid = viewMode === 'grid';
 
   return (
     <View style={[{ flex: 1 }, { backgroundColor: dynamicBg }]}>
       <ScrollView
         style={[styles.scroll, { backgroundColor: dynamicBg }]}
-        contentContainerStyle={styles.container}
+        contentContainerStyle={[
+          styles.container,
+          isMobile && {
+            paddingHorizontal: 8,
+            paddingVertical: 12,
+            paddingBottom: 96 + insets.bottom,
+          }
+        ]}
         showsVerticalScrollIndicator={false}
       >
         <View style={[
@@ -167,9 +179,11 @@ export default function HomeScreen() {
             ? { maxWidth: '100%', alignSelf: 'flex-start' }
             : { maxWidth: 720, alignSelf: 'center' }
         ]}>
-          <View style={styles.quickCaptureWrapper}>
-            <QuickCapture onCreateText={openCreateText} onCreateTodo={openCreateTodo} />
-          </View>
+          {!isMobile && (
+            <View style={styles.quickCaptureWrapper}>
+              <QuickCapture onCreateText={openCreateText} onCreateTodo={openCreateTodo} />
+            </View>
+          )}
 
           <NoteList
             title="Đã ghim"
@@ -201,6 +215,11 @@ export default function HomeScreen() {
         note={editingNote}
         onClose={closeEditor}
         onSave={handleSaveNote}
+      />
+
+      <FloatingActionButton
+        onCreateText={openCreateText}
+        onCreateTodo={openCreateTodo}
       />
     </View>
   );

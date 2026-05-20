@@ -5,6 +5,7 @@ import { useEffect } from 'react';
 import * as SplashScreen from 'expo-splash-screen';
 import { PaperProvider } from 'react-native-paper';
 import * as WebBrowser from 'expo-web-browser';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 WebBrowser.maybeCompleteAuthSession();
 
@@ -27,10 +28,12 @@ export default function RootLayout() {
   if (!fontsLoaded) return null;
 
   return (
-    <PaperProvider>
-      <QueryClientProvider client={queryClient}>
-        <Slot />
-      </QueryClientProvider>
-    </PaperProvider>
+    <SafeAreaProvider>
+      <PaperProvider>
+        <QueryClientProvider client={queryClient}>
+          <Slot />
+        </QueryClientProvider>
+      </PaperProvider>
+    </SafeAreaProvider>
   );
 }

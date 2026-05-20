@@ -1,9 +1,10 @@
-import { View, Text, StyleSheet, TouchableOpacity, TextInput, ScrollView, useWindowDimensions, Platform, Keyboard } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, TextInput, ScrollView, useWindowDimensions, Platform, Keyboard, BackHandler } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { colors } from '../../constants/colors';
 import { NoteCardData, TodoItemData } from './NoteCard';
 import { useEffect, useState, useRef } from 'react';
 import { useNoteStore } from '@/src/store/useNoteStore';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { TagMenu } from './TagMenu';
 import { exportToTxt, exportToPdf, exportToDocx } from '../../utils/exportNote';
 
@@ -98,6 +99,7 @@ export function NoteEditor({ visible, mode, note, onClose, onSave }: NoteEditorP
   ]);
   const [isPinned, setIsPinned] = useState(note?.is_pinned ?? false);
   const [noteColor, setNoteColor] = useState(note?.color ?? 'default');
+  const insets = useSafeAreaInsets();
 
   // UI states
   const [showColorPicker, setShowColorPicker] = useState(false);
@@ -338,6 +340,26 @@ export function NoteEditor({ visible, mode, note, onClose, onSave }: NoteEditorP
     onClose();
   };
 
+  const handleSaveAndCloseRef = useRef(handleSaveAndClose);
+  useEffect(() => {
+    handleSaveAndCloseRef.current = handleSaveAndClose;
+  }, [handleSaveAndClose]);
+
+  useEffect(() => {
+    if (!visible) return;
+
+    const onBackPress = () => {
+      handleSaveAndCloseRef.current();
+      return true;
+    };
+
+    const subscription = BackHandler.addEventListener('hardwareBackPress', onBackPress);
+
+    return () => {
+      subscription.remove();
+    };
+  }, [visible]);
+
 
   if (!visible) return null;
 
@@ -348,10 +370,26 @@ export function NoteEditor({ visible, mode, note, onClose, onSave }: NoteEditorP
   return (
     <View style={styles.overlay}>
       <TouchableOpacity style={styles.backdrop} activeOpacity={1} onPress={handleSaveAndClose} />
-      <View style={[styles.panel, isCompact ? styles.panelFull : styles.panelPopup, { backgroundColor: bg }]}>
+      <View style={[
+        styles.panel,
+        isCompact ? styles.panelFull : styles.panelPopup,
+        isCompact && { paddingTop: insets.top, paddingBottom: insets.bottom },
+        { backgroundColor: bg }
+      ]}>
 
         {/* Header */}
-        <View style={styles.headerRow}>
+        <View style={[styles.headerRow, { paddingLeft: isCompact ? 12 : 20 }]}>
+          {isCompact && (
+            <Tooltip label="Quay lại và lưu" position="bottom">
+              <TouchableOpacity onPress={handleSaveAndClose} style={styles.backBtn}>
+                <MaterialCommunityIcons
+                  name="arrow-left"
+                  size={24}
+                  color={colors.textSecondary}
+                />
+              </TouchableOpacity>
+            </Tooltip>
+          )}
           <TextInput
             value={title}
             onChangeText={setTitle}
@@ -703,6 +741,12 @@ const styles = StyleSheet.create({
     paddingRight: 12,
     paddingTop: 16,
     paddingBottom: 8,
+  },
+  backBtn: {
+    marginRight: 4,
+    padding: 8,
+    borderRadius: 20,
+    ...Platform.select({ web: { cursor: 'pointer' } as any }),
   },
   titleInput: {
     flex: 1,
