@@ -9,6 +9,10 @@ urlpatterns = [
     path('auth/resend-otp/', resend_otp_view),
 
     path('auth/google/', google_login_view),
+    path('auth/refresh/', refresh_token_view, name='token_refresh'),
+    path('auth/login/',           login_view),
+    path('auth/forgot-password/', forgot_password_view),
+    path('auth/reset-password/',  reset_password_view),
 
     path( "users/me/settings",get_my_settings),
 
