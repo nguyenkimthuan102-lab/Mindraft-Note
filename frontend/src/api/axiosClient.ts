@@ -6,8 +6,7 @@ import { Platform } from 'react-native';
 // ---------- Base URL ----------
 const getBaseUrl = () => {
   if (__DEV__) {
-    if (Platform.OS === 'android') return process.env.EXPO_PUBLIC_API_URL;
-    if (Platform.OS === 'ios') return process.env.EXPO_PUBLIC_API_URL;
+    if (Platform.OS === 'android' || Platform.OS === 'ios') return process.env.EXPO_PUBLIC_API_URL;
     return 'http://localhost:8000/api';
   }
   return process.env.EXPO_PUBLIC_API_URL ?? 'https://api.mindraft.com/v1';
@@ -19,20 +18,43 @@ const api = axios.create({
   headers: { 'Content-Type': 'application/json' },
 });
 
-// ---------- Token helpers (mobile only) ----------
-const getStoredAccessToken = () => SecureStore.getItemAsync('access_token');
-const getStoredRefreshToken = () => SecureStore.getItemAsync('refresh_token');
-export const saveAccessToken = (token: string) => SecureStore.setItemAsync('access_token', token);
+// ---------- Token helpers (Hỗ trợ cả Mobile và Web) ----------
+const getStoredAccessToken = () => {
+  if (Platform.OS === 'web') return Promise.resolve(localStorage.getItem('access_token'));
+  return SecureStore.getItemAsync('access_token');
+};
+
+const getStoredRefreshToken = () => {
+  if (Platform.OS === 'web') return Promise.resolve(null); // Web dùng HttpOnly Cookie
+  return SecureStore.getItemAsync('refresh_token');
+};
+
+export const saveAccessToken = (token: string) => {
+  if (Platform.OS === 'web') {
+    localStorage.setItem('access_token', token);
+    return Promise.resolve();
+  }
+  return SecureStore.setItemAsync('access_token', token);
+};
 
 export const saveTokens = async (accessToken: string, refreshToken: string) => {
-  await SecureStore.setItemAsync('access_token', accessToken);
-  await SecureStore.setItemAsync('refresh_token', refreshToken);
-};
-const clearTokens = () => {
-  SecureStore.deleteItemAsync('access_token');
-  SecureStore.deleteItemAsync('refresh_token');
+  if (Platform.OS === 'web') {
+    localStorage.setItem('access_token', accessToken);
+    // Web không lưu refresh_token vào localStorage vì đã có cookie
+  } else {
+    await SecureStore.setItemAsync('access_token', accessToken);
+    await SecureStore.setItemAsync('refresh_token', refreshToken);
+  }
 };
 
+const clearTokens = async () => {
+  if (Platform.OS === 'web') {
+    localStorage.removeItem('access_token');
+  } else {
+    await SecureStore.deleteItemAsync('access_token');
+    await SecureStore.deleteItemAsync('refresh_token');
+  }
+};
 // ---------- Queue for 401 concurrent requests ----------
 let isRefreshing = false;
 let failedQueue: Array<{
@@ -51,15 +73,15 @@ const processQueue = (error: unknown, token: string | null = null) => {
 // ---------- Request interceptor ----------
 api.interceptors.request.use(
   async (config) => {
+    const token = await getStoredAccessToken();
+    if (token) {
+      config.headers.Authorization = `Bearer ${token}`;
+    }
+
     if (Platform.OS !== 'web') {
-      const token = await getStoredAccessToken();
-      if (token) {
-        config.headers.Authorization = `Bearer ${token}`;
-      }
       config.headers['X-Platform'] = 'mobile';
     } else {
-      // Web: rely on httpOnly cookie
-      config.withCredentials = true;
+      config.withCredentials = true; // Bắt buộc để Web tự gửi kèm HttpOnly Cookie (refresh_token)
     }
     return config;
   },
@@ -95,12 +117,15 @@ api.interceptors.response.use(
       let newToken: string | null = null;
 
       if (Platform.OS === 'web') {
-        // Web: refresh via cookie (no body)
-        await axios.post(`${getBaseUrl()}/auth/refresh/`, {}, { withCredentials: true });
-        // no token to save – cookie handles it
+        // Web: Gửi cookie lên để refresh, bóc tách access_token từ JSON kết quả trả về
+        const { data } = await axios.post(`${getBaseUrl()}/auth/refresh/`, {}, { withCredentials: true });
+        newToken = data?.data?.access_token;
+
+        if (!newToken) throw new Error('Thất bại: Không tìm thấy access_token trong response refresh của Web');
+        await saveAccessToken(newToken);
       } else {
         const refreshToken = await getStoredRefreshToken();
-        if (!refreshToken) throw new Error('No refresh token');
+        if (!refreshToken) throw new Error('Không tìm thấy refresh token trên thiết bị');
 
         const { data } = await axios.post(
           `${getBaseUrl()}/auth/refresh/`,
@@ -108,8 +133,9 @@ api.interceptors.response.use(
           { headers: { 'Content-Type': 'application/json', 'X-Platform': 'mobile' } }
         );
 
-        const newToken = data.data.access_token;
-        if (!newToken) throw new Error('Missing access_token in refresh response');
+        // ĐÃ SỬA: Loại bỏ từ khóa 'const' để gán trực tiếp vào biến nằm ngoài block scope
+        newToken = data?.data?.access_token;
+        if (!newToken) throw new Error('Thất bại: Không tìm thấy access_token trong response refresh của Mobile');
         await saveAccessToken(newToken);
       }
 
@@ -119,9 +145,8 @@ api.interceptors.response.use(
       }
       return api(originalRequest);
     } catch (refreshError) {
-      if (Platform.OS !== 'web') await clearTokens();
+      await clearTokens();
       processQueue(refreshError, null);
-      // Optionally dispatch logout event here
       return Promise.reject(refreshError);
     } finally {
       isRefreshing = false;
