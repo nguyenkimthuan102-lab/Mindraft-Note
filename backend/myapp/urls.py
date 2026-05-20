@@ -1,6 +1,6 @@
 from django.urls import path
 from .views.auth import *
-from .settings import *
+from .views.settings import *
 from .views.Notes_task import *
 
 urlpatterns = [

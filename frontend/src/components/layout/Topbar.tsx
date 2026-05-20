@@ -1,7 +1,7 @@
 import { Feather } from '@expo/vector-icons';
 import { usePathname, useRouter } from 'expo-router';
-import { useState } from 'react';
-import { Image, Platform, StyleSheet, Text, TextInput, TouchableOpacity, View, LayoutAnimation, useWindowDimensions } from 'react-native';
+import { useRef, useState } from 'react';
+import { Image, Platform, StyleSheet, Text, TextInput, TouchableOpacity, View, LayoutAnimation } from 'react-native';
 import { Icon, Menu, Divider } from 'react-native-paper';
 import { colors } from '../../constants/colors';
 import { useLayoutStore } from '../../store/useLayoutStore';
@@ -9,7 +9,8 @@ import { useSyncStore } from '../../store/useSyncStore';
 import { SyncIndicator } from '../ui/SyncIndicator';
 import { useSelectionStore } from '../../store/useSelectionStore';
 import { useAppStore, DEFAULT_SORT } from '../../store/useAppStore';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useAuthStore } from '../../store/useAuthStore';
+import { ProfilePanel } from '../ui/ProfilePanel';
 
 interface TopbarProps {
   viewMode?: 'list' | 'grid';
@@ -45,6 +46,21 @@ export function Topbar({ onViewModeChange }: TopbarProps) {
   const isSettings = pathname.includes('settings');
   const router = useRouter();
   const { status: syncStatus } = useSyncStore();
+
+  // Profile panel
+  const { user } = useAuthStore();
+  const [profileVisible, setProfileVisible] = useState(false);
+  const avatarRef = useRef<View>(null);
+  const [panelPos, setPanelPos] = useState({ top: 70, right: 16 });
+
+  const handleAvatarPress = () => {
+    if (avatarRef.current) {
+      avatarRef.current.measureInWindow((_x, y, _w, h) => {
+        setPanelPos({ top: y + h + 6, right: 16 });
+      });
+    }
+    setProfileVisible(true);
+  };
 
   // THÊM: Logic màu sắc động cho Dark Mode
   const isDark = theme === 'dark';
@@ -124,42 +140,15 @@ export function Topbar({ onViewModeChange }: TopbarProps) {
     );
   }
 
-  if (isMobile && isSearchExpanded) {
-    return (
-      <View style={[styles.topbar, { backgroundColor: dynamicColors.bg, borderBottomColor: dynamicColors.border, paddingHorizontal: 12, height: 66 + insets.top, paddingTop: insets.top }]}>
-        <View style={styles.mobileSearchHeader}>
-          <TouchableOpacity onPress={() => { setIsSearchExpanded(false); setSearch(''); }} style={styles.menuBtn}>
-            <Feather name="arrow-left" size={22} color={dynamicColors.textSec} />
-          </TouchableOpacity>
-          <View style={[styles.searchWrapMobile, { backgroundColor: dynamicColors.searchBg }]}>
-            <TextInput
-              style={[styles.searchInput, { color: dynamicColors.text }]}
-              value={search}
-              onChangeText={setSearch}
-              placeholder="Search notes, tags..."
-              placeholderTextColor={dynamicColors.placeholder}
-              autoFocus
-            />
-            {search.length > 0 && (
-              <TouchableOpacity onPress={() => setSearch('')} style={{ padding: 4 }}>
-                <Feather name="x" size={18} color={dynamicColors.textSec} />
-              </TouchableOpacity>
-            )}
-          </View>
-        </View>
-      </View>
-    );
-  }
-
   return (
-    <View style={[styles.topbar, { backgroundColor: dynamicColors.bg, borderBottomColor: dynamicColors.border, height: 66 + insets.top, paddingTop: insets.top }]}>
+    <>
+      <View style={[styles.topbar, { backgroundColor: dynamicColors.bg, borderBottomColor: dynamicColors.border }]}>
 
-      <View style={[styles.leftSection, isMobile && { width: 'auto' }]}>
-        <TouchableOpacity onPress={toggleSidebar} style={styles.menuBtn}>
-          <Feather name="menu" size={22} color={dynamicColors.textSec} />
-        </TouchableOpacity>
-        
-        {!isMobile && (
+        <View style={styles.leftSection}>
+          <TouchableOpacity onPress={toggleSidebar} style={styles.menuBtn}>
+            <Feather name="menu" size={22} color={dynamicColors.textSec} />
+          </TouchableOpacity>
+
           <TouchableOpacity
             activeOpacity={0.7}
             style={styles.logoContainer}
@@ -181,10 +170,8 @@ export function Topbar({ onViewModeChange }: TopbarProps) {
               <Text style={[styles.areaTitle, { color: dynamicColors.textSec }]}>{getAreaTitle()}</Text>
             )}
           </TouchableOpacity>
-        )}
-      </View>
+        </View>
 
-      {!isMobile && (
         <View style={[styles.searchWrap, { backgroundColor: dynamicColors.searchBg }]}>
           <Feather name="search" size={16} color={dynamicColors.textSec} style={styles.searchIcon} />
           <TextInput
@@ -195,101 +182,112 @@ export function Topbar({ onViewModeChange }: TopbarProps) {
             placeholderTextColor={dynamicColors.placeholder}
           />
         </View>
-      )}
 
-      <View style={[styles.actions, isMobile && { width: 'auto' }]}>
-        {isMobile && (
-          <TouchableOpacity style={styles.iconBtn} onPress={() => setIsSearchExpanded(true)}>
-            <Feather name="search" size={20} color={dynamicColors.textSec} />
+        <View style={styles.actions}>
+          <SyncIndicator status={syncStatus} />
+
+          <TouchableOpacity style={styles.iconBtn} onPress={handleToggle}>
+            <Feather name={viewMode === 'list' ? "grid" : "list"} size={20} color={dynamicColors.textSec} />
           </TouchableOpacity>
-        )}
 
-        <SyncIndicator status={syncStatus} />
+          <Menu
+            visible={menuVisible}
+            onDismiss={closeMenu}
+            anchor={
+              <TouchableOpacity
+                style={[styles.iconBtn, isSortActive && styles.iconBtnActive, isSortActive && isDark && { backgroundColor: '#374151' }]}
+                onPress={openMenu}
+              >
+                <Icon source="sort-variant" size={22} color={isSortActive ? colors.primary : dynamicColors.textSec} />
+                {isSortActive && <View style={styles.sortDot} />}
+              </TouchableOpacity>
+            }
+            contentStyle={{ backgroundColor: dynamicColors.bg }}
+          >
+            <Menu.Item title="SẮP XẾP THEO" titleStyle={[styles.menuHeader, { color: isDark ? '#6b7280' : colors.textTertiary }]} disabled />
 
-        <TouchableOpacity style={styles.iconBtn} onPress={handleToggle}>
-          <Feather name={viewMode === 'list' ? "grid" : "list"} size={20} color={dynamicColors.textSec} />
-        </TouchableOpacity>
+            <Menu.Item
+              leadingIcon="drag-variant"
+              onPress={() => handleSortChange('custom', 'desc')}
+              title="Thứ tự tùy chỉnh"
+              titleStyle={{ color: dynamicColors.text }}
+              trailingIcon={sort.field === 'custom' ? "check" : undefined}
+            />
 
-        <Menu
-          visible={menuVisible}
-          onDismiss={closeMenu}
-          anchor={
-            <TouchableOpacity
-              style={[styles.iconBtn, isSortActive && styles.iconBtnActive, isSortActive && isDark && { backgroundColor: '#374151' }]}
-              onPress={openMenu}
-            >
-              <Icon source="sort-variant" size={22} color={isSortActive ? colors.primary : dynamicColors.textSec} />
-              {isSortActive && <View style={styles.sortDot} />}
-            </TouchableOpacity>
-          }
-          contentStyle={{ backgroundColor: dynamicColors.bg }}
-        >
-          <Menu.Item title="SẮP XẾP THEO" titleStyle={[styles.menuHeader, { color: isDark ? '#6b7280' : colors.textTertiary }]} disabled />
+            <Divider style={{ backgroundColor: dynamicColors.border }} />
 
-          <Menu.Item
-            leadingIcon="drag-variant"
-            onPress={() => handleSortChange('custom', 'desc')}
-            title="Thứ tự tùy chỉnh"
-            titleStyle={{ color: dynamicColors.text }}
-            trailingIcon={sort.field === 'custom' ? "check" : undefined}
-          />
+            <Menu.Item
+              leadingIcon="update"
+              onPress={() => handleSortChange('updated_at', 'desc')}
+              title="Sửa đổi: Mới nhất"
+              titleStyle={{ color: dynamicColors.text }}
+              trailingIcon={sort.field === 'updated_at' && sort.direction === 'desc' ? "check" : undefined}
+            />
+            <Menu.Item
+              leadingIcon="update"
+              onPress={() => handleSortChange('updated_at', 'asc')}
+              title="Sửa đổi: Cũ nhất"
+              titleStyle={{ color: dynamicColors.text }}
+              trailingIcon={sort.field === 'updated_at' && sort.direction === 'asc' ? "check" : undefined}
+            />
 
-          <Divider style={{ backgroundColor: dynamicColors.border }} />
+            <Divider style={{ backgroundColor: dynamicColors.border }} />
 
-          <Menu.Item
-            leadingIcon="update"
-            onPress={() => handleSortChange('updated_at', 'desc')}
-            title="Sửa đổi: Mới nhất"
-            titleStyle={{ color: dynamicColors.text }}
-            trailingIcon={sort.field === 'updated_at' && sort.direction === 'desc' ? "check" : undefined}
-          />
-          <Menu.Item
-            leadingIcon="update"
-            onPress={() => handleSortChange('updated_at', 'asc')}
-            title="Sửa đổi: Cũ nhất"
-            titleStyle={{ color: dynamicColors.text }}
-            trailingIcon={sort.field === 'updated_at' && sort.direction === 'asc' ? "check" : undefined}
-          />
+            <Menu.Item
+              leadingIcon="calendar-plus"
+              onPress={() => handleSortChange('created_at', 'desc')}
+              title="Ngày tạo: Mới nhất"
+              titleStyle={{ color: dynamicColors.text }}
+              trailingIcon={sort.field === 'created_at' && sort.direction === 'desc' ? "check" : undefined}
+            />
+            <Menu.Item
+              leadingIcon="calendar-plus"
+              onPress={() => handleSortChange('created_at', 'asc')}
+              title="Ngày tạo: Cũ nhất"
+              titleStyle={{ color: dynamicColors.text }}
+              trailingIcon={sort.field === 'created_at' && sort.direction === 'asc' ? "check" : undefined}
+            />
 
-          <Divider style={{ backgroundColor: dynamicColors.border }} />
+            <Divider style={{ backgroundColor: dynamicColors.border }} />
 
-          <Menu.Item
-            leadingIcon="calendar-plus"
-            onPress={() => handleSortChange('created_at', 'desc')}
-            title="Ngày tạo: Mới nhất"
-            titleStyle={{ color: dynamicColors.text }}
-            trailingIcon={sort.field === 'created_at' && sort.direction === 'desc' ? "check" : undefined}
-          />
-          <Menu.Item
-            leadingIcon="calendar-plus"
-            onPress={() => handleSortChange('created_at', 'asc')}
-            title="Ngày tạo: Cũ nhất"
-            titleStyle={{ color: dynamicColors.text }}
-            trailingIcon={sort.field === 'created_at' && sort.direction === 'asc' ? "check" : undefined}
-          />
+            <Menu.Item
+              leadingIcon="restore"
+              onPress={() => handleSortChange(DEFAULT_SORT.field, DEFAULT_SORT.direction)}
+              title="Đặt lại mặc định"
+              titleStyle={{ color: dynamicColors.text }}
+            />
+          </Menu>
 
-          <Divider style={{ backgroundColor: dynamicColors.border }} />
+          <TouchableOpacity style={styles.iconBtn}>
+            <View>
+              <Feather name="bell" size={20} color={dynamicColors.textSec} />
+              <View style={styles.notifDot} />
+            </View>
+          </TouchableOpacity>
 
-          <Menu.Item
-            leadingIcon="restore"
-            onPress={() => handleSortChange(DEFAULT_SORT.field, DEFAULT_SORT.direction)}
-            title="Đặt lại mặc định"
-            titleStyle={{ color: dynamicColors.text }}
-          />
-        </Menu>
-
-        <TouchableOpacity style={styles.iconBtn}>
-          <View>
-            <Feather name="bell" size={20} color={dynamicColors.textSec} />
-            <View style={styles.notifDot} />
-          </View>
-        </TouchableOpacity>
-
-        <TouchableOpacity style={styles.avatar}>
-          <Text style={styles.avatarText}>U</Text>
-        </TouchableOpacity>
+          <TouchableOpacity
+            ref={avatarRef as any}
+            style={styles.avatar}
+            onPress={handleAvatarPress}
+            activeOpacity={0.85}
+          >
+            {user?.avatar_url ? (
+              <Image source={{ uri: user.avatar_url }} style={{ width: 36, height: 36, borderRadius: 18 }} />
+            ) : (
+              <Text style={styles.avatarText}>
+                {(user?.name ?? 'U').split(' ').map((w: string) => w[0]).join('').toUpperCase().slice(0, 2)}
+              </Text>
+            )}
+          </TouchableOpacity>
+        </View>
       </View>
-    </View>
+
+      <ProfilePanel
+        visible={profileVisible}
+        onClose={() => setProfileVisible(false)}
+        anchorPosition={panelPos}
+      />
+    </>
   );
 }
 

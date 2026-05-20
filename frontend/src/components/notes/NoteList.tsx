@@ -20,9 +20,27 @@ interface NoteListProps {
   onArchiveNote: (id: string) => void;
   selectedIds: string[];
   onSelectNote: (id: string) => void;
+  /** Khi true: card hiển thị nút "Bỏ lưu trữ" thay vì "Lưu trữ" */
+  isArchived?: boolean;
+  /**
+   * Khi true (màn Trash): card chỉ hiện 2 nút — Khôi phục & Xóa vĩnh viễn.
+   * onArchiveNote = khôi phục, onDeleteNote = xóa vĩnh viễn.
+   */
+  isTrash?: boolean;
 }
 
-export function NoteList({ notes, title, onPressNote, onUpdateNote, onDeleteNote, onArchiveNote, selectedIds, onSelectNote }: NoteListProps) {
+export function NoteList({
+  notes,
+  title,
+  onPressNote,
+  onUpdateNote,
+  onDeleteNote,
+  onArchiveNote,
+  selectedIds,
+  onSelectNote,
+  isArchived = false,
+  isTrash = false,
+}: NoteListProps) {
 
   const { viewMode, initSettings, sort } = useAppStore();
   const { isSidebarOpen } = useLayoutStore();
@@ -30,10 +48,7 @@ export function NoteList({ notes, title, onPressNote, onUpdateNote, onDeleteNote
   const isMobile = width < 768;
 
   const sortedNotes = useMemo(() => {
-    if (sort.field === 'custom') {
-      return notes;
-    }
-    const dir = sort.direction === 'desc' ? -1 : 1;
+    if (sort.field === 'custom') return notes;
     return [...notes].sort((a, b) => {
       const aTime = new Date(a[sort.field] ?? 0).getTime();
       const bTime = new Date(b[sort.field] ?? 0).getTime();
@@ -42,11 +57,10 @@ export function NoteList({ notes, title, onPressNote, onUpdateNote, onDeleteNote
   }, [notes, sort]);
 
   useEffect(() => {
-    initSettings(); // Lấy settings từ server khi mount màn hình
+    initSettings();
   }, []);
 
-  // Tính toán số cột
-  const CARD_WIDTH = 256; // 240px card + 16px padding
+  const CARD_WIDTH = 256;
   const availableWidth = width - (!isMobile && isSidebarOpen ? 250 : 0) - 32;
 
   let columns = 1;
@@ -65,64 +79,64 @@ export function NoteList({ notes, title, onPressNote, onUpdateNote, onDeleteNote
 
   if (notes.length === 0) return null;
 
-  // FIX DUPLICATE: Them note IDs vao key buoc FlashList re-render
-  // khi danh sach thay doi do pin/unpin, delete, archive.
   const noteIds = notes.map((n: any) => n.id).join(',');
 
+  const renderCard = (item: any, isGrid: boolean) => (
+    <NoteCard
+      note={item}
+      isGridView={isGrid}
+      onPress={() => onPressNote(item)}
+      onUpdate={onUpdateNote}
+      onDelete={onDeleteNote}
+      onArchive={onArchiveNote}
+      isSelected={selectedIds.includes(item.id)}
+      onSelect={() => onSelectNote(item.id)}
+      isArchived={isArchived}
+      isTrash={isTrash}
+    />
+  );
+
   return (
-    <View style={[styles.sectionContainer, !isMobile && viewMode === 'grid' && { width: gridWidth, alignSelf: 'center' }]}>
-      {title && (
-        <View style={[
-          { paddingHorizontal: isMobile ? 4 : (viewMode === 'list' ? 6 : 8) },
-          viewMode === 'list' && styles.listMaxWidth
-        ]}>
+    <View
+      style={[
+        styles.sectionContainer,
+        !isMobile && viewMode === 'grid' && { width: gridWidth, alignSelf: 'center' },
+      ]}
+    >
+      {title ? (
+        <View
+          style={[
+            { paddingHorizontal: isMobile ? 4 : (viewMode === 'list' ? 6 : 8) },
+            viewMode === 'list' && styles.listMaxWidth,
+          ]}
+        >
           <SectionLabel label={title} />
         </View>
-      )}
+      ) : null}
+
       {viewMode === 'list' ? (
         <StandardFlashList
-          data={notes}
+          data={sortedNotes}
           numColumns={columns}
           key={`list-${title}-${columns}-${sort.field}-${sort.direction}-${noteIds}`}
           estimatedItemSize={200}
           scrollEnabled={false}
           renderItem={({ item }: any) => (
-            <View style={[
-              { paddingHorizontal: isMobile ? 4 : 6, paddingVertical: isMobile ? 2 : 3 },
-              styles.listMaxWidth
-            ]}>
-              <NoteCard
-                note={item}
-                isGridView={false}
-                onPress={() => onPressNote(item)}
-                onUpdate={onUpdateNote}
-                onDelete={onDeleteNote}
-                onArchive={onArchiveNote}
-                isSelected={selectedIds.includes(item.id)}
-                onSelect={() => onSelectNote(item.id)}
-              />
+            <View style={[{ padding: isMobile ? 4 : 6 }, styles.listMaxWidth]}>
+              {renderCard(item, false)}
             </View>
           )}
         />
       ) : (
         <MasonryFlashList
-          data={notes}
+          data={sortedNotes}
           numColumns={columns}
           key={`grid-${title}-${columns}-${sort.field}-${sort.direction}-${noteIds}`}
           estimatedItemSize={200}
           scrollEnabled={false}
           renderItem={({ item }: any) => (
-            <View style={{ paddingHorizontal: isMobile ? 4 : 5, paddingVertical: isMobile ? 2 : 3 }}>
-              <NoteCard
-                note={item}
-                isGridView={true}
-                onPress={() => onPressNote(item)}
-                onUpdate={onUpdateNote}
-                onDelete={onDeleteNote}
-                onArchive={onArchiveNote}
-                isSelected={selectedIds.includes(item.id)}
-                onSelect={() => onSelectNote(item.id)}
-              />
+            <View style={{ padding: isMobile ? 4 : 8 }}>
+              {renderCard(item, true)}
             </View>
           )}
         />

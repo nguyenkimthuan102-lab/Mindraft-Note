@@ -4,18 +4,17 @@ import { useState, useRef } from 'react';
 import { TagChip } from '../ui/TagChip';
 import { colors } from '../../constants/colors';
 import { HoverBtn } from '../ui/HoverBtn';
-// THÊM: Import AppStore để lấy trạng thái theme
 import { useAppStore } from '../../store/useAppStore';
 import { useSelectionStore } from '../../store/useSelectionStore';
 
-// Bảng màu cho Chế độ Sáng (Giữ nguyên của bạn)
+// Bảng màu cho Chế độ Sáng
 const cardColorMap: Record<string, string> = {
   default: '#FFFFFF', red: '#FADADD', orange: '#FEEFC3', yellow: '#FEF7CD',
   green: '#E2F3E8', teal: '#D0F4EE', blue: '#D3E3FD', purple: '#E8DEFC',
   pink: '#FDCFE8', brown: '#F0E6DA',
 };
 
-// THÊM: Bảng màu cho Chế độ Tối (Màu trầm hơn, êm mắt hơn)
+// Bảng màu cho Chế độ Tối
 const darkCardColorMap: Record<string, string> = {
   default: '#1F2937', red: '#4C1D1D', orange: '#452A10', yellow: '#453510',
   green: '#064E3B', teal: '#103E3E', blue: '#1E3A8A', purple: '#2E1065',
@@ -53,6 +52,16 @@ interface NoteCardProps {
   isSelected: boolean;
   onSelect: () => void;
   isGridView?: boolean;
+  /**
+   * Khi true (màn hình Archive): nút archive đổi thành "Bỏ lưu trữ",
+   * nút ghim bị ẩn, DotMenu hiển thị "Bỏ lưu trữ" thay vì "Lưu trữ".
+   */
+  isArchived?: boolean;
+  /**
+   * Khi true (màn hình Trash): card chỉ đọc, toolbar chỉ có
+   * "Khôi phục" (onArchive) và "Xóa vĩnh viễn" (onDelete).
+   */
+  isTrash?: boolean;
 }
 
 function Avatars({ names, isDark }: { names: string[]; isDark: boolean }) {
@@ -61,7 +70,13 @@ function Avatars({ names, isDark }: { names: string[]; isDark: boolean }) {
   return (
     <View style={styles.avatars}>
       {shown.map((name, i) => (
-        <View key={i} style={[styles.avatar, { marginLeft: i === 0 ? 0 : -6, zIndex: shown.length - i, borderColor: isDark ? '#1F2937' : '#fff' }]}>
+        <View
+          key={i}
+          style={[
+            styles.avatar,
+            { marginLeft: i === 0 ? 0 : -6, zIndex: shown.length - i, borderColor: isDark ? '#1F2937' : '#fff' },
+          ]}
+        >
           <Text style={styles.avatarText}>{name[0].toUpperCase()}</Text>
         </View>
       ))}
@@ -74,7 +89,15 @@ function Avatars({ names, isDark }: { names: string[]; isDark: boolean }) {
   );
 }
 
-function ColorPicker({ onSelect, onClose, isDark }: { onSelect: (color: string) => void; onClose: () => void; isDark: boolean }) {
+function ColorPicker({
+  onSelect,
+  onClose,
+  isDark,
+}: {
+  onSelect: (color: string) => void;
+  onClose: () => void;
+  isDark: boolean;
+}) {
   return (
     <View style={[styles.colorPicker, isDark && { backgroundColor: '#1F2937', borderColor: '#374151' }]}>
       {NOTE_COLORS.map((c) => (
@@ -92,22 +115,39 @@ function ColorPicker({ onSelect, onClose, isDark }: { onSelect: (color: string) 
   );
 }
 
-function DotMenu({ isTodo, onAction, onClose, isDark }: {
+function DotMenu({
+  isTodo,
+  isArchived,
+  onAction,
+  onClose,
+  isDark,
+}: {
   isTodo: boolean;
+  isArchived: boolean;
   onAction: (action: string) => void;
   onClose: () => void;
   isDark: boolean;
 }) {
+  // Menu cơ bản — dùng chung cho cả Home lẫn Archive
   const baseItems = [
     { key: 'tag', label: 'Thêm tag' },
     { key: 'duplicate', label: 'Tạo bản sao' },
     { key: 'history', label: 'Xem lịch sử phiên bản' },
-    { key: 'delete', label: 'Xóa ghi chú', danger: true },
+    // Ở màn Archive: hiện "Bỏ lưu trữ" + "Xóa vĩnh viễn"
+    // Ở màn Home  : hiện "Xóa ghi chú"
+    ...(isArchived
+      ? [
+        { key: 'unarchive', label: 'Bỏ lưu trữ' },
+        { key: 'delete', label: 'Xóa ghi chú', danger: true },
+      ]
+      : [{ key: 'delete', label: 'Xóa ghi chú', danger: true }]),
   ];
+
   const todoItems = [
     { key: 'sort', label: 'Sắp xếp theo' },
     { key: 'clear_done', label: 'Xóa tất cả việc đã hoàn thành' },
   ];
+
   const items = isTodo ? [...baseItems.slice(0, 1), ...todoItems, ...baseItems.slice(1)] : baseItems;
 
   return (
@@ -120,7 +160,13 @@ function DotMenu({ isTodo, onAction, onClose, isDark }: {
           fullWidth
           borderRadius={0}
         >
-          <Text style={[styles.dotMenuText, isDark && { color: '#F9FAFB' }, (item as any).danger && { color: colors.danger }]}>
+          <Text
+            style={[
+              styles.dotMenuText,
+              isDark && { color: '#F9FAFB' },
+              (item as any).danger && { color: colors.danger },
+            ]}
+          >
             {item.label}
           </Text>
         </HoverBtn>
@@ -133,7 +179,8 @@ function Tooltip({ label, children }: { label: string; children: React.ReactNode
   const [show, setShow] = useState(false);
   if (Platform.OS !== 'web') return <>{children}</>;
   return (
-    <View style={{ position: 'relative' }}
+    <View
+      style={{ position: 'relative' }}
       {...{ onMouseEnter: () => setShow(true), onMouseLeave: () => setShow(false) }}
     >
       {children}
@@ -146,7 +193,12 @@ function Tooltip({ label, children }: { label: string; children: React.ReactNode
   );
 }
 
-function ActionBtn({ icon, label, onPress, color }: {
+function ActionBtn({
+  icon,
+  label,
+  onPress,
+  color,
+}: {
   icon: string;
   label: string;
   onPress: () => void;
@@ -154,31 +206,26 @@ function ActionBtn({ icon, label, onPress, color }: {
 }) {
   return (
     <Tooltip label={label}>
-      <HoverBtn
-        onPress={onPress}
-        style={styles.actionBtn}
-      >
+      <HoverBtn onPress={onPress} style={styles.actionBtn}>
         <Icon source={icon} size={18} color={color || colors.textSecondary} />
       </HoverBtn>
     </Tooltip>
   );
 }
 
-// Strip HTML tags để hiển thị plain text trên card
-const stripHtml = (html: string): string =>
-  html
-    .replace(/<br\s*\/?>/gi, '\n')
-    .replace(/<\/p>/gi, '\n')
-    .replace(/<[^>]+>/g, '')
-    .replace(/&nbsp;/g, ' ')
-    .replace(/&amp;/g, '&')
-    .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>')
-    .replace(/\n{3,}/g, '\n\n')
-    .trim();
-
-export function NoteCard({ note, isSelected, onSelect, isGridView, onPress, onUpdate, onDelete, onArchive }: NoteCardProps) {
-  const { theme } = useAppStore(); // Lấy theme hệ thống
+export function NoteCard({
+  note,
+  isSelected,
+  onSelect,
+  isGridView,
+  onPress,
+  onUpdate,
+  onDelete,
+  onArchive,
+  isArchived = false,
+  isTrash = false,
+}: NoteCardProps) {
+  const { theme } = useAppStore();
   const isDark = theme === 'dark';
   const { width } = useWindowDimensions();
   const isMobile = width < 720;
@@ -193,7 +240,6 @@ export function NoteCard({ note, isSelected, onSelect, isGridView, onPress, onUp
   const [dotMenuPos, setDotMenuPos] = useState({ x: 0, y: 0 });
   const dotBtnRef = useRef<View>(null);
 
-  // MÀU SẮC ĐỘNG THEO THEME
   const dynamicColors = {
     textPrimary: isDark ? '#F9FAFB' : colors.textPrimary,
     textSecondary: isDark ? '#9CA3AF' : colors.textSecondary,
@@ -208,9 +254,10 @@ export function NoteCard({ note, isSelected, onSelect, isGridView, onPress, onUp
 
   const handleDotAction = (action: string) => {
     if (action === 'delete') onDelete?.(note.id);
+    // "unarchive" trong DotMenu cũng gọi onArchive (handler ở màn Archive sẽ xử lý đúng)
+    if (action === 'unarchive') onArchive?.(note.id);
   };
 
-  // Logic chọn bảng màu bg
   const bg = isDark
     ? (darkCardColorMap[localNote.color] ?? darkCardColorMap.default)
     : (cardColorMap[localNote.color] ?? cardColorMap.default);
@@ -221,10 +268,16 @@ export function NoteCard({ note, isSelected, onSelect, isGridView, onPress, onUp
   const hiddenIncomplete = Math.max(0, incompleteItems.length - 3);
   const visibleItems = incompleteItems.slice(0, 3);
 
-  const hoverProps = Platform.OS === 'web' ? {
-    onMouseEnter: () => setHovered(true),
-    onMouseLeave: () => { setHovered(false); setShowColorPicker(false); setShowDotMenu(false); },
-  } : {};
+  const hoverProps = Platform.OS === 'web'
+    ? {
+      onMouseEnter: () => setHovered(true),
+      onMouseLeave: () => {
+        setHovered(false);
+        setShowColorPicker(false);
+        setShowDotMenu(false);
+      },
+    }
+    : {};
 
   return (
     <View
@@ -237,11 +290,12 @@ export function NoteCard({ note, isSelected, onSelect, isGridView, onPress, onUp
       ]}
       {...hoverProps}
     >
-      {(hovered || !!localNote.is_pinned) && (
-        <View style={[styles.pinCorner, { opacity: (hovered || !!localNote.is_pinned) ? 1 : 0 }]}>
+      {/* Nút ghim — ẩn trong Archive và Trash */}
+      {!isArchived && !isTrash && (hovered || localNote.is_pinned) && (
+        <View style={[styles.pinCorner, { opacity: (hovered || localNote.is_pinned) ? 1 : 0 }]}>
           <HoverBtn
             onPress={() => update({ is_pinned: !localNote.is_pinned })}
-            label={localNote.is_pinned ? "Bỏ ghim" : "Ghim"}
+            label={localNote.is_pinned ? 'Bỏ ghim' : 'Ghim'}
           >
             <Icon
               source={localNote.is_pinned ? 'pin' : 'pin-outline'}
@@ -252,20 +306,21 @@ export function NoteCard({ note, isSelected, onSelect, isGridView, onPress, onUp
         </View>
       )}
 
+      {/* Trash: card chỉ đọc, không cho chỉnh sửa */}
       <TouchableOpacity
         style={styles.cardContent}
-        onPress={isMobile && isSelectionMode ? onSelect : onPress}
-        onLongPress={isMobile ? onSelect : undefined}
-        delayLongPress={350}
-        activeOpacity={0.9}
+        onPress={isTrash ? undefined : onPress}
+        activeOpacity={isTrash ? 1 : 0.9}
       >
         {localNote.title ? (
-          <Text style={[styles.title, { color: dynamicColors.textPrimary }]} numberOfLines={2}>{localNote.title}</Text>
+          <Text style={[styles.title, { color: dynamicColors.textPrimary }]} numberOfLines={2}>
+            {localNote.title}
+          </Text>
         ) : null}
 
         {!isTodo && localNote.content_text ? (
           <Text style={[styles.content, { color: dynamicColors.textSecondary }]} numberOfLines={4}>
-            {stripHtml(localNote.content_text)}
+            {localNote.content_text}
           </Text>
         ) : null}
 
@@ -273,19 +328,36 @@ export function NoteCard({ note, isSelected, onSelect, isGridView, onPress, onUp
           <View style={styles.todoList}>
             {visibleItems.map((item) => (
               <View key={item.id} style={styles.todoRow}>
-                <View style={[styles.checkbox, isDark && { borderColor: '#4B5563' }, item.is_completed && styles.checkboxDone]}>
+                <View
+                  style={[
+                    styles.checkbox,
+                    isDark && { borderColor: '#4B5563' },
+                    item.is_completed && styles.checkboxDone,
+                  ]}
+                >
                   {item.is_completed && <Icon source="check" size={10} color="#fff" />}
                 </View>
-                <Text style={[styles.todoText, { color: dynamicColors.textSecondary }, item.is_completed && styles.todoTextDone]} numberOfLines={1}>
+                <Text
+                  style={[
+                    styles.todoText,
+                    { color: dynamicColors.textSecondary },
+                    item.is_completed && styles.todoTextDone,
+                  ]}
+                  numberOfLines={1}
+                >
                   {item.title}
                 </Text>
               </View>
             ))}
             {hiddenIncomplete > 0 && (
-              <Text style={[styles.moreText, { color: dynamicColors.textTertiary }]}>Xem thêm {hiddenIncomplete} việc...</Text>
+              <Text style={[styles.moreText, { color: dynamicColors.textTertiary }]}>
+                Xem thêm {hiddenIncomplete} việc...
+              </Text>
             )}
             {completedCount > 0 && (
-              <Text style={[styles.completedText, { color: dynamicColors.textTertiary }]}>Đã hoàn thành ({completedCount})</Text>
+              <Text style={[styles.completedText, { color: dynamicColors.textTertiary }]}>
+                Đã hoàn thành ({completedCount})
+              </Text>
             )}
           </View>
         )}
@@ -297,7 +369,9 @@ export function NoteCard({ note, isSelected, onSelect, isGridView, onPress, onUp
         )}
 
         <View style={styles.footer}>
-          <Text style={[styles.dateText, { color: dynamicColors.textTertiary }]}>{localNote.date ?? ''}</Text>
+          <Text style={[styles.dateText, { color: dynamicColors.textTertiary }]}>
+            {localNote.date ?? ''}
+          </Text>
           <View style={styles.footerRight}>
             {localNote.collaborators && localNote.collaborators.length > 0 && (
               <Avatars names={localNote.collaborators.map(c => c.name)} isDark={isDark} />
@@ -313,59 +387,118 @@ export function NoteCard({ note, isSelected, onSelect, isGridView, onPress, onUp
 
       {hovered && (
         <View style={[styles.toolbar, { borderTopColor: dynamicColors.border }]}>
-          <View style={{ position: 'relative' }}>
-            <ActionBtn
-              icon="palette-outline"
-              label="Đổi màu"
-              onPress={() => { setShowColorPicker(v => !v); setShowDotMenu(false); }}
-              color={showColorPicker ? colors.primary : dynamicColors.textSecondary}
-            />
-            {showColorPicker && (
-              <ColorPicker
-                isDark={isDark}
-                onSelect={(color) => update({ color })}
-                onClose={() => setShowColorPicker(false)}
+          {isTrash ? (
+            /* ── Toolbar Thùng rác: chỉ 2 nút ── */
+            <>
+              <ActionBtn
+                icon="delete-restore"
+                label="Khôi phục"
+                onPress={() => onArchive?.(note.id)}
+                color={dynamicColors.textSecondary}
               />
-            )}
-          </View>
-          {!isTodo && <ActionBtn icon="bell-outline" label="Nhắc nhở" onPress={() => { }} />}
-          <ActionBtn icon="account-plus-outline" label="Thêm CTV" onPress={() => { }} />
-          <ActionBtn icon="archive-arrow-down-outline" label="Lưu trữ" onPress={() => onArchive?.(note.id)} />
+              <ActionBtn
+                icon="delete-forever-outline"
+                label="Xóa vĩnh viễn"
+                onPress={() => onDelete?.(note.id)}
+                color={colors.danger}
+              />
+            </>
+          ) : (
+            /* ── Toolbar thông thường (Home / Archive) ── */
+            <>
+              {/* Đổi màu */}
+              <View style={{ position: 'relative' }}>
+                <ActionBtn
+                  icon="palette-outline"
+                  label="Đổi màu"
+                  onPress={() => { setShowColorPicker(v => !v); setShowDotMenu(false); }}
+                  color={showColorPicker ? colors.primary : dynamicColors.textSecondary}
+                />
+                {showColorPicker && (
+                  <ColorPicker
+                    isDark={isDark}
+                    onSelect={(color) => update({ color })}
+                    onClose={() => setShowColorPicker(false)}
+                  />
+                )}
+              </View>
 
-          <View ref={dotBtnRef}>
-            <ActionBtn
-              icon="dots-vertical"
-              label="Thêm tùy chọn"
-              onPress={() => {
-                dotBtnRef.current?.measureInWindow((x, y, w, h) => {
-                  const screenHeight = Dimensions.get('window').height;
-                  const menuHeight = isTodo ? 280 : 200;
-                  const spaceBelow = screenHeight - (y + h);
-                  if (spaceBelow < menuHeight) {
-                    setDotMenuPos({ x: x - 160, y: y - menuHeight });
-                  } else {
-                    setDotMenuPos({ x: x - 160, y: y + h + 4 });
-                  }
-                  setDotMenuPos({ x: x - 160, y: y + h + 4 });
-                });
-                setShowDotMenu(v => !v);
-                setShowColorPicker(false);
-              }}
-            />
-          </View>
-          <Modal visible={showDotMenu} transparent animationType="none" onRequestClose={() => setShowDotMenu(false)}>
-            <TouchableOpacity style={StyleSheet.absoluteFillObject} onPress={() => setShowDotMenu(false)} activeOpacity={1} />
-            <View style={[styles.dotMenu, { position: 'absolute', top: dotMenuPos.y, left: dotMenuPos.x }]}>
-              <DotMenu isTodo={isTodo} onAction={handleDotAction} onClose={() => setShowDotMenu(false)} isDark={isDark} />
-            </View>
-          </Modal>
+              {/* Nhắc nhở — ẩn trong Archive */}
+              {!isArchived && !isTodo && (
+                <ActionBtn icon="bell-outline" label="Nhắc nhở" onPress={() => { }} />
+              )}
+
+              {/* Thêm CTV */}
+              <ActionBtn icon="account-plus-outline" label="Thêm CTV" onPress={() => { }} />
+
+              {/* Archive / Unarchive */}
+              <ActionBtn
+                icon={isArchived ? 'archive-arrow-up-outline' : 'archive-arrow-down-outline'}
+                label={isArchived ? 'Bỏ lưu trữ' : 'Lưu trữ'}
+                onPress={() => onArchive?.(note.id)}
+              />
+
+              {/* Dot menu */}
+              <View ref={dotBtnRef}>
+                <ActionBtn
+                  icon="dots-vertical"
+                  label="Thêm tùy chọn"
+                  onPress={() => {
+                    dotBtnRef.current?.measureInWindow((x, y, w, h) => {
+                      const screenHeight = Dimensions.get('window').height;
+                      const menuHeight = isTodo ? 280 : 200;
+                      const spaceBelow = screenHeight - (y + h);
+                      if (spaceBelow < menuHeight) {
+                        setDotMenuPos({ x: x - 160, y: y - menuHeight });
+                      } else {
+                        setDotMenuPos({ x: x - 160, y: y + h + 4 });
+                      }
+                    });
+                    setShowDotMenu(v => !v);
+                    setShowColorPicker(false);
+                  }}
+                />
+              </View>
+
+              <Modal
+                visible={showDotMenu}
+                transparent
+                animationType="none"
+                onRequestClose={() => setShowDotMenu(false)}
+              >
+                <TouchableOpacity
+                  style={StyleSheet.absoluteFillObject}
+                  onPress={() => setShowDotMenu(false)}
+                  activeOpacity={1}
+                />
+                <View style={[styles.dotMenu, { position: 'absolute', top: dotMenuPos.y, left: dotMenuPos.x }]}>
+                  <DotMenu
+                    isTodo={isTodo}
+                    isArchived={isArchived}
+                    onAction={handleDotAction}
+                    onClose={() => setShowDotMenu(false)}
+                    isDark={isDark}
+                  />
+                </View>
+              </Modal>
+            </>
+          )}
         </View>
       )}
 
-      {(isMobile ? isSelectionMode : (hovered || isSelected)) && (
+      {/* Ô chọn — ẩn trong Trash vì không cần bulk select */}
+      {!isTrash && (hovered || isSelected) && (
         <View style={styles.checkboxWrapper}>
-          <HoverBtn onPress={onSelect} style={[isSelected && { backgroundColor: isDark ? '#1F2937' : '#fff' }]} label="Chọn">
-            <Icon source={isSelected ? "check-circle" : "circle-outline"} size={22} color={isSelected ? colors.primary : dynamicColors.textTertiary} />
+          <HoverBtn
+            onPress={onSelect}
+            style={[isSelected && { backgroundColor: isDark ? '#1F2937' : '#fff' }]}
+            label="Chọn"
+          >
+            <Icon
+              source={isSelected ? 'check-circle' : 'circle-outline'}
+              size={22}
+              color={isSelected ? colors.primary : dynamicColors.textTertiary}
+            />
           </HoverBtn>
         </View>
       )}
@@ -376,78 +509,108 @@ export function NoteCard({ note, isSelected, onSelect, isGridView, onPress, onUp
 const styles = StyleSheet.create({
   card: {
     borderRadius: 8,
-    marginBottom: 16, // Giữ lại cái này để có khoảng cách giữa các thẻ trên dưới
+    marginBottom: 16,
     position: 'relative',
     borderWidth: 1,
     borderColor: colors.borderDefault,
     overflow: 'visible',
     zIndex: 1,
-
-    // XÓA width: 260, flexGrow, flexShrink và marginRight đi
-    // Trả lại width 100% để FlashList tự động tính toán kích thước cột
     width: '100%',
-
-    ...Platform.select({ web: { cursor: 'pointer', overflow: 'visible', } as any }),
+    ...Platform.select({ web: { cursor: 'pointer', overflow: 'visible' } as any }),
   },
   cardHovered: {
     ...Platform.select({
       web: {
         boxShadow: '0 1px 2px 0 rgba(60,64,67,0.30), 0 1px 3px 1px rgba(60,64,67,0.15)',
-        // Thêm transition để hiệu ứng hover mượt mà hơn như bản gốc
-        transition: 'box-shadow 0.2s ease-in-out'
+        transition: 'box-shadow 0.2s ease-in-out',
       } as any,
-      default: { shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.12, shadowRadius: 8, elevation: 4 },
+      default: {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.12,
+        shadowRadius: 8,
+        elevation: 4,
+      },
     }),
   },
   cardContent: { padding: 16, paddingTop: 20 },
-  checkboxCorner: {
-    position: 'absolute', top: -12, left: -12, zIndex: 1,
+  checkboxWrapper: { position: 'absolute', top: -10, left: -10, zIndex: 99 },
+  pinCorner: {
+    position: 'absolute', top: 1, right: 10, zIndex: 10,
     width: 28, height: 28, alignItems: 'center', justifyContent: 'center',
   },
-  checkboxWrapper: { position: 'absolute', top: -10, left: -10, zIndex: 99 },
-  pinCorner: { position: 'absolute', top: 1, right: 10, zIndex: 10, width: 28, height: 28, alignItems: 'center', justifyContent: 'center' },
-  title: { fontFamily: 'Inter-SemiBold', fontSize: 16, color: colors.textPrimary, marginBottom: 6, paddingRight: 20 },
-  content: { fontFamily: 'Inter-Regular', fontSize: 14, color: colors.textSecondary, lineHeight: 21, marginBottom: 10 },
+  title: {
+    fontFamily: 'Inter-SemiBold', fontSize: 16,
+    color: colors.textPrimary, marginBottom: 6, paddingRight: 20,
+  },
+  content: {
+    fontFamily: 'Inter-Regular', fontSize: 14,
+    color: colors.textSecondary, lineHeight: 21, marginBottom: 10,
+  },
   todoList: { gap: 6, marginBottom: 10 },
   todoRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  checkbox: { width: 16, height: 16, borderRadius: 8, borderWidth: 1.5, borderColor: colors.gray400, alignItems: 'center', justifyContent: 'center', flexShrink: 0, },
+  checkbox: {
+    width: 16, height: 16, borderRadius: 8, borderWidth: 1.5,
+    borderColor: colors.gray400, alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+  },
   checkboxDone: { backgroundColor: colors.primary, borderColor: colors.primary },
   todoText: { fontFamily: 'Inter-Regular', fontSize: 14, flex: 1 },
   todoTextDone: { textDecorationLine: 'line-through', opacity: 0.5 },
   moreText: { fontFamily: 'Inter-Regular', fontSize: 13, marginTop: 2, marginLeft: 24 },
   completedText: { fontFamily: 'Inter-Regular', fontSize: 13, marginTop: 4 },
   tagsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 8, marginBottom: 4 },
-  footer: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 10 },
+  footer: {
+    flexDirection: 'row', justifyContent: 'space-between',
+    alignItems: 'center', marginTop: 10,
+  },
   footerRight: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   dateText: { fontFamily: 'Inter-Regular', fontSize: 12 },
   ratioText: { fontFamily: 'Inter-Regular', fontSize: 12 },
   avatars: { flexDirection: 'row', alignItems: 'center' },
-  avatar: { width: 22, height: 22, borderRadius: 11, backgroundColor: colors.gray400, alignItems: 'center', justifyContent: 'center', borderWidth: 1.5 },
+  avatar: {
+    width: 22, height: 22, borderRadius: 11,
+    backgroundColor: colors.gray400, alignItems: 'center',
+    justifyContent: 'center', borderWidth: 1.5,
+  },
   avatarText: { fontFamily: 'Inter-SemiBold', fontSize: 9, color: '#fff' },
   avatarExtra: { backgroundColor: colors.gray300 },
   avatarExtraText: { fontFamily: 'Inter-Regular', fontSize: 8, color: colors.textSecondary },
   toolbar: {
-    flexDirection: 'row', alignItems: 'center', paddingHorizontal: 8, paddingVertical: 4, borderTopWidth: 1, gap: 2, ...Platform.select({
-      web: { overflow: 'visible' } as any,
-    }),
+    flexDirection: 'row', alignItems: 'center',
+    paddingHorizontal: 8, paddingVertical: 4,
+    borderTopWidth: 1, gap: 2,
+    ...Platform.select({ web: { overflow: 'visible' } as any }),
   },
-  actionBtn: { width: 32, height: 32, borderRadius: 6, alignItems: 'center', justifyContent: 'center', ...Platform.select({ web: { cursor: 'pointer' } as any }), },
-  colorPicker: {
-    position: 'absolute', bottom: 36, left: 0, flexDirection: 'row', flexWrap: 'wrap', backgroundColor: colors.bgSurface, borderRadius: 10, padding: 8, gap: 6, width: 172, zIndex: 9999, borderWidth: 1, borderColor: colors.borderDefault, ...Platform.select({
-      web: { boxShadow: '0 4px 16px rgba(0,0,0,0.12)' } as any,
-    }),
-  },
-  colorDot: {
-    width: 24, height: 24, borderRadius: 12,
+  actionBtn: {
+    width: 32, height: 32, borderRadius: 6,
+    alignItems: 'center', justifyContent: 'center',
     ...Platform.select({ web: { cursor: 'pointer' } as any }),
   },
-  dotMenu: {
-    backgroundColor: colors.bgSurface, borderRadius: 8, paddingVertical: 4, minWidth: 200, borderWidth: 1, borderColor: colors.borderDefault, ...Platform.select({
-      web: { boxShadow: '0 4px 16px rgba(0,0,0,0.12)' } as any,
-    }),
+  colorPicker: {
+    position: 'absolute', bottom: 36, left: 0,
+    flexDirection: 'row', flexWrap: 'wrap',
+    backgroundColor: colors.bgSurface, borderRadius: 10,
+    padding: 8, gap: 6, width: 172, zIndex: 9999,
+    borderWidth: 1, borderColor: colors.borderDefault,
+    ...Platform.select({ web: { boxShadow: '0 4px 16px rgba(0,0,0,0.12)' } as any }),
   },
-  dotMenuItem: { paddingHorizontal: 16, paddingVertical: 10, ...Platform.select({ web: { cursor: 'pointer' } as any }), },
+  dotMenu: {
+    backgroundColor: colors.bgSurface, borderRadius: 8,
+    paddingVertical: 4, minWidth: 200,
+    borderWidth: 1, borderColor: colors.borderDefault,
+    ...Platform.select({ web: { boxShadow: '0 4px 16px rgba(0,0,0,0.12)' } as any }),
+  },
+  dotMenuItem: {
+    paddingHorizontal: 16, paddingVertical: 10,
+    ...Platform.select({ web: { cursor: 'pointer' } as any }),
+  },
   dotMenuText: { fontFamily: 'Inter-Regular', fontSize: 14, color: colors.textSecondary },
-  tooltip: { position: 'absolute', bottom: '100%', left: '50%', backgroundColor: 'rgba(0,0,0,0.75)', borderRadius: 4, paddingHorizontal: 8, paddingVertical: 4, zIndex: 999, marginBottom: 4, ...Platform.select({ web: { transform: 'translateX(-50%)' } as any }) } as any,
+  tooltip: {
+    position: 'absolute', bottom: '100%', left: '50%',
+    backgroundColor: 'rgba(0,0,0,0.75)', borderRadius: 4,
+    paddingHorizontal: 8, paddingVertical: 4,
+    zIndex: 999, marginBottom: 4,
+    ...Platform.select({ web: { transform: 'translateX(-50%)' } as any }),
+  } as any,
   tooltipText: { fontFamily: 'Inter-Regular', fontSize: 12, color: '#fff' },
 });
