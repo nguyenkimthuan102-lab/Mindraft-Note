@@ -163,6 +163,19 @@ function ActionBtn({ icon, label, onPress, color }: {
   );
 }
 
+// Strip HTML tags để hiển thị plain text trên card
+const stripHtml = (html: string): string =>
+  html
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<\/p>/gi, '\n')
+    .replace(/<[^>]+>/g, '')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+
 export function NoteCard({ note, isSelected, onSelect, isGridView, onPress, onUpdate, onDelete, onArchive }: NoteCardProps) {
   const { theme } = useAppStore(); // Lấy theme hệ thống
   const isDark = theme === 'dark';
@@ -218,8 +231,8 @@ export function NoteCard({ note, isSelected, onSelect, isGridView, onPress, onUp
       ]}
       {...hoverProps}
     >
-      {(hovered || localNote.is_pinned) && (
-        <View style={[styles.pinCorner, { opacity: (hovered || localNote.is_pinned) ? 1 : 0 }]}>
+      {(hovered || !!localNote.is_pinned) && (
+        <View style={[styles.pinCorner, { opacity: (hovered || !!localNote.is_pinned) ? 1 : 0 }]}>
           <HoverBtn
             onPress={() => update({ is_pinned: !localNote.is_pinned })}
             label={localNote.is_pinned ? "Bỏ ghim" : "Ghim"}
@@ -243,7 +256,9 @@ export function NoteCard({ note, isSelected, onSelect, isGridView, onPress, onUp
         ) : null}
 
         {!isTodo && localNote.content_text ? (
-          <Text style={[styles.content, { color: dynamicColors.textSecondary }]} numberOfLines={4}>{localNote.content_text}</Text>
+          <Text style={[styles.content, { color: dynamicColors.textSecondary }]} numberOfLines={4}>
+            {stripHtml(localNote.content_text)}
+          </Text>
         ) : null}
 
         {isTodo && (

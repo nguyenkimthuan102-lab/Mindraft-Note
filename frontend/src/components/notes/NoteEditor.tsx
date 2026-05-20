@@ -1,4 +1,4 @@
-import { View, Text, StyleSheet, TouchableOpacity, TextInput, ScrollView, useWindowDimensions, Platform } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, TextInput, ScrollView, useWindowDimensions, Platform, Keyboard } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { colors } from '../../constants/colors';
 import { NoteCardData, TodoItemData } from './NoteCard';
@@ -9,6 +9,9 @@ import { exportToTxt, exportToPdf, exportToDocx } from '../../utils/exportNote';
 
 const isWeb = Platform.OS === 'web';
 const WebDiv = 'div' as any;
+
+const contentRef = useRef<any>(null);
+const mobileContentRef = useRef<any>(null);
 
 const cardColorMap: Record<string, string> = {
   default: '#FFFFFF', red: '#FADADD', orange: '#FEEFC3', yellow: '#FEF7CD',
@@ -44,6 +47,7 @@ interface NoteEditorProps {
   note?: NoteCardData;
   onClose: () => void;
   onSave: (note: NoteCardData) => void;
+  inline?: boolean;
 }
 
 function Tooltip({ label, children, position = 'top' }: { label: string; children: React.ReactNode; position?: 'top' | 'bottom' }) {
@@ -131,6 +135,32 @@ export function NoteEditor({ visible, mode, note, onClose, onSave }: NoteEditorP
     setShowMoreMenu(false);
     setShowFormattingBar(false);
     setIsContentEmpty(!note?.content_text);
+
+    // Chỉ tự động focus nếu là tạo mới (nội dung trống)
+    if (!note?.content_text) {
+      const timer = setTimeout(() => {
+        if (isWeb) {
+          // Xử lý Focus nâng cao cho div contentEditable trên Web
+          const el = document.getElementById('web-content-editor');
+          if (el) {
+            el.focus();
+
+            // Ép con trỏ chuột nhảy xuống vị trí cuối cùng trong div nhập liệu
+            if (typeof window !== 'undefined' && window.getSelection) {
+              const range = document.createRange();
+              const sel = window.getSelection();
+              range.selectNodeContents(el);
+              range.collapse(false); // false nghĩa là đưa về cuối dòng
+              sel?.removeAllRanges();
+              sel?.addRange(range);
+            }
+          }
+        } else if (mobileContentRef.current) {
+          mobileContentRef.current.focus();
+        }
+      }, 150);
+      return () => clearTimeout(timer);
+    }
   }, [visible, note, mode]);
 
   const { width } = useWindowDimensions();
@@ -271,6 +301,7 @@ export function NoteEditor({ visible, mode, note, onClose, onSave }: NoteEditorP
   };
 
   const handleSaveAndClose = () => {
+    Keyboard.dismiss(); // THÊM DÒNG NÀY ĐỂ ÉP ĐÓNG BÀN PHÍM NGAY LẬP TỨC
     let currentContent = content;
     if (editorMode === 'text') {
       currentContent = isWeb && contentRef.current ? contentRef.current.innerHTML : content;
@@ -312,6 +343,8 @@ export function NoteEditor({ visible, mode, note, onClose, onSave }: NoteEditorP
 
   const bg = cardColorMap[noteColor] ?? cardColorMap.default;
 
+  
+
   return (
     <View style={styles.overlay}>
       <TouchableOpacity style={styles.backdrop} activeOpacity={1} onPress={handleSaveAndClose} />
@@ -340,8 +373,8 @@ export function NoteEditor({ visible, mode, note, onClose, onSave }: NoteEditorP
         </View>
 
         {/* Body */}
-        <ScrollView 
-          style={styles.body} 
+        <ScrollView
+          style={styles.body}
           showsVerticalScrollIndicator={false}
           onTouchStart={closePopups}
           {...Platform.select({ web: { onClickCapture: closePopups } } as any)}
@@ -356,6 +389,7 @@ export function NoteEditor({ visible, mode, note, onClose, onSave }: NoteEditorP
                     </Text>
                   )}
                   <WebDiv
+                    id="web-content-editor"
                     ref={contentRef}
                     contentEditable={true}
                     suppressContentEditableWarning={true}
@@ -384,6 +418,7 @@ export function NoteEditor({ visible, mode, note, onClose, onSave }: NoteEditorP
                     {content ? content + ' \n' : ' '}
                   </Text>
                   <TextInput
+                    ref={mobileContentRef}
                     value={content}
                     onChangeText={setContent}
                     placeholder="Tạo ghi chú..."
@@ -392,7 +427,7 @@ export function NoteEditor({ visible, mode, note, onClose, onSave }: NoteEditorP
                     multiline
                     textAlignVertical="top"
                     scrollEnabled={false}
-                    autoFocus={!note?.content_text}
+                    //autoFocus={!note?.content_text}
                     onFocus={closePopups}
                   />
                 </View>
@@ -594,6 +629,7 @@ export function NoteEditor({ visible, mode, note, onClose, onSave }: NoteEditorP
   );
 }
 
+
 const styles = StyleSheet.create({
   exportMenuPopover: {
     position: 'absolute',
@@ -610,6 +646,17 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 4 },
     elevation: 5,
     minWidth: 150,
+  },
+  inlineContainer: {
+    position: 'relative',
+    width: '100%',
+    maxHeight: 500, // Khống chế chiều cao tối đa khi gài trên feed tránh đẩy layout quá xa
+    borderWidth: 1,
+    borderColor: colors.borderDefault,
+    borderRadius: 8,
+    elevation: 0,         // Tắt bóng đổ nặng của Modal trên Android
+    shadowOpacity: 0,     // Tắt bóng đổ nặng trên iOS/Web
+    marginBottom: 16,
   },
   // Thêm vào styles của NoteEditor_2.tsx
   tagMenuPopover: {

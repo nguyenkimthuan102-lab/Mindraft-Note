@@ -35,14 +35,25 @@ class NoteSerializer(serializers.ModelSerializer):
         return data
 
 class CreateNoteSerializer(serializers.ModelSerializer):
-
     class Meta:
         model = Notes
-
         fields = [
             "title",
             "type",
+            "content",
+            "content_text",
+            "color",
+            "position",
+            "client_updated_at",
         ]
+        extra_kwargs = {
+            "title": {"required": False, "allow_blank": True},
+            "content": {"required": False},
+            "content_text": {"required": False, "allow_blank": True},
+            "color": {"required": False},
+            "position": {"required": False},
+            "client_updated_at": {"required": False},
+        }
         
 class UserSettingsSerializer(serializers.ModelSerializer):
 

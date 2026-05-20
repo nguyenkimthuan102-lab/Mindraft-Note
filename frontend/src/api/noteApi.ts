@@ -1,6 +1,15 @@
 import axiosClient from './axiosClient';
-import { Note } from '../types';
-import { NoteCardData } from '../components/notes/NoteCard'; // Đồng nhất type
+import { NoteCardData } from '../components/notes/NoteCard';
+
+interface CreateNotePayload {
+  title?: string;
+  type: 'text' | 'todo';
+  content?: any[];
+  content_text?: string;
+  color?: string;
+  position?: string;
+  client_updated_at: string;
+}
 
 interface FetchNotesParams {
   view?: 'active' | 'archived' | 'trash' | 'all';
@@ -10,13 +19,47 @@ interface FetchNotesParams {
 export const fetchNotes = (params?: FetchNotesParams): Promise<NoteCardData[]> =>
   axiosClient.get('/notes/', { params }).then(res => res.data.data);
 
+// Hàm xử lý logic gọi API chung
+const executeCreateNote = (note: NoteCardData): Promise<NoteCardData> => {
+  const payload: CreateNotePayload = {
+    title: note.title ?? '',
+    type: note.type,
+    content: [],
+    content_text: note.content_text ?? '',
+    color: note.color ?? 'default',
+    position: 'a0',
+    client_updated_at: new Date().toISOString(),
+  };
 
+  // Bắt buộc phải có dấu gạch chéo ở cuối '/notes/' để tránh lỗi 301 Redirect của Django làm mất body dữ liệu
+  return axiosClient.post('/notes/', payload).then(res => res.data.data);
+};
 
-export const createNote = (note: Partial<Note>): Promise<Note> =>
-  axiosClient.post('/notes', note).then(res => res.data.data);
+export const createNoteText = (note: NoteCardData): Promise<NoteCardData> =>
+  executeCreateNote(note);
 
-export const updateNote = (id: string, note: Partial<Note>): Promise<Note> =>
-  axiosClient.put(`/notes/${id}`, note).then(res => res.data.data);
+export const createNoteTodo = (note: NoteCardData): Promise<NoteCardData> =>
+  executeCreateNote(note);
 
+export const updateNote = (id: string, note: Partial<NoteCardData>): Promise<NoteCardData> =>
+  axiosClient.patch(`/notes/${id}`, {
+    ...note,
+    client_updated_at: new Date().toISOString(),
+  }).then(res => res.data.data);
+
+export const trashNote = (id: string): Promise<void> =>
+  axiosClient.patch(`/notes/${id}`, {
+    is_trashed: true,
+    client_updated_at: new Date().toISOString(),
+  });
+
+// Archive
+export const archiveNote = (id: string): Promise<void> =>
+  axiosClient.patch(`/notes/${id}/`, {
+    is_archived: true,
+    client_updated_at: new Date().toISOString(),
+  });
+ 
 export const deleteNote = (id: string): Promise<void> =>
-  axiosClient.delete(`/notes/${id}`);
+  axiosClient.delete(`/notes/${id}/`);
+ 
