@@ -11,27 +11,7 @@ from ..models import Tags, Notes
 
 from ..serializers import TagSerializer, NoteSerializer, CreateNoteSerializer, UpdateNoteSerializer
 
-
-@api_view(["GET"])
-@permission_classes([IsAuthenticated])
-def get_tags(request):
-
-    tags = Tags.objects.filter(
-        owner=request.user,
-        is_deleted=0
-    ).order_by("name")
-
-    serializer = TagSerializer(tags, many=True)
-
-    return Response({
-        "data": serializer.data
-    })
-
-
-@api_view(["GET"])
-@permission_classes([IsAuthenticated])
-def get_notes(request):
-
+def handle_get_notes(request):
     view_type = request.GET.get("view", "active")
 
     notes = Notes.objects.none()
@@ -109,39 +89,21 @@ def get_notes(request):
         "data": serializer.data
     })
 
-
-
-
-@api_view(["POST"])
-@permission_classes([IsAuthenticated])
-def create_note(request):
-
+def handle_create_note(request):
     serializer = CreateNoteSerializer(data=request.data)
+    if not serializer.is_valid():
+            return Response({
+                "error": {
+                    "code": "INVALID_DATA",
+                    "message": "Dữ liệu gửi lên không hợp lệ."
+                }
+            }, status=status.HTTP_422_UNPROCESSABLE_ENTITY)
+
+    note_type = serializer.validated_data.get("type")
 
     serializer.is_valid(raise_exception=True)
 
-    note_type = serializer.validated_data.get(
-        "type",
-        "text"
-    )
-
-    title = serializer.validated_data.get(
-        "title",
-        ""
-    )
-
     now = timezone.now()
-
-    # DEFAULT CONTENT
-    if note_type == "checklist":
-
-        default_content = {
-            "items": []
-        }
-
-    else:
-
-        default_content = {}
 
     # CREATE NOTE
     note = Notes.objects.create(
@@ -149,15 +111,16 @@ def create_note(request):
 
         user=request.user,
 
-        title=title,
+        title=serializer.validated_data.get("title", ""),
 
-        content=default_content,
+        content=serializer.validated_data.get("content", []), # Sử dụng validated_data của serializer để validate, 
+        #tránh cho phép dữ liệu rác vào database
 
-        content_text="",
+        content_text=serializer.validated_data.get("content_text", ""),
 
         type=note_type,
 
-        color="#FFFFFF",
+        color=serializer.validated_data.get("color", "default"),
 
         is_pinned=0,
 
@@ -167,13 +130,13 @@ def create_note(request):
 
         is_deleted=0,
 
-        position="a0",
+        position=serializer.validated_data.get("position", "a0"),
 
         created_at=now,
 
         server_updated_at=now,
 
-        client_updated_at=now,
+        client_updated_at=serializer.validated_data.get("client_updated_at", now),
     )
 
     response_serializer = NoteSerializer(note)
@@ -184,6 +147,32 @@ def create_note(request):
         },
         status=status.HTTP_201_CREATED
     )
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def get_tags(request):
+
+    tags = Tags.objects.filter(
+        owner=request.user,
+        is_deleted=0
+    ).order_by("name")
+
+    serializer = TagSerializer(tags, many=True)
+
+    return Response({
+        "data": serializer.data
+    })
+
+
+@api_view(["GET", "POST"])
+@permission_classes([IsAuthenticated])
+def notes_collection_view(request):
+    if request.method == "GET":
+        return handle_get_notes(request)
+    elif request.method == "POST":
+        return handle_create_note(request)
+
+
 
 @api_view(["PATCH"])
 @permission_classes([IsAuthenticated])
@@ -265,6 +254,48 @@ def toggle_archive_note(request, note_id):
         "data": serializer.data
     })
 
+
+@api_view(["PATCH"])
+@permission_classes([IsAuthenticated])
+def update_note_quick(request, note_id):
+
+    try:
+
+        note = Notes.objects.get(
+            id=note_id,
+            user=request.user,
+            is_trashed=0,
+            is_deleted=0
+        )
+
+    except Notes.DoesNotExist:
+
+        return Response(
+            {
+                "error": "Note not found"
+            },
+            status=status.HTTP_404_NOT_FOUND
+        )
+
+    serializer = UpdateNoteSerializer(
+        note,
+        data=request.data,
+        partial=True
+    )
+
+    serializer.is_valid(raise_exception=True)
+
+    # UPDATE FIELDS
+    serializer.save(
+        server_updated_at=timezone.now()
+    )
+
+    response_serializer = NoteSerializer(note)
+
+    return Response({
+        "data": response_serializer.data
+    })
+
 @api_view(["PATCH"])
 @permission_classes([IsAuthenticated])
 def trash_note(request, note_id):
@@ -305,42 +336,19 @@ def trash_note(request, note_id):
         "data": serializer.data
     })
 
-@api_view(["PATCH"])
-@permission_classes([IsAuthenticated])
-def update_note_quick(request, note_id):
+# @api_view(["PATCH"])
+# @permission_classes([IsAuthenticated])
+# def note_detail(request, pk):
+#     try:
+#         # Ngăn không cho sửa note đã vào thùng rác
+#         note = Notes.objects.get(id=pk, user=request.user, is_trashed=0, is_deleted=0)
+#     except Notes.DoesNotExist:
+#         return Response({"error": "Không tìm thấy ghi chú hoặc ghi chú đã bị xóa/vào thùng rác"}, status=404)
 
-    try:
-
-        note = Notes.objects.get(
-            id=note_id,
-            user=request.user,
-            is_deleted=0
-        )
-
-    except Notes.DoesNotExist:
-
-        return Response(
-            {
-                "error": "Note not found"
-            },
-            status=status.HTTP_404_NOT_FOUND
-        )
-
-    serializer = UpdateNoteSerializer(
-        note,
-        data=request.data,
-        partial=True
-    )
-
-    serializer.is_valid(raise_exception=True)
-
-    # UPDATE FIELDS
-    serializer.save(
-        server_updated_at=timezone.now()
-    )
-
-    response_serializer = NoteSerializer(note)
-
-    return Response({
-        "data": response_serializer.data
-    })
+#     serializer = CreateNoteSerializer(note, data=request.data, partial=True)
+#     if serializer.is_valid():
+#         # Cập nhật thời gian tại đây
+#         serializer.save(server_updated_at=timezone.now())
+#         return Response({"data": NoteSerializer(note).data})
+    
+#     return Response(serializer.errors, status=422)

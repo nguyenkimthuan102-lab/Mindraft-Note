@@ -17,9 +17,11 @@ urlpatterns = [
     path( "users/me/settings",get_my_settings),
 
     path("tags/",get_tags),
-    path("notes/",get_notes),
+    path("notes/",notes_collection_view),
+
     path("notes/<str:note_id>/pin",toggle_pin_note),
     path("notes/<str:note_id>/archive",toggle_archive_note),
     path("notes/<str:note_id>/trash",trash_note),
     path("notes/<str:note_id>",update_note_quick),
+    # path("notes/<str:pk>/", note_detail)
 ]
