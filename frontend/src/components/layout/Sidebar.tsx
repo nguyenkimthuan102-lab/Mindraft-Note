@@ -1,5 +1,6 @@
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Platform } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Platform, Animated, useWindowDimensions } from 'react-native';
 import React from 'react';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter, usePathname } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
 import { colors } from '../../constants/colors';
@@ -17,9 +18,10 @@ interface NavItemProps {
   active: boolean;
   // THÊM: props màu động
   isDark: boolean;
+  onPress?: () => void;
 }
 
-function NavItem({ icon, label, href, active, isDark }: NavItemProps) {
+function NavItem({ icon, label, href, active, isDark, onPress }: NavItemProps) {
   const router = useRouter();
   
   // Màu sắc động cho item
@@ -27,13 +29,21 @@ function NavItem({ icon, label, href, active, isDark }: NavItemProps) {
   const activeTextColor = isDark ? '#34d399' : colors.primary;
   const inactiveTextColor = isDark ? '#9ca3af' : colors.textSecondary;
 
+  const handlePress = () => {
+    if (onPress) {
+      onPress();
+    } else {
+      router.push(href as any);
+    }
+  };
+
   return (
     <TouchableOpacity
       style={[
         styles.navItem, 
         active && { backgroundColor: activeBg } // Ghi đè màu active
       ]}
-      onPress={() => router.push(href as any)}
+      onPress={handlePress}
       activeOpacity={0.7}
     >
       <Feather
@@ -53,7 +63,7 @@ function NavItem({ icon, label, href, active, isDark }: NavItemProps) {
 }
 
 export function Sidebar() {
-  const { isSidebarOpen } = useLayoutStore();
+  const { isSidebarOpen, toggleSidebar } = useLayoutStore();
   const pathname = usePathname();
   const router = useRouter();
   const { openCreateText, openCreateTodo } = useNoteStore();
@@ -62,6 +72,31 @@ export function Sidebar() {
   // THÊM: Lấy theme từ AppStore
   const { theme } = useAppStore();
   const isDark = theme === 'dark';
+
+  const { width } = useWindowDimensions();
+  const isMobile = width < 720;
+  const insets = useSafeAreaInsets();
+
+  // Ref to detect first render to avoid initial close animation glitch on mobile mount
+  const isFirstRender = React.useRef(true);
+  
+  // Translation X animation value for slide-in drawer effect (-265 completely hides drawer including shadows)
+  const slideAnim = React.useRef(new Animated.Value(isSidebarOpen ? 0 : -265)).current;
+
+  React.useEffect(() => {
+    if (isMobile) {
+      if (isFirstRender.current) {
+        isFirstRender.current = false;
+        slideAnim.setValue(isSidebarOpen ? 0 : -265);
+      } else {
+        Animated.timing(slideAnim, {
+          toValue: isSidebarOpen ? 0 : -265,
+          duration: 250,
+          useNativeDriver: true,
+        }).start();
+      }
+    }
+  }, [isSidebarOpen, isMobile]);
 
   // Bảng màu động cho Sidebar
   const dynamicColors = {
@@ -72,7 +107,15 @@ export function Sidebar() {
     textTer: isDark ? '#6b7280' : colors.textTertiary,
   };
 
-  if (!isSidebarOpen) return null;
+  // If not mobile and sidebar is not open, return null (desktop collapsible behavior)
+  if (!isMobile && !isSidebarOpen) return null;
+
+  const handleNavItemPress = (href: string) => {
+    if (isMobile && isSidebarOpen) {
+      toggleSidebar();
+    }
+    router.push(href as any);
+  };
 
   const handleCreateText = () => {
     setIsNewNoteOpen(false);
@@ -80,6 +123,9 @@ export function Sidebar() {
       router.push('/(main)');
     }
     openCreateText();
+    if (isMobile && isSidebarOpen) {
+      toggleSidebar();
+    }
   };
 
   const handleCreateTodo = () => {
@@ -88,10 +134,43 @@ export function Sidebar() {
       router.push('/(main)');
     }
     openCreateTodo();
+    if (isMobile && isSidebarOpen) {
+      toggleSidebar();
+    }
+  };
+
+  const handlePlaceholderClick = () => {
+    if (isMobile && isSidebarOpen) {
+      toggleSidebar();
+    }
   };
 
   return (
-    <View style={[styles.sidebar, { backgroundColor: dynamicColors.bg, borderRightColor: dynamicColors.border }]}>
+    <Animated.View 
+      style={[
+        styles.sidebar, 
+        { 
+          backgroundColor: dynamicColors.bg, 
+          borderRightColor: dynamicColors.border 
+        },
+        isMobile && {
+          position: 'absolute',
+          left: 0,
+          top: 0,
+          bottom: 0,
+          zIndex: 1000,
+          height: '100%',
+          paddingTop: insets.top > 0 ? insets.top + 12 : 20,
+          transform: [{ translateX: slideAnim }],
+          // Premium drop-shadow to separate drawer from background
+          shadowColor: '#000',
+          shadowOpacity: isDark ? 0.4 : 0.15,
+          shadowRadius: 10,
+          shadowOffset: { width: 4, height: 0 },
+          elevation: 16,
+        }
+      ]}
+    >
       <View style={styles.fixedTopNav}>
         {/* New note */}
         <View style={styles.newNoteWrapper}>
@@ -126,8 +205,8 @@ export function Sidebar() {
         </View>
 
         {/* Main nav */}
-        <NavItem icon="file-text" label="All notes" href="/(main)" active={pathname === '/'} isDark={isDark} />
-        <NavItem icon="bell" label="Reminders" href="/(main)/reminders" active={pathname === '/reminders'} isDark={isDark} />
+        <NavItem icon="file-text" label="All notes" href="/(main)" active={pathname === '/'} isDark={isDark} onPress={() => handleNavItemPress('/(main)')} />
+        <NavItem icon="bell" label="Reminders" href="/(main)/reminders" active={pathname === '/reminders'} isDark={isDark} onPress={() => handleNavItemPress('/(main)/reminders')} />
 
         <View style={[styles.divider, { backgroundColor: dynamicColors.border }]} />
       </View>
@@ -137,12 +216,12 @@ export function Sidebar() {
         <ScrollView showsVerticalScrollIndicator={false} style={styles.scroll}>
           <Text style={[styles.sectionLabel, { color: dynamicColors.textTer }]}>LABELS</Text>
           {LABELS.map((label) => (
-            <TouchableOpacity key={label} style={styles.navItem} activeOpacity={0.7}>
+            <TouchableOpacity key={label} style={styles.navItem} activeOpacity={0.7} onPress={handlePlaceholderClick}>
               <Feather name="tag" size={16} color={dynamicColors.textSec} />
               <Text style={[styles.navLabel, { color: dynamicColors.textSec }]}>{label}</Text>
             </TouchableOpacity>
           ))}
-          <TouchableOpacity style={styles.editLabels}>
+          <TouchableOpacity style={styles.editLabels} onPress={handlePlaceholderClick}>
             <Text style={[styles.editLabelsText, { color: dynamicColors.textTer }]}>Edit labels</Text>
           </TouchableOpacity>
         </ScrollView>
@@ -151,11 +230,11 @@ export function Sidebar() {
       {/* 4. Footer */}
       <View style={styles.footer}>
         <View style={[styles.divider, { backgroundColor: dynamicColors.border }]} />
-        <NavItem icon="archive" label="Archive" href="/(main)/archive" active={pathname === '/archive'} isDark={isDark} />
-        <NavItem icon="trash-2" label="Trash" href="/(main)/trash" active={pathname === '/trash'} isDark={isDark} />
-        <NavItem icon="settings" label="Settings" href="/(main)/settings" active={pathname === '/settings'} isDark={isDark} />
+        <NavItem icon="archive" label="Archive" href="/(main)/archive" active={pathname === '/archive'} isDark={isDark} onPress={() => handleNavItemPress('/(main)/archive')} />
+        <NavItem icon="trash-2" label="Trash" href="/(main)/trash" active={pathname === '/trash'} isDark={isDark} onPress={() => handleNavItemPress('/(main)/trash')} />
+        <NavItem icon="settings" label="Settings" href="/(main)/settings" active={pathname === '/settings'} isDark={isDark} onPress={() => handleNavItemPress('/(main)/settings')} />
       </View>
-    </View>
+    </Animated.View>
   );
 }
 

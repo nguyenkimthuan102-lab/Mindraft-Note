@@ -88,7 +88,7 @@ export function NoteList({ notes, title, onPressNote, onUpdateNote, onDeleteNote
           scrollEnabled={false}
           renderItem={({ item }: any) => (
             <View style={[
-              { padding: isMobile ? 4 : 6 },
+              { paddingHorizontal: isMobile ? 4 : 6, paddingVertical: isMobile ? 2 : 3 },
               styles.listMaxWidth
             ]}>
               <NoteCard
@@ -112,7 +112,7 @@ export function NoteList({ notes, title, onPressNote, onUpdateNote, onDeleteNote
           estimatedItemSize={200}
           scrollEnabled={false}
           renderItem={({ item }: any) => (
-            <View style={{ padding: isMobile ? 4 : 8 }}>
+            <View style={{ paddingHorizontal: isMobile ? 4 : 5, paddingVertical: isMobile ? 2 : 3 }}>
               <NoteCard
                 note={item}
                 isGridView={true}

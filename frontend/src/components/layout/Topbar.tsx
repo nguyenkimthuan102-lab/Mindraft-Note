@@ -1,7 +1,7 @@
 import { Feather } from '@expo/vector-icons';
 import { usePathname, useRouter } from 'expo-router';
 import { useState } from 'react';
-import { Image, Platform, StyleSheet, Text, TextInput, TouchableOpacity, View, LayoutAnimation } from 'react-native';
+import { Image, Platform, StyleSheet, Text, TextInput, TouchableOpacity, View, LayoutAnimation, useWindowDimensions } from 'react-native';
 import { Icon, Menu, Divider } from 'react-native-paper';
 import { colors } from '../../constants/colors';
 import { useLayoutStore } from '../../store/useLayoutStore';
@@ -9,6 +9,7 @@ import { useSyncStore } from '../../store/useSyncStore';
 import { SyncIndicator } from '../ui/SyncIndicator';
 import { useSelectionStore } from '../../store/useSelectionStore';
 import { useAppStore, DEFAULT_SORT } from '../../store/useAppStore';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 interface TopbarProps {
   viewMode?: 'list' | 'grid';
@@ -29,11 +30,15 @@ export function Topbar({ onViewModeChange }: TopbarProps) {
   const { sort, setSort, viewMode, setViewMode, theme } = useAppStore(); // THÊM theme
   const [menuVisible, setMenuVisible] = useState(false);
   const isSortActive = sort.field !== DEFAULT_SORT.field || sort.direction !== DEFAULT_SORT.direction;
+  const insets = useSafeAreaInsets();
 
   const openMenu = () => setMenuVisible(true);
   const closeMenu = () => setMenuVisible(false);
 
   const [search, setSearch] = useState('');
+  const { width } = useWindowDimensions();
+  const isMobile = width < 720;
+  const [isSearchExpanded, setIsSearchExpanded] = useState(false);
   const { toggleSidebar } = useLayoutStore();
   const pathname = usePathname();
   const isHome = pathname === '/' || pathname === '/(main)';
@@ -81,15 +86,34 @@ export function Topbar({ onViewModeChange }: TopbarProps) {
 
   if (selectedCount > 0) {
     return (
-      <View style={[styles.topbar, { backgroundColor: dynamicColors.bg, borderBottomColor: dynamicColors.border }]}>
+      <View
+        style={[
+          styles.topbar,
+          {
+            backgroundColor: dynamicColors.bg,
+            borderBottomColor: dynamicColors.border,
+            height: 66 + insets.top,
+            paddingTop: insets.top,
+            paddingHorizontal: isMobile ? 8 : 20,
+          },
+        ]}
+      >
         <View style={styles.selectionSection}>
           <TouchableOpacity onPress={clearSelection} style={styles.menuBtn}>
             <Icon source="close" size={22} color={dynamicColors.text} />
           </TouchableOpacity>
-          <Text style={[styles.selectionText, { color: dynamicColors.text }]}>{selectedCount} đã chọn</Text>
+          <Text
+            style={[
+              styles.selectionText,
+              { color: dynamicColors.text },
+              isMobile && { fontSize: 15, marginLeft: 6 },
+            ]}
+          >
+            {selectedCount} đã chọn
+          </Text>
         </View>
 
-        <View style={styles.selectionActions}>
+        <View style={[styles.selectionActions, { gap: isMobile ? 4 : 10 }]}>
           <ActionBtn icon="pin-outline" label="Ghim" isDark={isDark} />
           <ActionBtn icon="bell-outline" label="Nhắc nhở" isDark={isDark} />
           <ActionBtn icon="palette-outline" label="Màu" isDark={isDark} />
@@ -100,49 +124,86 @@ export function Topbar({ onViewModeChange }: TopbarProps) {
     );
   }
 
-  return (
-    <View style={[styles.topbar, { backgroundColor: dynamicColors.bg, borderBottomColor: dynamicColors.border }]}>
+  if (isMobile && isSearchExpanded) {
+    return (
+      <View style={[styles.topbar, { backgroundColor: dynamicColors.bg, borderBottomColor: dynamicColors.border, paddingHorizontal: 12, height: 66 + insets.top, paddingTop: insets.top }]}>
+        <View style={styles.mobileSearchHeader}>
+          <TouchableOpacity onPress={() => { setIsSearchExpanded(false); setSearch(''); }} style={styles.menuBtn}>
+            <Feather name="arrow-left" size={22} color={dynamicColors.textSec} />
+          </TouchableOpacity>
+          <View style={[styles.searchWrapMobile, { backgroundColor: dynamicColors.searchBg }]}>
+            <TextInput
+              style={[styles.searchInput, { color: dynamicColors.text }]}
+              value={search}
+              onChangeText={setSearch}
+              placeholder="Search notes, tags..."
+              placeholderTextColor={dynamicColors.placeholder}
+              autoFocus
+            />
+            {search.length > 0 && (
+              <TouchableOpacity onPress={() => setSearch('')} style={{ padding: 4 }}>
+                <Feather name="x" size={18} color={dynamicColors.textSec} />
+              </TouchableOpacity>
+            )}
+          </View>
+        </View>
+      </View>
+    );
+  }
 
-      <View style={styles.leftSection}>
+  return (
+    <View style={[styles.topbar, { backgroundColor: dynamicColors.bg, borderBottomColor: dynamicColors.border, height: 66 + insets.top, paddingTop: insets.top }]}>
+
+      <View style={[styles.leftSection, isMobile && { width: 'auto' }]}>
         <TouchableOpacity onPress={toggleSidebar} style={styles.menuBtn}>
           <Feather name="menu" size={22} color={dynamicColors.textSec} />
         </TouchableOpacity>
         
-        <TouchableOpacity
-          activeOpacity={0.7}
-          style={styles.logoContainer}
-          disabled={isSettings}
-          onPress={() => {
-            if (isHome) {
-              router.replace('/(main)');
-            } else {
-              router.push('/(main)');
-            }
-          }}
-        >
-          {isHome ? (
-            <>
-              <Image source={logoIcon} style={styles.logoImg} />
-              <Text style={[styles.brandText, { color: dynamicColors.text }]}>Mindraft Note</Text>
-            </>
-          ) : (
-            <Text style={[styles.areaTitle, { color: dynamicColors.textSec }]}>{getAreaTitle()}</Text>
-          )}
-        </TouchableOpacity>
+        {!isMobile && (
+          <TouchableOpacity
+            activeOpacity={0.7}
+            style={styles.logoContainer}
+            disabled={isSettings}
+            onPress={() => {
+              if (isHome) {
+                router.replace('/(main)');
+              } else {
+                router.push('/(main)');
+              }
+            }}
+          >
+            {isHome ? (
+              <>
+                <Image source={logoIcon} style={styles.logoImg} />
+                <Text style={[styles.brandText, { color: dynamicColors.text }]}>Mindraft Note</Text>
+              </>
+            ) : (
+              <Text style={[styles.areaTitle, { color: dynamicColors.textSec }]}>{getAreaTitle()}</Text>
+            )}
+          </TouchableOpacity>
+        )}
       </View>
 
-      <View style={[styles.searchWrap, { backgroundColor: dynamicColors.searchBg }]}>
-        <Feather name="search" size={16} color={dynamicColors.textSec} style={styles.searchIcon} />
-        <TextInput
-          style={[styles.searchInput, { color: dynamicColors.text }]}
-          value={search}
-          onChangeText={setSearch}
-          placeholder="Search notes, tags, or text..."
-          placeholderTextColor={dynamicColors.placeholder}
-        />
-      </View>
+      {!isMobile && (
+        <View style={[styles.searchWrap, { backgroundColor: dynamicColors.searchBg }]}>
+          <Feather name="search" size={16} color={dynamicColors.textSec} style={styles.searchIcon} />
+          <TextInput
+            style={[styles.searchInput, { color: dynamicColors.text }]}
+            value={search}
+            onChangeText={setSearch}
+            placeholder="Search notes, tags, or text..."
+            placeholderTextColor={dynamicColors.placeholder}
+          />
+        </View>
+      )}
 
-      <View style={styles.actions}>
+      <View style={[styles.actions, isMobile && { width: 'auto' }]}>
+        {isMobile && (
+          <TouchableOpacity style={styles.iconBtn} onPress={() => setIsSearchExpanded(true)}>
+            <Feather name="search" size={20} color={dynamicColors.textSec} />
+          </TouchableOpacity>
+        )}
+
         <SyncIndicator status={syncStatus} />
 
         <TouchableOpacity style={styles.iconBtn} onPress={handleToggle}>
@@ -353,5 +414,19 @@ const styles = StyleSheet.create({
     backgroundColor: colors.primary,
     borderWidth: 1,
     borderColor: colors.bgSurface,
+  },
+  mobileSearchHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+  },
+  searchWrapMobile: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    height: 42,
+    gap: 8,
   },
 });

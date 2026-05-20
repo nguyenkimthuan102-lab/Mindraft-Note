@@ -1,4 +1,4 @@
-import { View, Text, StyleSheet, TouchableOpacity, Platform, Modal, Dimensions } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Platform, Modal, Dimensions, useWindowDimensions } from 'react-native';
 import { Icon } from 'react-native-paper';
 import { useState, useRef } from 'react';
 import { TagChip } from '../ui/TagChip';
@@ -6,6 +6,7 @@ import { colors } from '../../constants/colors';
 import { HoverBtn } from '../ui/HoverBtn';
 // THÊM: Import AppStore để lấy trạng thái theme
 import { useAppStore } from '../../store/useAppStore';
+import { useSelectionStore } from '../../store/useSelectionStore';
 
 // Bảng màu cho Chế độ Sáng (Giữ nguyên của bạn)
 const cardColorMap: Record<string, string> = {
@@ -179,6 +180,11 @@ const stripHtml = (html: string): string =>
 export function NoteCard({ note, isSelected, onSelect, isGridView, onPress, onUpdate, onDelete, onArchive }: NoteCardProps) {
   const { theme } = useAppStore(); // Lấy theme hệ thống
   const isDark = theme === 'dark';
+  const { width } = useWindowDimensions();
+  const isMobile = width < 720;
+
+  const { selectedIds } = useSelectionStore();
+  const isSelectionMode = selectedIds.length > 0;
 
   const [hovered, setHovered] = useState(false);
   const [showColorPicker, setShowColorPicker] = useState(false);
@@ -227,7 +233,7 @@ export function NoteCard({ note, isSelected, onSelect, isGridView, onPress, onUp
         { backgroundColor: bg, borderColor: dynamicColors.border },
         hovered && styles.cardHovered,
         isSelected && { borderColor: colors.primary, borderWidth: 2 },
-        { zIndex: hovered ? 100 : 1 },
+        { zIndex: hovered ? 100 : 1, marginBottom: isMobile ? 4 : 6 },
       ]}
       {...hoverProps}
     >
@@ -248,7 +254,9 @@ export function NoteCard({ note, isSelected, onSelect, isGridView, onPress, onUp
 
       <TouchableOpacity
         style={styles.cardContent}
-        onPress={onPress}
+        onPress={isMobile && isSelectionMode ? onSelect : onPress}
+        onLongPress={isMobile ? onSelect : undefined}
+        delayLongPress={350}
         activeOpacity={0.9}
       >
         {localNote.title ? (
@@ -354,7 +362,7 @@ export function NoteCard({ note, isSelected, onSelect, isGridView, onPress, onUp
         </View>
       )}
 
-      {(hovered || isSelected) && (
+      {(isMobile ? isSelectionMode : (hovered || isSelected)) && (
         <View style={styles.checkboxWrapper}>
           <HoverBtn onPress={onSelect} style={[isSelected && { backgroundColor: isDark ? '#1F2937' : '#fff' }]} label="Chọn">
             <Icon source={isSelected ? "check-circle" : "circle-outline"} size={22} color={isSelected ? colors.primary : dynamicColors.textTertiary} />
