@@ -18,6 +18,7 @@ urlpatterns = [
 
     path("tags/",get_tags),
     path("notes/",get_notes),
+    path("notes/create/", create_note), 
     path("notes/<str:note_id>/pin",toggle_pin_note),
     path("notes/<str:note_id>/archive",toggle_archive_note),
     path("notes/<str:note_id>/trash",trash_note),

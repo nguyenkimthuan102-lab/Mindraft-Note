@@ -1,10 +1,10 @@
 import { View, Text, StyleSheet, TouchableOpacity, Platform, Modal, Dimensions } from 'react-native';
 import { Icon } from 'react-native-paper';
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react'; // ✅ ĐÃ GIỮ: useEffect để liên tục đồng bộ dữ liệu Store
 import { TagChip } from '../ui/TagChip';
 import { colors } from '../../constants/colors';
 import { HoverBtn } from '../ui/HoverBtn';
-// THÊM: Import AppStore để lấy trạng thái theme
+// Import AppStore để lấy trạng thái theme
 import { useAppStore } from '../../store/useAppStore';
 
 // Bảng màu cho Chế độ Sáng (Giữ nguyên của bạn)
@@ -14,7 +14,7 @@ const cardColorMap: Record<string, string> = {
   pink: '#FDCFE8', brown: '#F0E6DA',
 };
 
-// THÊM: Bảng màu cho Chế độ Tối (Màu trầm hơn, êm mắt hơn)
+// Bảng màu cho Chế độ Tối (Màu trầm hơn, êm mắt hơn)
 const darkCardColorMap: Record<string, string> = {
   default: '#1F2937', red: '#4C1D1D', orange: '#452A10', yellow: '#453510',
   green: '#064E3B', teal: '#103E3E', blue: '#1E3A8A', purple: '#2E1065',
@@ -36,6 +36,8 @@ export interface TodoItemData {
 export interface NoteCardData {
   id: string; type: 'text' | 'todo'; color: string;
   title?: string; content_text?: string; is_pinned?: boolean;
+  is_archived?: boolean; // ✅ ĐÃ GIỮ: Biến trạng thái lưu trữ
+  is_trashed?: boolean;  // ✅ ĐÃ GIỮ: Biến trạng thái thùng rác
   tags?: string[]; collaborators?: { name: string }[];
   todo_items?: TodoItemData[]; todo_total?: number;
   todo_completed?: number; date?: string; reminder?: string;
@@ -49,9 +51,21 @@ interface NoteCardProps {
   onUpdate?: (id: string, changes: Partial<NoteCardData>) => void;
   onDelete?: (id: string) => void;
   onArchive?: (id: string) => void;
+  onPin?: (id: string) => void;     // ✅ ĐÃ GIỮ: Nhận hàm ghim dữ liệu từ Store
+  onTrash?: (id: string) => void;   // ✅ ĐÃ GIỮ: Nhận hàm vứt thùng rác từ Store
   isSelected: boolean;
   onSelect: () => void;
   isGridView?: boolean;
+  /**
+   * Khi true (màn hình Archive): nút archive đổi thành "Bỏ lưu trữ",
+   * nút ghim bị ẩn, DotMenu hiển thị "Bỏ lưu trữ" thay vì "Lưu trữ".
+   */
+  isArchived?: boolean;             // ✅ ĐÃ HỢP NHẤT: Đón cờ kiểm tra màn hình Archive từ bản mới
+  /**
+   * Khi true (màn hình Trash): card chỉ đọc, toolbar chỉ có
+   * "Khôi phục" (onArchive) và "Xóa vĩnh viễn" (onDelete).
+   */
+  isTrash?: boolean;                // ✅ ĐÃ HỢP NHẤT: Đón cờ kiểm tra màn hình Thùng rác từ bản mới
 }
 
 function Avatars({ names, isDark }: { names: string[]; isDark: boolean }) {
@@ -91,8 +105,15 @@ function ColorPicker({ onSelect, onClose, isDark }: { onSelect: (color: string) 
   );
 }
 
-function DotMenu({ isTodo, onAction, onClose, isDark }: {
+function DotMenu({ 
+  isTodo, 
+  isArchived, // ✅ ĐÃ CHUYỂN: Nhận cờ kiểm tra từ NoteCard để render menu linh hoạt
+  onAction, 
+  onClose, 
+  isDark 
+}: {
   isTodo: boolean;
+  isArchived: boolean;
   onAction: (action: string) => void;
   onClose: () => void;
   isDark: boolean;
@@ -101,7 +122,13 @@ function DotMenu({ isTodo, onAction, onClose, isDark }: {
     { key: 'tag', label: 'Thêm tag' },
     { key: 'duplicate', label: 'Tạo bản sao' },
     { key: 'history', label: 'Xem lịch sử phiên bản' },
-    { key: 'delete', label: 'Xóa ghi chú', danger: true },
+    // ✅ ĐÃ HỢP NHẤT LOGIC TỪ BẢN MỚI: Đổi nút bấm tùy theo màn hình Home hay Archive
+    ...(isArchived
+      ? [
+        { key: 'unarchive', label: 'Bỏ lưu trữ' },
+        { key: 'delete', label: 'Xóa ghi chú', danger: true },
+      ]
+      : [{ key: 'delete', label: 'Xóa ghi chú', danger: true }]),
   ];
   const todoItems = [
     { key: 'sort', label: 'Sắp xếp theo' },
@@ -163,8 +190,8 @@ function ActionBtn({ icon, label, onPress, color }: {
   );
 }
 
-export function NoteCard({ note, isSelected, onSelect, isGridView, onPress, onUpdate, onDelete, onArchive }: NoteCardProps) {
-  const { theme } = useAppStore(); // Lấy theme hệ thống
+export function NoteCard({ note, isSelected, onSelect, isGridView, onPress, onUpdate, onDelete, onArchive, onPin, onTrash, isArchived = false, isTrash = false }: NoteCardProps) {
+  const { theme } = useAppStore(); 
   const isDark = theme === 'dark';
 
   const [hovered, setHovered] = useState(false);
@@ -174,7 +201,11 @@ export function NoteCard({ note, isSelected, onSelect, isGridView, onPress, onUp
   const [dotMenuPos, setDotMenuPos] = useState({ x: 0, y: 0 });
   const dotBtnRef = useRef<View>(null);
 
-  // MÀU SẮC ĐỘNG THEO THEME
+  // ✅ ĐÃ GIỮ: Tai nghe đồng bộ dữ liệu lập tức từ bên ngoài truyền vào State local khi Store thay đổi
+  useEffect(() => {
+    setLocalNote(note);
+  }, [note]);
+
   const dynamicColors = {
     textPrimary: isDark ? '#F9FAFB' : colors.textPrimary,
     textSecondary: isDark ? '#9CA3AF' : colors.textSecondary,
@@ -188,10 +219,13 @@ export function NoteCard({ note, isSelected, onSelect, isGridView, onPress, onUp
   };
 
   const handleDotAction = (action: string) => {
-    if (action === 'delete') onDelete?.(note.id);
+    if (action === 'delete') {
+      // Nếu đang ở màn Thùng rác thì gọi hàm xóa vĩnh viễn, ngược lại đẩy vào Thùng rác của Store
+      isTrash ? onDelete?.(note.id) : onTrash?.(note.id);
+    }
+    if (action === 'unarchive') onArchive?.(note.id);
   };
 
-  // Logic chọn bảng màu bg
   const bg = isDark
     ? (darkCardColorMap[localNote.color] ?? darkCardColorMap.default)
     : (cardColorMap[localNote.color] ?? cardColorMap.default);
@@ -218,10 +252,11 @@ export function NoteCard({ note, isSelected, onSelect, isGridView, onPress, onUp
       ]}
       {...hoverProps}
     >
-      {(hovered || localNote.is_pinned) && (
+      {/* ✅ ĐÃ SỬA: Nút ghim ăn theo dây Store onPin, tự động ẩn khi ở màn Archive và Trash */}
+      {!isArchived && !isTrash && (hovered || localNote.is_pinned) ? (
         <View style={[styles.pinCorner, { opacity: (hovered || localNote.is_pinned) ? 1 : 0 }]}>
           <HoverBtn
-            onPress={() => update({ is_pinned: !localNote.is_pinned })}
+            onPress={() => onPin?.(note.id)} 
             label={localNote.is_pinned ? "Bỏ ghim" : "Ghim"}
           >
             <Icon
@@ -231,12 +266,13 @@ export function NoteCard({ note, isSelected, onSelect, isGridView, onPress, onUp
             />
           </HoverBtn>
         </View>
-      )}
+      ) : null}
 
+      {/* ✅ ĐÃ ĐỒNG BỘ: Màn hình Trash khóa tính năng bấm mở Editor, chuyển sang chế độ Chỉ đọc (Read-only) */}
       <TouchableOpacity
         style={styles.cardContent}
-        onPress={onPress}
-        activeOpacity={0.9}
+        onPress={isTrash ? undefined : onPress}
+        activeOpacity={isTrash ? 1 : 0.9}
       >
         {localNote.title ? (
           <Text style={[styles.title, { color: dynamicColors.textPrimary }]} numberOfLines={2}>{localNote.title}</Text>
@@ -290,62 +326,94 @@ export function NoteCard({ note, isSelected, onSelect, isGridView, onPress, onUp
 
       {hovered && (
         <View style={[styles.toolbar, { borderTopColor: dynamicColors.border }]}>
-          <View style={{ position: 'relative' }}>
-            <ActionBtn
-              icon="palette-outline"
-              label="Đổi màu"
-              onPress={() => { setShowColorPicker(v => !v); setShowDotMenu(false); }}
-              color={showColorPicker ? colors.primary : dynamicColors.textSecondary}
-            />
-            {showColorPicker && (
-              <ColorPicker
-                isDark={isDark}
-                onSelect={(color) => update({ color })}
-                onClose={() => setShowColorPicker(false)}
+          {isTrash ? (
+            /* ── CHUẨN HOÀN CHỈNH: Toolbar màn Thùng rác đổi tính năng sang chỉ hiện Khôi phục & Xóa vĩnh viễn ── */
+            <>
+              <ActionBtn
+                icon="delete-restore"
+                label="Khôi phục"
+                onPress={() => onArchive?.(note.id)} // Tái sử dụng đầu dây onArchive làm hàm Khôi phục ở màn Trash
+                color={dynamicColors.textSecondary}
               />
-            )}
-          </View>
-          {!isTodo && <ActionBtn icon="bell-outline" label="Nhắc nhở" onPress={() => { }} />}
-          <ActionBtn icon="account-plus-outline" label="Thêm CTV" onPress={() => { }} />
-          <ActionBtn icon="archive-arrow-down-outline" label="Lưu trữ" onPress={() => onArchive?.(note.id)} />
+              <ActionBtn
+                icon="delete-forever-outline"
+                label="Xóa vĩnh viễn"
+                onPress={() => onDelete?.(note.id)}   // Tái sử dụng đầu dây onDelete làm hàm Xóa vĩnh viễn ở màn Trash
+                color={colors.danger}
+              />
+            </>
+          ) : (
+            /* ── Toolbar thông thường (Home / Archive) ── */
+            <>
+              {/* Đổi màu */}
+              <View style={{ position: 'relative' }}>
+                <ActionBtn
+                  icon="palette-outline"
+                  label="Đổi màu"
+                  onPress={() => { setShowColorPicker(v => !v); setShowDotMenu(false); }}
+                  color={showColorPicker ? colors.primary : dynamicColors.textSecondary}
+                />
+                {showColorPicker && (
+                  <ColorPicker
+                    isDark={isDark}
+                    onSelect={(color) => update({ color })}
+                    onClose={() => setShowColorPicker(false)}
+                  />
+                )}
+              </View>
+              
+              {/* Nhắc nhở — ẩn khi ghi chú đã được đem cất vào kho Archive */}
+              {!isArchived && !isTodo && <ActionBtn icon="bell-outline" label="Nhắc nhở" onPress={() => { }} />}
+              
+              <ActionBtn icon="account-plus-outline" label="Thêm CTV" onPress={() => { }} />
+              
+              {/* ✅ ĐÃ ĐỒNG BỘ: Nút biến hình linh hoạt đổi Icon và Label theo trạng thái isArchived */}
+              <ActionBtn 
+                icon={isArchived ? 'archive-arrow-up-outline' : 'archive-arrow-down-outline'} 
+                label={isArchived ? 'Bỏ lưu trữ' : 'Lưu trữ'} 
+                onPress={() => onArchive?.(note.id)} 
+              />
 
-          <View ref={dotBtnRef}>
-            <ActionBtn
-              icon="dots-vertical"
-              label="Thêm tùy chọn"
-              onPress={() => {
-                dotBtnRef.current?.measureInWindow((x, y, w, h) => {
-                  const screenHeight = Dimensions.get('window').height;
-                  const menuHeight = isTodo ? 280 : 200;
-                  const spaceBelow = screenHeight - (y + h);
-                  if (spaceBelow < menuHeight) {
-                    setDotMenuPos({ x: x - 160, y: y - menuHeight });
-                  } else {
-                    setDotMenuPos({ x: x - 160, y: y + h + 4 });
-                  }
-                  setDotMenuPos({ x: x - 160, y: y + h + 4 });
-                });
-                setShowDotMenu(v => !v);
-                setShowColorPicker(false);
-              }}
-            />
-          </View>
-          <Modal visible={showDotMenu} transparent animationType="none" onRequestClose={() => setShowDotMenu(false)}>
-            <TouchableOpacity style={StyleSheet.absoluteFillObject} onPress={() => setShowDotMenu(false)} activeOpacity={1} />
-            <View style={[styles.dotMenu, { position: 'absolute', top: dotMenuPos.y, left: dotMenuPos.x }]}>
-              <DotMenu isTodo={isTodo} onAction={handleDotAction} onClose={() => setShowDotMenu(false)} isDark={isDark} />
-            </View>
-          </Modal>
+              {/* Dot menu */}
+              <View ref={dotBtnRef}>
+                <ActionBtn
+                  icon="dots-vertical"
+                  label="Thêm tùy chọn"
+                  onPress={() => {
+                    dotBtnRef.current?.measureInWindow((x, y, w, h) => {
+                      const screenHeight = Dimensions.get('window').height;
+                      const menuHeight = isTodo ? 280 : 200;
+                      const spaceBelow = screenHeight - (y + h);
+                      if (spaceBelow < menuHeight) {
+                        setDotMenuPos({ x: x - 160, y: y - menuHeight });
+                      } else {
+                        setDotMenuPos({ x: x - 160, y: y + h + 4 });
+                      }
+                    });
+                    setShowDotMenu(v => !v);
+                    setShowColorPicker(false);
+                  }}
+                />
+              </View>
+              <Modal visible={showDotMenu} transparent animationType="none" onRequestClose={() => setShowDotMenu(false)}>
+                <TouchableOpacity style={StyleSheet.absoluteFillObject} onPress={() => setShowDotMenu(false)} activeOpacity={1} />
+                <View style={[styles.dotMenu, { position: 'absolute', top: dotMenuPos.y, left: dotMenuPos.x }]}>
+                  <DotMenu isTodo={isTodo} isArchived={isArchived} onAction={handleDotAction} onClose={() => setShowDotMenu(false)} isDark={isDark} />
+                </View>
+              </Modal>
+            </>
+          )}
         </View>
       )}
 
-      {(hovered || isSelected) && (
+      {/* ✅ ĐÃ ĐỒNG BỘ: Ô chọn checkbox hàng loạt tự ẩn khi đứng ở màn Thùng rác Trash, kiểm tra chặt bằng toán tử ba ngôi chặn đứng bug lọt số 0 ra Web */}
+      {(hovered || isSelected) && !isTrash ? (
         <View style={styles.checkboxWrapper}>
           <HoverBtn onPress={onSelect} style={[isSelected && { backgroundColor: isDark ? '#1F2937' : '#fff' }]} label="Chọn">
             <Icon source={isSelected ? "check-circle" : "circle-outline"} size={22} color={isSelected ? colors.primary : dynamicColors.textTertiary} />
           </HoverBtn>
         </View>
-      )}
+      ) : null}
     </View>
   );
 }
@@ -353,24 +421,19 @@ export function NoteCard({ note, isSelected, onSelect, isGridView, onPress, onUp
 const styles = StyleSheet.create({
   card: {
     borderRadius: 8,
-    marginBottom: 16, // Giữ lại cái này để có khoảng cách giữa các thẻ trên dưới
+    marginBottom: 16, 
     position: 'relative',
     borderWidth: 1,
     borderColor: colors.borderDefault,
     overflow: 'visible',
     zIndex: 1,
-
-    // XÓA width: 260, flexGrow, flexShrink và marginRight đi
-    // Trả lại width 100% để FlashList tự động tính toán kích thước cột
     width: '100%',
-
     ...Platform.select({ web: { cursor: 'pointer', overflow: 'visible', } as any }),
   },
   cardHovered: {
     ...Platform.select({
       web: {
         boxShadow: '0 1px 2px 0 rgba(60,64,67,0.30), 0 1px 3px 1px rgba(60,64,67,0.15)',
-        // Thêm transition để hiệu ứng hover mượt mà hơn như bản gốc
         transition: 'box-shadow 0.2s ease-in-out'
       } as any,
       default: { shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.12, shadowRadius: 8, elevation: 4 },
@@ -420,7 +483,7 @@ const styles = StyleSheet.create({
   },
   dotMenu: {
     backgroundColor: colors.bgSurface, borderRadius: 8, paddingVertical: 4, minWidth: 200, borderWidth: 1, borderColor: colors.borderDefault, ...Platform.select({
-      web: { boxShadow: '0 4px 16px rgba(0,0,0,0.12)' } as any,
+      web: { boxShadow: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.12 } as any,
     }),
   },
   dotMenuItem: { paddingHorizontal: 16, paddingVertical: 10, ...Platform.select({ web: { cursor: 'pointer' } as any }), },

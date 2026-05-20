@@ -1,6 +1,6 @@
 import { ScrollView, StyleSheet, View } from 'react-native';
-import { useState, useEffect } from 'react';
-import { NoteCard, NoteCardData } from '../../src/components/notes/NoteCard';
+import { useEffect } from 'react';
+import { NoteCardData } from '../../src/components/notes/NoteCard';
 import { NoteEditor } from '../../src/components/notes/NoteEditor';
 import { QuickCapture } from '../../src/components/notes/QuickCapture';
 
@@ -11,21 +11,25 @@ import { useNoteStore } from '../../src/store/useNoteStore';
 import { NoteList } from '../../src/components/notes/NoteList';
 import { useAppStore } from '@/src/store/useAppStore';
 
-import { fetchNotes } from '../../src/api/noteApi';
-
-
 export default function HomeScreen() {
-  const { theme, viewMode, isSidebarOpen } = useAppStore();
+  const { theme, viewMode } = useAppStore();
   const { setSyncing, setDone, setError } = useSyncStore();
-  const [notes, setNotes] = useState<NoteCardData[]>([]);
-  const {
+  
+  // 1. Móc nối trực tiếp toàn bộ dữ liệu và hàm xử lý chuẩn từ useNoteStore
+  const { 
+    notes, 
+    loadNotes, 
+    togglePin, 
+    archiveNote, 
+    trashNote, 
+    quickUpdate,
     editorVisible,
     editorMode,
     editingNote,
-    openCreateText: openCreateTextStore,
-    openCreateTodo: openCreateTodoStore,
-    openEditNote: openEditNoteStore,
-    closeEditor: closeEditorStore,
+    openCreateText,
+    openCreateTodo,
+    openEditNote,
+    closeEditor
   } = useNoteStore();
 
   const { selectedIds, toggleSelect, clearSelection } = useSelectionStore();
@@ -33,61 +37,20 @@ export default function HomeScreen() {
   const isDark = theme === 'dark';
   const dynamicBg = isDark ? '#111827' : colors.bgPage;
 
+  // 2. Tự động kích hoạt gọi API của Store khi vừa mở App
   useEffect(() => {
     clearSelection();
     setSyncing();
-    const loadNotes = async () => {
-      try {
-        // Chỉ lấy note active trên màn Home
-        const data = await fetchNotes({ view: 'active' }); 
-        setNotes(data);
-        setDone(); // Tắt loading
-      } catch (error) {
-        console.error('Lỗi khi tải danh sách ghi chú:', error);
-        setError(); // Xử lý UI báo lỗi
-      }
-    };
-    loadNotes();
+    
+    loadNotes({ view: 'active' })
+      .then(() => setDone())
+      .catch((error) => {
+        console.error('Lỗi khi tải danh sách ghi chú từ Store:', error);
+        setError();
+      });
   }, []);
 
-  const handleUpdate = (id: string, changes: Partial<NoteCardData>) => {
-    setNotes(prev => prev.map(n => n.id === id ? { ...n, ...changes } : n));
-  };
-
-  const handleDelete = (id: string) => {
-    setNotes(prev => prev.filter(n => n.id !== id));
-  };
-
-  const handleArchive = (id: string) => {
-    setNotes(prev => prev.filter(n => n.id !== id));
-  };
-
-  const openCreateText = () => {
-    openCreateTextStore();
-  };
-
-  const openCreateTodo = () => {
-    openCreateTodoStore();
-  };
-
-  const openEditNote = (note: NoteCardData) => {
-    openEditNoteStore(note);
-  };
-
-  const closeEditor = () => {
-    closeEditorStore();
-  };
-
-  const handleSaveNote = (note: NoteCardData) => {
-    setNotes((prev) => {
-      const exists = prev.some((item) => item.id === note.id);
-      if (exists) {
-        return prev.map((item) => (item.id === note.id ? { ...item, ...note } : item));
-      }
-      return [note, ...prev];
-    });
-  };
-
+  // 3. Phân loại Note Đã ghim / Khác trực tiếp từ Store dữ liệu chung
   const pinned = notes.filter(n => n.is_pinned);
   const others = notes.filter(n => !n.is_pinned);
 
@@ -102,13 +65,6 @@ export default function HomeScreen() {
       >
         <View style={[
           styles.inner,
-          // CẬP NHẬT: Xóa tính toán gridMaxWidth phức tạp đi. 
-          // Cho phép vùng chứa mở rộng 100% để bám lề, kích thước thẻ đã được NoteList quản lý.
-          // isGrid ? { maxWidth: '100%' } : { maxWidth: 720 }
-
-          // FIX: Grid neo lề trái cố định (alignSelf: flex-start), không giãn theo container.
-          // List vẫn căn giữa như cũ (maxWidth: 720, alignSelf: center).
-          // Đảm bảo khoảng cách từ sidebar/lề trái không đổi khi sidebar mở/đóng.
           isGrid
             ? { maxWidth: '100%', alignSelf: 'flex-start' }
             : { maxWidth: 720, alignSelf: 'center' }
@@ -117,13 +73,16 @@ export default function HomeScreen() {
             <QuickCapture onCreateText={openCreateText} onCreateTodo={openCreateTodo} />
           </View>
 
+          {/* 4. Đút thẳng các hàm hành động của Store xuống NoteList trung gian */}
           <NoteList
             title="Đã ghim"
             notes={pinned}
             onPressNote={openEditNote}
-            onUpdateNote={handleUpdate}
-            onDeleteNote={handleDelete}
-            onArchiveNote={handleArchive}
+            onUpdateNote={quickUpdate}
+            onDeleteNote={trashNote}
+            onArchiveNote={archiveNote}
+            onPinNote={togglePin}
+            onTrashNote={trashNote}
             selectedIds={selectedIds}
             onSelectNote={toggleSelect}
           />
@@ -132,9 +91,11 @@ export default function HomeScreen() {
             title="Khác"
             notes={others}
             onPressNote={openEditNote}
-            onUpdateNote={handleUpdate}
-            onDeleteNote={handleDelete}
-            onArchiveNote={handleArchive}
+            onUpdateNote={quickUpdate}
+            onDeleteNote={trashNote}
+            onArchiveNote={archiveNote}
+            onPinNote={togglePin}
+            onTrashNote={trashNote}
             selectedIds={selectedIds}
             onSelectNote={toggleSelect}
           />
@@ -146,7 +107,10 @@ export default function HomeScreen() {
         mode={editorMode}
         note={editingNote}
         onClose={closeEditor}
-        onSave={handleSaveNote}
+        onSave={() => {
+          // Khi lưu thành công từ Editor, ra lệnh cho Store kéo lại danh sách mới
+          loadNotes({ view: 'active' });
+        }}
       />
     </View>
   );

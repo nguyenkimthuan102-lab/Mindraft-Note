@@ -111,7 +111,7 @@ export function NoteEditor({ visible, mode, note, onClose, onSave }: NoteEditorP
 
   const [showTagMenu, setShowTagMenu] = useState(false);
   const [showExportMenu, setShowExportMenu] = useState(false);
-  const { allTags, addTagToSystem } = useNoteStore();
+  const { allTags, addTagToSystem, addNote, quickUpdate } = useNoteStore();
   const [noteTags, setNoteTags] = useState<string[]>(note?.labels ?? []); // Trong code của bạn dùng 'labels'[cite: 7]
 
   const contentRef = useRef<any>(null);
@@ -131,6 +131,10 @@ export function NoteEditor({ visible, mode, note, onClose, onSave }: NoteEditorP
     setShowMoreMenu(false);
     setShowFormattingBar(false);
     setIsContentEmpty(!note?.content_text);
+
+    if (isWeb && contentRef.current) {
+      contentRef.current.innerHTML = note?.content_text ? note.content_text.replace(/\n/g, '<br>') : '';
+    }
   }, [visible, note, mode]);
 
   const { width } = useWindowDimensions();
@@ -270,42 +274,95 @@ export function NoteEditor({ visible, mode, note, onClose, onSave }: NoteEditorP
     }
   };
 
-  const handleSaveAndClose = () => {
-    let currentContent = content;
-    if (editorMode === 'text') {
-      currentContent = isWeb && contentRef.current ? contentRef.current.innerHTML : content;
-    }
-
-    const cleanedTodoItems = todoItems
-      .filter((item) => item.title.trim().length > 0)
-      .map((item) => ({
-        ...item,
-        subtasks: item.subtasks?.filter(sub => sub.title.trim().length > 0)
-      }));
-    const hasContent = title.trim() || (editorMode === 'text' ? currentContent.trim().replace(/<[^>]*>?/gm, '') : cleanedTodoItems.length > 0);
-
-    if (!hasContent) {
-      onClose();
-      return;
-    }
-
-    const updatedNote: NoteCardData = {
-      ...note,
-      id: note?.id ?? `${Date.now()}`,
-      type: editorMode,
-      color: noteColor,
-      title: title.trim() || undefined,
-      content_text: editorMode === 'text' ? currentContent.trim() || undefined : undefined,
-      todo_items: editorMode === 'todo' ? cleanedTodoItems : undefined,
-      todo_total: editorMode === 'todo' ? cleanedTodoItems.length : undefined,
-      todo_completed: editorMode === 'todo' ? cleanedTodoItems.filter((item) => item.is_completed).length : undefined,
-      labels: noteTags, // Gán danh sách nhãn đã chỉnh sửa vào đây
-      is_pinned: isPinned,
-    };
-
-    onSave(updatedNote);
+  const handleSaveAndClose = async () => {
+  // Lấy nội dung từ contentEditable (web) hoặc state (mobile)
+  let currentContent = content;
+  if (editorMode === 'text') {
+    currentContent = isWeb && contentRef.current
+      ? contentRef.current.innerHTML
+      : content;
+  }
+ 
+  const cleanedTodoItems = todoItems
+    .filter((item) => item.title.trim().length > 0)
+    .map((item) => ({
+      ...item,
+      subtasks: item.subtasks?.filter(sub => sub.title.trim().length > 0),
+    }));
+ 
+  const plainText  = currentContent.trim().replace(/<[^>]*>?/gm, '');
+  const hasContent = title.trim()
+    || (editorMode === 'text' ? plainText : cleanedTodoItems.length > 0);
+ 
+  // Không có nội dung → chỉ đóng, không lưu
+  if (!hasContent) {
     onClose();
-  };
+    return;
+  }
+ 
+  try {
+    if (note?.id) {
+      // ── EDIT MODE: cập nhật note đã có ────────────────────────────
+      await quickUpdate(note.id, {
+        title:        title.trim() || undefined,
+        content_text: editorMode === 'text' ? plainText || undefined : undefined,
+        color:        noteColor,
+        is_pinned:    isPinned,
+      });
+ 
+      onSave({
+        ...note,
+        title:        title.trim() || undefined,
+        content_text: editorMode === 'text' ? plainText : note.content_text,
+        color:        noteColor,
+        is_pinned:    isPinned,
+        labels:       noteTags,
+        todo_items:   editorMode === 'todo' ? cleanedTodoItems : note.todo_items,
+        todo_total:   editorMode === 'todo' ? cleanedTodoItems.length : note.todo_total,
+        todo_completed: editorMode === 'todo'
+          ? cleanedTodoItems.filter(i => i.is_completed).length
+          : note.todo_completed,
+      });
+ 
+    } else {
+      // ── CREATE MODE: tạo note mới rồi cập nhật content ────────────
+      // Bước 1: tạo với title + type (CreateNoteSerializer chỉ nhận 2 field này)
+      const newNote = await addNote({
+        title: title.trim() || '',
+        type:  editorMode,
+      });
+ 
+      // Bước 2: cập nhật thêm color / content_text / is_pinned nếu có
+      const needsUpdate = plainText || noteColor !== 'default' || isPinned;
+      if (needsUpdate) {
+        await quickUpdate(newNote.id, {
+          content_text: editorMode === 'text' ? plainText || undefined : undefined,
+          color:        noteColor,
+          is_pinned:    isPinned,
+        });
+      }
+ 
+      onSave({
+        ...newNote,
+        content_text: editorMode === 'text' ? plainText : undefined,
+        color:        noteColor,
+        is_pinned:    isPinned,
+        labels:       noteTags,
+        todo_items:   editorMode === 'todo' ? cleanedTodoItems : undefined,
+        todo_total:   editorMode === 'todo' ? cleanedTodoItems.length : undefined,
+        todo_completed: editorMode === 'todo'
+          ? cleanedTodoItems.filter(i => i.is_completed).length
+          : undefined,
+      });
+    }
+  } catch (err) {
+    console.error('NoteEditor: failed to save note', err);
+    // Không close — để user biết có lỗi và thử lại
+    return;
+  }
+ 
+  onClose();
+};
 
 
   if (!visible) return null;
@@ -359,8 +416,10 @@ export function NoteEditor({ visible, mode, note, onClose, onSave }: NoteEditorP
                     ref={contentRef}
                     contentEditable={true}
                     suppressContentEditableWarning={true}
-                    dangerouslySetInnerHTML={{ __html: content ? content.replace(/\n/g, '<br>') : '' }}
-                    onInput={(e: any) => setIsContentEmpty(!e.currentTarget.textContent?.trim())}
+                    onInput={(e: any) => {
+                      setIsContentEmpty(!e.currentTarget.textContent?.trim());
+                      setContent(e.currentTarget.innerHTML);
+                    }}
                     onKeyUp={updateFormattingState}
                     onMouseUp={updateFormattingState}
                     onFocus={(e: any) => { updateFormattingState(); closePopups(); }}
