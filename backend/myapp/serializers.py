@@ -143,3 +143,17 @@ class UpdateNoteSerializer(serializers.ModelSerializer):
             )
 
         return value
+class ReminderSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Reminders
+        fields = ['id', 'note', 'user', 'remind_at', 'repeat_type', 'is_notified', 'is_deleted', 'updated_at']
+
+class CreateReminderSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Reminders
+        fields = ['note', 'remind_at', 'repeat_type']
+
+class UpdateReminderSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Reminders
+        fields = ['remind_at', 'repeat_type', 'is_notified']
