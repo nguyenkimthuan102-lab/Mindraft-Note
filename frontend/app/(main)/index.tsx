@@ -55,8 +55,17 @@ export default function HomeScreen() {
     loadNotes();
   }, []);
 
-  const handleUpdate = (id: string, changes: Partial<NoteCardData>) => {
+  const handleUpdate = async (id: string, changes: Partial<NoteCardData>) => {
+  // Cập nhật UI ngay lập tức (optimistic update)
     setNotes(prev => prev.map(n => n.id === id ? { ...n, ...changes } : n));
+  
+    try {
+      await updateNote(id, changes);
+    } catch {
+      // Nếu API lỗi, rollback lại state cũ
+      setNotes(prev => prev.map(n => n.id === id ? { ...n, ...Object.fromEntries(Object.keys(changes).map(k => [k, n[k as keyof NoteCardData]])) } : n));
+      Alert.alert("Lỗi", "Không thể cập nhật ghi chú. Vui lòng thử lại.");
+    }
   };
 
   const handleDelete = async (id: string) => {
@@ -69,13 +78,20 @@ export default function HomeScreen() {
   };
 
   const handleArchive = async (id: string) => {
-    try {
-      await archiveNote(id);
-      setNotes(prev => prev.filter(n => n.id !== id));
-    } catch {
-      Alert.alert("Lỗi", "Không thể lưu trữ ghi chú. Vui lòng thử lại.");
-    }
-  };
+  // Optimistic: xóa khỏi UI ngay
+  setNotes(prev => prev.filter(n => n.id !== id));
+  
+  try {
+    await archiveNote(id);
+  } catch {
+    // Rollback: lấy lại note nếu API lỗi
+    setNotes(prev => {
+      const archivedNote = notes.find(n => n.id === id);
+      return archivedNote ? [archivedNote, ...prev] : prev;
+    });
+    Alert.alert("Lỗi", "Không thể lưu trữ ghi chú. Vui lòng thử lại.");
+  }
+};
 
   const openCreateText = async () => {
     const tempNote: NoteCardData = {
