@@ -1,6 +1,6 @@
 import { View, Text, StyleSheet, TouchableOpacity, Platform, Modal, Dimensions, useWindowDimensions } from 'react-native';
 import { Icon } from 'react-native-paper';
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { TagChip } from '../ui/TagChip';
 import { colors } from '../../constants/colors';
 import { HoverBtn } from '../ui/HoverBtn';
@@ -183,13 +183,16 @@ function ActionBtn({ icon, label, onPress, color }: {
 // Strip HTML tags để hiển thị plain text trên card
 const stripHtml = (html: string): string =>
   html
+    .replace(/<div><br\s*\/?><\/div>/gi, '\n') // dòng trống
     .replace(/<br\s*\/?>/gi, '\n')
-    .replace(/<\/p>/gi, '\n')
+    .replace(/<div>/gi, '\n')   // ← thêm: mở div = xuống dòng
+    .replace(/<\/div>/gi, '')   // đóng div = bỏ (đã xử lý bởi dòng trên)
     .replace(/<[^>]+>/g, '')
     .replace(/&nbsp;/g, ' ')
     .replace(/&amp;/g, '&')
     .replace(/&lt;/g, '<')
     .replace(/&gt;/g, '>')
+    .replace(/^\n/, '')         // bỏ \n thừa ở đầu nếu html bắt đầu bằng <div>
     .replace(/\n{3,}/g, '\n\n')
     .trim();
 
@@ -205,7 +208,13 @@ export function NoteCard({ note, isSelected, onSelect, isGridView, onPress, onUp
   const [hovered, setHovered] = useState(false);
   const [showColorPicker, setShowColorPicker] = useState(false);
   const [showDotMenu, setShowDotMenu] = useState(false);
+
   const [localNote, setLocalNote] = useState(note);
+
+  useEffect(() => {
+    setLocalNote(note);
+  }, [note]);
+
   const [dotMenuPos, setDotMenuPos] = useState({ x: 0, y: 0 });
   const dotBtnRef = useRef<View>(null);
 

@@ -38,6 +38,21 @@ export default function HomeScreen() {
   const isDark = theme === 'dark';
   const dynamicBg = isDark ? '#111827' : colors.bgPage;
 
+  const stripHtml = (html: string): string =>
+    html
+      .replace(/<div><br\s*\/?><\/div>/gi, '\n') // dòng trống
+      .replace(/<br\s*\/?>/gi, '\n')
+      .replace(/<div>/gi, '\n')   // ← thêm: mở div = xuống dòng
+      .replace(/<\/div>/gi, '')   // đóng div = bỏ (đã xử lý bởi dòng trên)
+      .replace(/<[^>]+>/g, '')
+      .replace(/&nbsp;/g, ' ')
+      .replace(/&amp;/g, '&')
+      .replace(/&lt;/g, '<')
+      .replace(/&gt;/g, '>')
+      .replace(/^\n/, '')         // bỏ \n thừa ở đầu nếu html bắt đầu bằng <div>
+      .replace(/\n{3,}/g, '\n\n')
+      .trim();
+
   useEffect(() => {
     clearSelection();
     setSyncing();
@@ -162,29 +177,34 @@ export default function HomeScreen() {
   };
 
   const handleSaveNote = async (note: NoteCardData) => {
-    // 1. Kiểm tra rỗng (Discard)
+    // Làm sạch HTML trước
+    const cleanNote: NoteCardData = {
+      ...note,
+      content_text: note.content_text ? stripHtml(note.content_text) : '',
+    };
+
+    // Dùng cleanNote (đã stripped) để check rỗng, tránh '<br>' bị coi là có nội dung
     const isContentEmpty =
-      (!note.title || note.title.trim() === '') &&
-      (!note.content_text || note.content_text.trim() === '') &&
-      (!note.todo_items || note.todo_items.length === 0);
+      (!cleanNote.title || cleanNote.title.trim() === '') &&
+      (!cleanNote.content_text || cleanNote.content_text.trim() === '') &&
+      (!cleanNote.todo_items || cleanNote.todo_items.length === 0);
 
     if (isContentEmpty) {
-      // Nếu là note mới (ID temp) và rỗng -> Đóng editor, không lưu
       if (note.id.startsWith('temp-')) {
         closeEditorStore();
         return;
       }
+      // existing note: falls through to save với content rỗng
     }
 
-    // 2. Phân biệt POST (Tạo mới) hay PATCH (Cập nhật)
     const isNewNote = note.id.startsWith('temp-');
 
     try {
       if (isNewNote) {
         // POST: Gọi API tạo note đúng theo type
-        const createdNote = note.type === 'text'
-          ? await createNoteText(note)
-          : await createNoteTodo(note);
+        const createdNote = cleanNote.type === 'text'
+          ? await createNoteText(cleanNote)
+          : await createNoteTodo(cleanNote);
         setNotes(prev => [createdNote, ...prev.filter(n => n.id !== note.id)]);
       } else {
         const oldNote = notes.find(
@@ -194,15 +214,15 @@ export default function HomeScreen() {
         // Gọi API pin nếu trạng thái pin đổi
         if (
           oldNote &&
-          oldNote.is_pinned !== note.is_pinned
+          oldNote.is_pinned !== cleanNote.is_pinned
         ) {
-          await togglePinNote(note.id);
+          await togglePinNote(cleanNote.id);
         }
 
 
         // PATCH: Gọi API update
-        await updateNote(note.id, note);
-        setNotes(prev => prev.map(n => n.id === note.id ? note : n));
+        const updatedNote = await updateNote(cleanNote.id, cleanNote);
+        setNotes(prev => prev.map(n => n.id === cleanNote.id ? updatedNote : n));
       }
       closeEditorStore();
     } catch (error) {
