@@ -11,6 +11,8 @@ import { useSelectionStore } from '../../store/useSelectionStore';
 import { useAppStore, DEFAULT_SORT } from '../../store/useAppStore';
 import { useAuthStore } from '../../store/useAuthStore';
 import { ProfilePanel } from '../ui/ProfilePanel';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useWindowDimensions } from 'react-native';
 
 interface TopbarProps {
   viewMode?: 'list' | 'grid';
@@ -140,36 +142,68 @@ export function Topbar({ onViewModeChange }: TopbarProps) {
     );
   }
 
-  return (
-    <>
+  // FIX 1: Đổi `return (` bị hỏng thành if-block đúng cú pháp
+  if (isSearchExpanded && isMobile) {
+    return (
       <View style={[styles.topbar, { backgroundColor: dynamicColors.bg, borderBottomColor: dynamicColors.border }]}>
-
         <View style={styles.leftSection}>
           <TouchableOpacity onPress={toggleSidebar} style={styles.menuBtn}>
             <Feather name="menu" size={22} color={dynamicColors.textSec} />
           </TouchableOpacity>
 
-          <TouchableOpacity
-            activeOpacity={0.7}
-            style={styles.logoContainer}
-            disabled={isSettings}
-            onPress={() => {
-              if (isHome) {
-                router.replace('/(main)');
-              } else {
-                router.push('/(main)');
-              }
-            }}
-          >
-            {isHome ? (
-              <>
-                <Image source={logoIcon} style={styles.logoImg} />
-                <Text style={[styles.brandText, { color: dynamicColors.text }]}>Mindraft Note</Text>
-              </>
-            ) : (
-              <Text style={[styles.areaTitle, { color: dynamicColors.textSec }]}>{getAreaTitle()}</Text>
+          <View style={[styles.searchWrapMobile, { backgroundColor: dynamicColors.searchBg }]}>
+            <TextInput
+              style={[styles.searchInput, { color: dynamicColors.text }]}
+              value={search}
+              onChangeText={setSearch}
+              placeholder="Search notes, tags..."
+              placeholderTextColor={dynamicColors.placeholder}
+              autoFocus
+            />
+            {search.length > 0 && (
+              <TouchableOpacity onPress={() => setSearch('')} style={{ padding: 4 }}>
+                <Feather name="x" size={18} color={dynamicColors.textSec} />
+              </TouchableOpacity>
             )}
+          </View>
+        </View>
+      </View>
+    );
+  }
+
+  return (
+    <>
+      <View style={[styles.topbar, { backgroundColor: dynamicColors.bg, borderBottomColor: dynamicColors.border, height: 66 + insets.top, paddingTop: insets.top }]}>
+
+        <View style={[styles.leftSection, isMobile && { width: 'auto' }]}>
+          <TouchableOpacity onPress={toggleSidebar} style={styles.menuBtn}>
+            <Feather name="menu" size={22} color={dynamicColors.textSec} />
           </TouchableOpacity>
+
+          {!isMobile && (
+            <TouchableOpacity
+              activeOpacity={0.7}
+              style={styles.logoContainer}
+              disabled={isSettings}
+              onPress={() => {
+                if (isHome) {
+                  router.replace('/(main)');
+                } else {
+                  router.push('/(main)');
+                }
+              }}
+            >
+              {isHome ? (
+                <>
+                  <Image source={logoIcon} style={styles.logoImg} />
+                  <Text style={[styles.brandText, { color: dynamicColors.text }]}>Mindraft Note</Text>
+                </>
+              ) : (
+                <Text style={[styles.areaTitle, { color: dynamicColors.textSec }]}>{getAreaTitle()}</Text>
+              )}
+            </TouchableOpacity>
+          )}
+          {/* FIX 2: Thêm )} đóng cho {!isMobile && ( */}
         </View>
 
         <View style={[styles.searchWrap, { backgroundColor: dynamicColors.searchBg }]}>

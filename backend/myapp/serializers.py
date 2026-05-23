@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import Notes, TodoItems,UserSettings,Tags
+from .models import Notes, TodoItems,UserSettings,Tags, Reminders
 
 class ChecklistItemSerializer(serializers.ModelSerializer):
     class Meta:

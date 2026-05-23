@@ -2,7 +2,7 @@ import { View, Text, StyleSheet, TouchableOpacity, TextInput, ScrollView, useWin
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { colors } from '../../constants/colors';
 import { NoteCardData, TodoItemData } from './NoteCard';
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useState, useRef, useCallback } from 'react';
 import { useNoteStore } from '@/src/store/useNoteStore';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { TagMenu } from './TagMenu';
@@ -10,9 +10,6 @@ import { exportToTxt, exportToPdf, exportToDocx } from '../../utils/exportNote';
 
 const isWeb = Platform.OS === 'web';
 const WebDiv = 'div' as any;
-
-const contentRef = useRef<any>(null);
-const mobileContentRef = useRef<any>(null);
 
 const cardColorMap: Record<string, string> = {
   default: '#FFFFFF', red: '#FADADD', orange: '#FEEFC3', yellow: '#FEF7CD',
@@ -29,18 +26,6 @@ const NOTE_COLORS = [
 ];
 
 type TextFormat = 'normal' | 'h1' | 'h2' | 'bold' | 'italic' | 'underline';
-
-type EditorSnapshot = {
-  title: string;
-  content: string;
-  todoItems: TodoItemData[];
-  selectedFormat: TextFormat;
-  editorBgColor: string;
-  reminder: string;
-  collaborators: string[];
-  labels: string[];
-  images: string[];
-};
 
 interface NoteEditorProps {
   visible: boolean;
@@ -121,6 +106,7 @@ export function NoteEditor({ visible, mode, note, onClose, onSave }: NoteEditorP
   const [noteTags, setNoteTags] = useState<string[]>(note?.labels ?? []); // Trong code của bạn dùng 'labels'[cite: 7]
 
   const contentRef = useRef<any>(null);
+  const mobileContentRef = useRef<any>(null);
 
   useEffect(() => {
     if (!visible) return;
@@ -302,7 +288,7 @@ export function NoteEditor({ visible, mode, note, onClose, onSave }: NoteEditorP
     }
   };
 
-  const handleSaveAndClose = () => {
+  const handleSaveAndClose = useCallback(() => {
     Keyboard.dismiss(); // THÊM DÒNG NÀY ĐỂ ÉP ĐÓNG BÀN PHÍM NGAY LẬP TỨC
     let currentContent = content;
     if (editorMode === 'text') {
@@ -338,7 +324,7 @@ export function NoteEditor({ visible, mode, note, onClose, onSave }: NoteEditorP
 
     onSave(updatedNote);
     onClose();
-  };
+  }, [content, editorMode, todoItems, title, isContentEmpty, noteColor, noteTags, isPinned, note, onSave, onClose]);
 
   const handleSaveAndCloseRef = useRef(handleSaveAndClose);
   useEffect(() => {
@@ -365,7 +351,7 @@ export function NoteEditor({ visible, mode, note, onClose, onSave }: NoteEditorP
 
   const bg = cardColorMap[noteColor] ?? cardColorMap.default;
 
-  
+
 
   return (
     <View style={styles.overlay}>
@@ -1061,4 +1047,3 @@ const styles = StyleSheet.create({
     ...Platform.select({ web: { cursor: 'default' } as any }),
   },
 });
-

@@ -48,7 +48,10 @@ export function NoteList({
   const isMobile = width < 768;
 
   const sortedNotes = useMemo(() => {
-    if (sort.field === 'custom') return notes;
+   if (sort.field === 'custom') {
+      return notes;
+    }
+    const dir = sort.direction === 'desc' ? -1 : 1;
     return [...notes].sort((a, b) => {
       const aTime = new Date(a[sort.field] ?? 0).getTime();
       const bTime = new Date(b[sort.field] ?? 0).getTime();
