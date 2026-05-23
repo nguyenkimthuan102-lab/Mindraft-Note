@@ -48,7 +48,7 @@ export const updateNote = (id: string, note: Partial<NoteCardData>): Promise<Not
   }).then(res => res.data.data);
 
 export const trashNote = (id: string): Promise<void> =>
-  axiosClient.patch(`/notes/${id}`, {
+  axiosClient.patch(`/notes/${id}/trash`, {
     is_trashed: true,
     client_updated_at: new Date().toISOString(),
   });

@@ -320,6 +320,7 @@ def trash_note(request, note_id):
     # MOVE TO TRASH
     note.is_trashed = 1
 
+    note.is_pinned = 0 
     # OPTIONAL:
     # thường archive sẽ bị bỏ khi vào trash
     note.is_archived = 0
