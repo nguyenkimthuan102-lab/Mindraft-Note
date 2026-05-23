@@ -23,5 +23,5 @@ urlpatterns = [
     path("notes/<str:note_id>/archive",toggle_archive_note),
     path("notes/<str:note_id>/trash",trash_note),
     path("notes/<str:note_id>",update_note_quick),
-    # path("notes/<str:pk>/", note_detail)
+
 ]

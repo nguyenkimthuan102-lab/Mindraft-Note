@@ -286,11 +286,11 @@ def update_note_quick(request, note_id):
     serializer.is_valid(raise_exception=True)
 
     # UPDATE FIELDS
-    serializer.save(
+    updated_note = serializer.save(
         server_updated_at=timezone.now()
     )
 
-    response_serializer = NoteSerializer(note)
+    response_serializer = NoteSerializer(updated_note)
 
     return Response({
         "data": response_serializer.data

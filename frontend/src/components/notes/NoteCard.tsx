@@ -36,7 +36,7 @@ export interface TodoItemData {
 
 export interface NoteCardData {
   id: string; type: 'text' | 'todo'; color: string;
-  title?: string; content_text?: string; is_pinned?: boolean;
+  title?: string; content_text?: string; is_pinned?: 0 | 1;
   tags?: string[]; collaborators?: { name: string }[];
   todo_items?: TodoItemData[]; todo_total?: number;
   todo_completed?: number; date?: string; reminder?: string;
@@ -131,14 +131,30 @@ function DotMenu({ isTodo, onAction, onClose, isDark }: {
 
 function Tooltip({ label, children }: { label: string; children: React.ReactNode }) {
   const [show, setShow] = useState(false);
+  const [showBelow, setShowBelow] = useState(false);
+  const ref = useRef<any>(null);
+
   if (Platform.OS !== 'web') return <>{children}</>;
   return (
-    <View style={{ position: 'relative' }}
-      {...{ onMouseEnter: () => setShow(true), onMouseLeave: () => setShow(false) }}
+    <View ref={ref} style={{ position: 'relative' }}
+      {...{
+        onMouseEnter: () => {
+          ref.current?.measureInWindow((_x: number, y: number) => {
+            setShowBelow(y < 100); // gần đỉnh → hiện bên dưới
+            setShow(true);
+          });
+        },
+        onMouseLeave: () => setShow(false)
+      }}
     >
       {children}
       {show && (
-        <View style={styles.tooltip}>
+        <View style={[
+          styles.tooltip,
+          showBelow
+            ? { bottom: undefined, top: '100%', marginBottom: 0, marginTop: 4 }
+            : { top: undefined, bottom: '100%' },
+        ]}>
           <Text style={styles.tooltipText}>{label}</Text>
         </View>
       )}
@@ -227,148 +243,150 @@ export function NoteCard({ note, isSelected, onSelect, isGridView, onPress, onUp
   } : {};
 
   return (
-    <View
-      style={[
-        styles.card,
-        { backgroundColor: bg, borderColor: dynamicColors.border },
-        hovered && styles.cardHovered,
-        isSelected && { borderColor: colors.primary, borderWidth: 2 },
-        { zIndex: hovered ? 100 : 1, marginBottom: isMobile ? 4 : 6 },
-      ]}
-      {...hoverProps}
-    >
-      {(hovered || !!localNote.is_pinned) && (
-        <View style={[styles.pinCorner, { opacity: (hovered || !!localNote.is_pinned) ? 1 : 0 }]}>
-          <HoverBtn
-            onPress={() => update({ is_pinned: !localNote.is_pinned })}
-            label={localNote.is_pinned ? "Bỏ ghim" : "Ghim"}
-          >
-            <Icon
-              source={localNote.is_pinned ? 'pin' : 'pin-outline'}
-              size={18}
-              color={localNote.is_pinned ? colors.primary : dynamicColors.textTertiary}
-            />
-          </HoverBtn>
-        </View>
-      )}
-
-      <TouchableOpacity
-        style={styles.cardContent}
-        onPress={isMobile && isSelectionMode ? onSelect : onPress}
-        onLongPress={isMobile ? onSelect : undefined}
-        delayLongPress={350}
-        activeOpacity={0.9}
+    <View style={[styles.cardOuter, { marginBottom: isMobile ? 4 : 6 }]}>
+      <View
+        style={[
+          styles.card,
+          { backgroundColor: bg, borderColor: dynamicColors.border },
+          hovered && styles.cardHovered,
+          isSelected && { borderColor: colors.primary, borderWidth: 2 },
+          { zIndex: hovered ? 100 : 1, marginBottom: isMobile ? 4 : 6 },
+        ]}
+        {...hoverProps}
       >
-        {localNote.title ? (
-          <Text style={[styles.title, { color: dynamicColors.textPrimary }]} numberOfLines={2}>{localNote.title}</Text>
-        ) : null}
-
-        {!isTodo && localNote.content_text ? (
-          <Text style={[styles.content, { color: dynamicColors.textSecondary }]} numberOfLines={4}>
-            {stripHtml(localNote.content_text)}
-          </Text>
-        ) : null}
-
-        {isTodo && (
-          <View style={styles.todoList}>
-            {visibleItems.map((item) => (
-              <View key={item.id} style={styles.todoRow}>
-                <View style={[styles.checkbox, isDark && { borderColor: '#4B5563' }, item.is_completed && styles.checkboxDone]}>
-                  {item.is_completed && <Icon source="check" size={10} color="#fff" />}
-                </View>
-                <Text style={[styles.todoText, { color: dynamicColors.textSecondary }, item.is_completed && styles.todoTextDone]} numberOfLines={1}>
-                  {item.title}
-                </Text>
-              </View>
-            ))}
-            {hiddenIncomplete > 0 && (
-              <Text style={[styles.moreText, { color: dynamicColors.textTertiary }]}>Xem thêm {hiddenIncomplete} việc...</Text>
-            )}
-            {completedCount > 0 && (
-              <Text style={[styles.completedText, { color: dynamicColors.textTertiary }]}>Đã hoàn thành ({completedCount})</Text>
-            )}
-          </View>
-        )}
-
-        {localNote.tags && localNote.tags.length > 0 && (
-          <View style={styles.tagsRow}>
-            {localNote.tags.map((tag) => <TagChip key={tag} label={tag} />)}
-          </View>
-        )}
-
-        <View style={styles.footer}>
-          <Text style={[styles.dateText, { color: dynamicColors.textTertiary }]}>{localNote.date ?? ''}</Text>
-          <View style={styles.footerRight}>
-            {localNote.collaborators && localNote.collaborators.length > 0 && (
-              <Avatars names={localNote.collaborators.map(c => c.name)} isDark={isDark} />
-            )}
-            {localNote.todo_total != null && (
-              <Text style={[styles.ratioText, { color: dynamicColors.textTertiary }]}>
-                {localNote.todo_completed ?? 0}/{localNote.todo_total}
-              </Text>
-            )}
-          </View>
-        </View>
-      </TouchableOpacity>
-
-      {hovered && (
-        <View style={[styles.toolbar, { borderTopColor: dynamicColors.border }]}>
-          <View style={{ position: 'relative' }}>
-            <ActionBtn
-              icon="palette-outline"
-              label="Đổi màu"
-              onPress={() => { setShowColorPicker(v => !v); setShowDotMenu(false); }}
-              color={showColorPicker ? colors.primary : dynamicColors.textSecondary}
-            />
-            {showColorPicker && (
-              <ColorPicker
-                isDark={isDark}
-                onSelect={(color) => update({ color })}
-                onClose={() => setShowColorPicker(false)}
+        {(hovered || !!localNote.is_pinned) && (
+          <View style={[styles.pinCorner, { opacity: (hovered || !!localNote.is_pinned) ? 1 : 0 }]}>
+            <HoverBtn
+              onPress={() => update({ is_pinned: localNote.is_pinned === 1 ? 0 : 1 })}
+              label={localNote.is_pinned ? "Bỏ ghim" : "Ghim"}
+            >
+              <Icon
+                source={localNote.is_pinned ? 'pin' : 'pin-outline'}
+                size={18}
+                color={localNote.is_pinned ? colors.primary : dynamicColors.textTertiary}
               />
-            )}
+            </HoverBtn>
           </View>
-          {!isTodo && <ActionBtn icon="bell-outline" label="Nhắc nhở" onPress={() => { }} />}
-          <ActionBtn icon="account-plus-outline" label="Thêm CTV" onPress={() => { }} />
-          <ActionBtn icon="archive-arrow-down-outline" label="Lưu trữ" onPress={() => onArchive?.(note.id)} />
+        )}
 
-          <View ref={dotBtnRef}>
-            <ActionBtn
-              icon="dots-vertical"
-              label="Thêm tùy chọn"
-              onPress={() => {
-                dotBtnRef.current?.measureInWindow((x, y, w, h) => {
-                  const screenHeight = Dimensions.get('window').height;
-                  const menuHeight = isTodo ? 280 : 200;
-                  const spaceBelow = screenHeight - (y + h);
-                  if (spaceBelow < menuHeight) {
-                    setDotMenuPos({ x: x - 160, y: y - menuHeight });
-                  } else {
-                    setDotMenuPos({ x: x - 160, y: y + h + 4 });
-                  }
-                  setDotMenuPos({ x: x - 160, y: y + h + 4 });
-                });
-                setShowDotMenu(v => !v);
-                setShowColorPicker(false);
-              }}
-            />
-          </View>
-          <Modal visible={showDotMenu} transparent animationType="none" onRequestClose={() => setShowDotMenu(false)}>
-            <TouchableOpacity style={StyleSheet.absoluteFillObject} onPress={() => setShowDotMenu(false)} activeOpacity={1} />
-            <View style={[styles.dotMenu, { position: 'absolute', top: dotMenuPos.y, left: dotMenuPos.x }]}>
-              <DotMenu isTodo={isTodo} onAction={handleDotAction} onClose={() => setShowDotMenu(false)} isDark={isDark} />
+        <TouchableOpacity
+          style={styles.cardContent}
+          onPress={isMobile && isSelectionMode ? onSelect : onPress}
+          onLongPress={isMobile ? onSelect : undefined}
+          delayLongPress={350}
+          activeOpacity={0.9}
+        >
+          {localNote.title ? (
+            <Text style={[styles.title, { color: dynamicColors.textPrimary }]} numberOfLines={2}>{localNote.title}</Text>
+          ) : null}
+
+          {!isTodo && localNote.content_text ? (
+            <Text style={[styles.content, { color: dynamicColors.textSecondary }]} numberOfLines={4}>
+              {stripHtml(localNote.content_text)}
+            </Text>
+          ) : null}
+
+          {isTodo && (
+            <View style={styles.todoList}>
+              {visibleItems.map((item) => (
+                <View key={item.id} style={styles.todoRow}>
+                  <View style={[styles.checkbox, isDark && { borderColor: '#4B5563' }, item.is_completed && styles.checkboxDone]}>
+                    {item.is_completed && <Icon source="check" size={10} color="#fff" />}
+                  </View>
+                  <Text style={[styles.todoText, { color: dynamicColors.textSecondary }, item.is_completed && styles.todoTextDone]} numberOfLines={1}>
+                    {item.title}
+                  </Text>
+                </View>
+              ))}
+              {hiddenIncomplete > 0 && (
+                <Text style={[styles.moreText, { color: dynamicColors.textTertiary }]}>Xem thêm {hiddenIncomplete} việc...</Text>
+              )}
+              {completedCount > 0 && (
+                <Text style={[styles.completedText, { color: dynamicColors.textTertiary }]}>Đã hoàn thành ({completedCount})</Text>
+              )}
             </View>
-          </Modal>
-        </View>
-      )}
+          )}
 
-      {(isMobile ? isSelectionMode : (hovered || isSelected)) && (
-        <View style={styles.checkboxWrapper}>
-          <HoverBtn onPress={onSelect} style={[isSelected && { backgroundColor: isDark ? '#1F2937' : '#fff' }]} label="Chọn">
-            <Icon source={isSelected ? "check-circle" : "circle-outline"} size={22} color={isSelected ? colors.primary : dynamicColors.textTertiary} />
-          </HoverBtn>
-        </View>
-      )}
+          {localNote.tags && localNote.tags.length > 0 && (
+            <View style={styles.tagsRow}>
+              {localNote.tags.map((tag) => <TagChip key={tag} label={tag} />)}
+            </View>
+          )}
+
+          <View style={styles.footer}>
+            <Text style={[styles.dateText, { color: dynamicColors.textTertiary }]}>{localNote.date ?? ''}</Text>
+            <View style={styles.footerRight}>
+              {localNote.collaborators && localNote.collaborators.length > 0 && (
+                <Avatars names={localNote.collaborators.map(c => c.name)} isDark={isDark} />
+              )}
+              {localNote.todo_total != null && (
+                <Text style={[styles.ratioText, { color: dynamicColors.textTertiary }]}>
+                  {localNote.todo_completed ?? 0}/{localNote.todo_total}
+                </Text>
+              )}
+            </View>
+          </View>
+        </TouchableOpacity>
+
+        {hovered && (
+          <View style={[styles.toolbar, { borderTopColor: dynamicColors.border }]}>
+            <View style={{ position: 'relative' }}>
+              <ActionBtn
+                icon="palette-outline"
+                label="Đổi màu"
+                onPress={() => { setShowColorPicker(v => !v); setShowDotMenu(false); }}
+                color={showColorPicker ? colors.primary : dynamicColors.textSecondary}
+              />
+              {showColorPicker && (
+                <ColorPicker
+                  isDark={isDark}
+                  onSelect={(color) => update({ color })}
+                  onClose={() => setShowColorPicker(false)}
+                />
+              )}
+            </View>
+            {!isTodo && <ActionBtn icon="bell-outline" label="Nhắc nhở" onPress={() => { }} />}
+            <ActionBtn icon="account-plus-outline" label="Thêm CTV" onPress={() => { }} />
+            <ActionBtn icon="archive-arrow-down-outline" label="Lưu trữ" onPress={() => onArchive?.(note.id)} />
+
+            <View ref={dotBtnRef}>
+              <ActionBtn
+                icon="dots-vertical"
+                label="Thêm tùy chọn"
+                onPress={() => {
+                  dotBtnRef.current?.measureInWindow((x, y, w, h) => {
+                    const screenHeight = Dimensions.get('window').height;
+                    const menuHeight = isTodo ? 280 : 200;
+                    const spaceBelow = screenHeight - (y + h);
+                    if (spaceBelow < menuHeight) {
+                      setDotMenuPos({ x: x - 160, y: y - menuHeight });
+                    } else {
+                      setDotMenuPos({ x: x - 160, y: y + h + 4 });
+                    }
+                    setDotMenuPos({ x: x - 160, y: y + h + 4 });
+                  });
+                  setShowDotMenu(v => !v);
+                  setShowColorPicker(false);
+                }}
+              />
+            </View>
+            <Modal visible={showDotMenu} transparent animationType="none" onRequestClose={() => setShowDotMenu(false)}>
+              <TouchableOpacity style={StyleSheet.absoluteFillObject} onPress={() => setShowDotMenu(false)} activeOpacity={1} />
+              <View style={[styles.dotMenu, { position: 'absolute', top: dotMenuPos.y, left: dotMenuPos.x }]}>
+                <DotMenu isTodo={isTodo} onAction={handleDotAction} onClose={() => setShowDotMenu(false)} isDark={isDark} />
+              </View>
+            </Modal>
+          </View>
+        )}
+
+        {(isMobile ? isSelectionMode : (hovered || isSelected)) && (
+          <View style={styles.checkboxWrapper}>
+            <HoverBtn onPress={onSelect} style={[isSelected && { backgroundColor: isDark ? '#1F2937' : '#fff' }]} label="Chọn">
+              <Icon source={isSelected ? "check-circle" : "circle-outline"} size={22} color={isSelected ? colors.primary : dynamicColors.textTertiary} />
+            </HoverBtn>
+          </View>
+        )}
+      </View>
     </View>
   );
 }
@@ -398,6 +416,12 @@ const styles = StyleSheet.create({
       } as any,
       default: { shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.12, shadowRadius: 8, elevation: 4 },
     }),
+  },
+  cardOuter: {
+    paddingTop: 12,
+    paddingLeft: 12,
+    overflow: 'visible',
+    ...Platform.select({ web: { overflow: 'visible' } as any }),
   },
   cardContent: { padding: 16, paddingTop: 20 },
   checkboxCorner: {
@@ -448,6 +472,6 @@ const styles = StyleSheet.create({
   },
   dotMenuItem: { paddingHorizontal: 16, paddingVertical: 10, ...Platform.select({ web: { cursor: 'pointer' } as any }), },
   dotMenuText: { fontFamily: 'Inter-Regular', fontSize: 14, color: colors.textSecondary },
-  tooltip: { position: 'absolute', bottom: '100%', left: '50%', backgroundColor: 'rgba(0,0,0,0.75)', borderRadius: 4, paddingHorizontal: 8, paddingVertical: 4, zIndex: 999, marginBottom: 4, ...Platform.select({ web: { transform: 'translateX(-50%)' } as any }) } as any,
+  tooltip: { position: 'absolute', bottom: '100%', left: '50%', backgroundColor: 'rgba(0,0,0,0.75)', borderRadius: 4, paddingHorizontal: 8, paddingVertical: 4, zIndex: 999, marginBottom: 4, ...Platform.select({ web: { transform: 'translateX(-50%)', whiteSpace: 'nowrap' } as any }) } as any,
   tooltipText: { fontFamily: 'Inter-Regular', fontSize: 12, color: '#fff' },
 });
