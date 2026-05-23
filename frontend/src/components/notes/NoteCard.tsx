@@ -36,7 +36,7 @@ export interface TodoItemData {
 
 export interface NoteCardData {
   id: string; type: 'text' | 'todo'; color: string;
-  title?: string; content_text?: string; is_pinned?: 0 | 1;
+  title?: string; content_text?: string; is_pinned?: 0 | 1; is_archived?: 0 | 1; is_trashed?: 0 | 1;
   tags?: string[]; collaborators?: { name: string }[];
   todo_items?: TodoItemData[]; todo_total?: number;
   todo_completed?: number; date?: string; reminder?: string;

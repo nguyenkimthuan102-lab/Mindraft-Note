@@ -118,16 +118,14 @@ export default function HomeScreen() {
 
   const handleArchive = async (id: string) => {
     // Optimistic: xóa khỏi UI ngay
+    const noteToRestore = notes.find(n => n.id === id);
     setNotes(prev => prev.filter(n => n.id !== id));
 
     try {
       await toggleArchiveNote(id);
     } catch {
       // Rollback: lấy lại note nếu API lỗi
-      setNotes(prev => {
-        const archivedNote = notes.find(n => n.id === id);
-        return archivedNote ? [archivedNote, ...prev] : prev;
-      });
+      setNotes(prev => noteToRestore ? [noteToRestore, ...prev] : prev);
       Alert.alert("Lỗi", "Không thể lưu trữ ghi chú. Vui lòng thử lại.");
     }
   };
@@ -200,6 +198,8 @@ export default function HomeScreen() {
         ) {
           await togglePinNote(note.id);
         }
+
+
         // PATCH: Gọi API update
         await updateNote(note.id, note);
         setNotes(prev => prev.map(n => n.id === note.id ? note : n));
