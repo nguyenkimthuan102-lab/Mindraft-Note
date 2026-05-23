@@ -177,13 +177,24 @@ export default function HomeScreen() {
   };
 
   const handleSaveNote = async (note: NoteCardData) => {
-    // Làm sạch HTML trước
-    const cleanNote: NoteCardData = {
-      ...note,
-      content_text: note.content_text ? stripHtml(note.content_text) : '',
+    // Hàm bổ trợ làm sạch sâu HTML và ký tự rác
+    const deepStripHtml = (html: string) => {
+      if (!html) return '';
+      return html
+        .replace(/<[^>]*>?/gm, '')
+        .replace(/&nbsp;/g, ' ')
+        .replace(/[\u200B-\u200D\uFEFF]/g, '')
+        .trim();
     };
 
-    // Dùng cleanNote (đã stripped) để check rỗng, tránh '<br>' bị coi là có nội dung
+    const strippedText = note.content_text ? deepStripHtml(note.content_text) : '';
+
+    const cleanNote: NoteCardData = {
+      ...note,
+      // Nếu chuỗi sau khi strip mà rỗng hoàn toàn thì set thẳng về '', không giữ lại tag gốc
+      content_text: strippedText === '' ? '' : note.content_text,
+    };
+
     const isContentEmpty =
       (!cleanNote.title || cleanNote.title.trim() === '') &&
       (!cleanNote.content_text || cleanNote.content_text.trim() === '') &&
@@ -194,34 +205,26 @@ export default function HomeScreen() {
         closeEditorStore();
         return;
       }
-      // existing note: falls through to save với content rỗng
+      // Ghi chú cũ xóa hết nội dung -> Tiếp tục chạy xuống dưới để gửi PATCH/PUT chuỗi rỗng lên API
     }
 
     const isNewNote = note.id.startsWith('temp-');
 
     try {
       if (isNewNote) {
-        // POST: Gọi API tạo note đúng theo type
         const createdNote = cleanNote.type === 'text'
           ? await createNoteText(cleanNote)
           : await createNoteTodo(cleanNote);
         setNotes(prev => [createdNote, ...prev.filter(n => n.id !== note.id)]);
-      } else {
-        const oldNote = notes.find(
-          n => n.id === note.id
-        );
+      } {
+        const oldNote = notes.find(n => n.id === note.id);
 
-        // Gọi API pin nếu trạng thái pin đổi
-        if (
-          oldNote &&
-          oldNote.is_pinned !== cleanNote.is_pinned
-        ) {
+        if (oldNote && oldNote.is_pinned !== cleanNote.is_pinned) {
           await togglePinNote(cleanNote.id);
         }
 
-
-        // PATCH: Gọi API update
         const updatedNote = await updateNote(cleanNote.id, cleanNote);
+        // Cập nhật lại danh sách, ép state tổng nhận giá trị mới (đã rỗng)
         setNotes(prev => prev.map(n => n.id === cleanNote.id ? updatedNote : n));
       }
       closeEditorStore();

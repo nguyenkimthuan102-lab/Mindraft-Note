@@ -94,6 +94,9 @@ function MenuBtn({ label, onPress, disabled }: { label: string, onPress: () => v
 export function NoteEditor({ visible, mode, note, onClose, onSave }: NoteEditorProps) {
   const [title, setTitle] = useState(note?.title ?? '');
   const [content, setContent] = useState(note?.content_text ?? '');
+
+  const [htmlConfig, setHtmlConfig] = useState({ __html: (note?.content_text ?? '').replace(/\n/g, '<br>') });
+
   const [todoItems, setTodoItems] = useState<TodoItemData[]>(note?.todo_items?.length ? note.todo_items : [
     { id: `${Date.now()}-1`, title: '', is_completed: false },
   ]);
@@ -126,6 +129,9 @@ export function NoteEditor({ visible, mode, note, onClose, onSave }: NoteEditorP
     if (!visible) return;
     setTitle(note?.title ?? '');
     setContent(note?.content_text ?? '');
+
+    setHtmlConfig({ __html: (note?.content_text ?? '').replace(/\n/g, '<br>') });
+
     setTodoItems(note?.todo_items?.length ? note.todo_items : [
       { id: `${Date.now()}-1`, title: '', is_completed: false },
     ]);
@@ -164,7 +170,7 @@ export function NoteEditor({ visible, mode, note, onClose, onSave }: NoteEditorP
       }, 150);
       return () => clearTimeout(timer);
     }
-  }, [visible, note, mode]);
+  }, [visible, note?.id, mode]);
 
   const { width } = useWindowDimensions();
   const isCompact = width < 720;
@@ -304,7 +310,7 @@ export function NoteEditor({ visible, mode, note, onClose, onSave }: NoteEditorP
   };
 
   const handleSaveAndClose = () => {
-    Keyboard.dismiss(); // THÊM DÒNG NÀY ĐỂ ÉP ĐÓNG BÀN PHÍM NGAY LẬP TỨC
+    Keyboard.dismiss();
     let currentContent = content;
     if (editorMode === 'text') {
       currentContent = isWeb && contentRef.current ? contentRef.current.innerHTML : content;
@@ -317,10 +323,26 @@ export function NoteEditor({ visible, mode, note, onClose, onSave }: NoteEditorP
         subtasks: item.subtasks?.filter(sub => sub.title.trim().length > 0)
       }));
 
-    const hasContent = title.trim() || (editorMode === 'text' ? currentContent.trim().replace(/<[^>]*>?/gm, '') : cleanedTodoItems.length > 0);
+    // CẢI TIẾN REGEX: Xóa tag HTML, xóa &nbsp;, xóa ký tự ẩn zero-width
+    const strippedCheck = currentContent
+      ? currentContent
+        .replace(/<[^>]*>?/gm, '')          // Xóa tags HTML
+        .replace(/&nbsp;/g, ' ')            // Biến mã khoảng trắng HTML thành khoảng trắng thường
+        .replace(/[\u200B-\u200D\uFEFF]/g, '') // Xóa triệt để các ký tự zero-width ẩn
+        .trim()
+      : '';
 
+    const hasContent = title.trim() || (editorMode === 'text' ? strippedCheck.length > 0 : cleanedTodoItems.length > 0);
 
-    const strippedCheck = currentContent.trim().replace(/<[^>]*>?/gm, '').trim();
+    // CAN THIỆP UI: Nếu text trống, ép DOM/Ref về rỗng hoàn toàn để tránh hiện tượng ghosting text
+    if (editorMode === 'text' && !strippedCheck) {
+      currentContent = '';
+      if (isWeb && contentRef.current) {
+        contentRef.current.innerHTML = ''; // Xóa sạch HTML cứng trong DOM
+      }
+      // LƯU Ý: Nếu bạn dùng thư viện Rich Editor (như pell-rich-editor), hãy gọi hàm clear của nó tại đây:
+      // richTextRef.current?.setContentHTML('');
+    }
 
     const updatedNote: NoteCardData = {
       ...note,
@@ -328,7 +350,6 @@ export function NoteEditor({ visible, mode, note, onClose, onSave }: NoteEditorP
       type: editorMode,
       color: noteColor,
       title: title.trim() || undefined,
-      // Nếu stripped rỗng (chỉ còn <br> hoặc tags) → '' thay vì '<br>' hay undefined
       content_text: editorMode === 'text' ? (strippedCheck ? currentContent.trim() : '') : undefined,
       todo_items: editorMode === 'todo' ? cleanedTodoItems : undefined,
       todo_total: editorMode === 'todo' ? cleanedTodoItems.length : undefined,
@@ -340,7 +361,7 @@ export function NoteEditor({ visible, mode, note, onClose, onSave }: NoteEditorP
     if (!hasContent) {
       const isExistingNote = note?.id && !note.id.startsWith('temp-');
       if (isExistingNote) {
-        onSave(updatedNote); // ← persist việc xóa nội dung
+        onSave(updatedNote);
       }
       onClose();
       return;
@@ -442,8 +463,12 @@ export function NoteEditor({ visible, mode, note, onClose, onSave }: NoteEditorP
                     ref={contentRef}
                     contentEditable={true}
                     suppressContentEditableWarning={true}
-                    dangerouslySetInnerHTML={{ __html: (note?.content_text ?? '').replace(/\n/g, '<br>') }}
-                    onInput={(e: any) => setIsContentEmpty(!e.currentTarget.textContent?.trim())}
+                    dangerouslySetInnerHTML={htmlConfig}
+                    onInput={(e: any) => {
+                      const html = e.currentTarget.innerHTML;
+                      setContent(html); // BẮT BUỘC PHẢI CÓ DÒNG NÀY ĐỂ ĐỒNG BỘ STATE
+                      setIsContentEmpty(!e.currentTarget.textContent?.trim());
+                    }}
                     onKeyUp={updateFormattingState}
                     onMouseUp={updateFormattingState}
                     onFocus={(e: any) => { updateFormattingState(); closePopups(); }}
