@@ -94,10 +94,13 @@ function MenuBtn({ label, onPress, disabled }: { label: string, onPress: () => v
 export function NoteEditor({ visible, mode, note, onClose, onSave }: NoteEditorProps) {
   const [title, setTitle] = useState(note?.title ?? '');
   const [content, setContent] = useState(note?.content_text ?? '');
+
+  const [htmlConfig, setHtmlConfig] = useState({ __html: (note?.content_text ?? '').replace(/\n/g, '<br>') });
+
   const [todoItems, setTodoItems] = useState<TodoItemData[]>(note?.todo_items?.length ? note.todo_items : [
     { id: `${Date.now()}-1`, title: '', is_completed: false },
   ]);
-  const [isPinned, setIsPinned] = useState(note?.is_pinned ?? false);
+  const [isPinned, setIsPinned] = useState<0 | 1>(note?.is_pinned ?? 0);
   const [noteColor, setNoteColor] = useState(note?.color ?? 'default');
   const insets = useSafeAreaInsets();
 
@@ -126,10 +129,13 @@ export function NoteEditor({ visible, mode, note, onClose, onSave }: NoteEditorP
     if (!visible) return;
     setTitle(note?.title ?? '');
     setContent(note?.content_text ?? '');
+
+    setHtmlConfig({ __html: (note?.content_text ?? '').replace(/\n/g, '<br>') });
+
     setTodoItems(note?.todo_items?.length ? note.todo_items : [
       { id: `${Date.now()}-1`, title: '', is_completed: false },
     ]);
-    setIsPinned(note?.is_pinned ?? false);
+    setIsPinned(note?.is_pinned ?? 0);
     setNoteColor(note?.color ?? 'default');
 
     setEditorMode(mode);
@@ -145,6 +151,7 @@ export function NoteEditor({ visible, mode, note, onClose, onSave }: NoteEditorP
           // Xử lý Focus nâng cao cho div contentEditable trên Web
           const el = document.getElementById('web-content-editor');
           if (el) {
+            if (el.innerHTML === '<br>') el.innerHTML = ''; // ← thêm dòng này
             el.focus();
 
             // Ép con trỏ chuột nhảy xuống vị trí cuối cùng trong div nhập liệu
@@ -163,7 +170,7 @@ export function NoteEditor({ visible, mode, note, onClose, onSave }: NoteEditorP
       }, 150);
       return () => clearTimeout(timer);
     }
-  }, [visible, note, mode]);
+  }, [visible, note?.id, mode]);
 
   const { width } = useWindowDimensions();
   const isCompact = width < 720;
@@ -303,7 +310,7 @@ export function NoteEditor({ visible, mode, note, onClose, onSave }: NoteEditorP
   };
 
   const handleSaveAndClose = () => {
-    Keyboard.dismiss(); // THÊM DÒNG NÀY ĐỂ ÉP ĐÓNG BÀN PHÍM NGAY LẬP TỨC
+    Keyboard.dismiss();
     let currentContent = content;
     if (editorMode === 'text') {
       currentContent = isWeb && contentRef.current ? contentRef.current.innerHTML : content;
@@ -315,11 +322,26 @@ export function NoteEditor({ visible, mode, note, onClose, onSave }: NoteEditorP
         ...item,
         subtasks: item.subtasks?.filter(sub => sub.title.trim().length > 0)
       }));
-    const hasContent = title.trim() || (editorMode === 'text' ? currentContent.trim().replace(/<[^>]*>?/gm, '') : cleanedTodoItems.length > 0);
 
-    if (!hasContent) {
-      onClose();
-      return;
+    // CẢI TIẾN REGEX: Xóa tag HTML, xóa &nbsp;, xóa ký tự ẩn zero-width
+    const strippedCheck = currentContent
+      ? currentContent
+        .replace(/<[^>]*>?/gm, '')          // Xóa tags HTML
+        .replace(/&nbsp;/g, ' ')            // Biến mã khoảng trắng HTML thành khoảng trắng thường
+        .replace(/[\u200B-\u200D\uFEFF]/g, '') // Xóa triệt để các ký tự zero-width ẩn
+        .trim()
+      : '';
+
+    const hasContent = title.trim() || (editorMode === 'text' ? strippedCheck.length > 0 : cleanedTodoItems.length > 0);
+
+    // CAN THIỆP UI: Nếu text trống, ép DOM/Ref về rỗng hoàn toàn để tránh hiện tượng ghosting text
+    if (editorMode === 'text' && !strippedCheck) {
+      currentContent = '';
+      if (isWeb && contentRef.current) {
+        contentRef.current.innerHTML = ''; // Xóa sạch HTML cứng trong DOM
+      }
+      // LƯU Ý: Nếu bạn dùng thư viện Rich Editor (như pell-rich-editor), hãy gọi hàm clear của nó tại đây:
+      // richTextRef.current?.setContentHTML('');
     }
 
     const updatedNote: NoteCardData = {
@@ -328,13 +350,22 @@ export function NoteEditor({ visible, mode, note, onClose, onSave }: NoteEditorP
       type: editorMode,
       color: noteColor,
       title: title.trim() || undefined,
-      content_text: editorMode === 'text' ? currentContent.trim() || undefined : undefined,
+      content_text: editorMode === 'text' ? (strippedCheck ? currentContent.trim() : '') : undefined,
       todo_items: editorMode === 'todo' ? cleanedTodoItems : undefined,
       todo_total: editorMode === 'todo' ? cleanedTodoItems.length : undefined,
       todo_completed: editorMode === 'todo' ? cleanedTodoItems.filter((item) => item.is_completed).length : undefined,
-      labels: noteTags, // Gán danh sách nhãn đã chỉnh sửa vào đây
+      labels: noteTags,
       is_pinned: isPinned,
     };
+
+    if (!hasContent) {
+      const isExistingNote = note?.id && !note.id.startsWith('temp-');
+      if (isExistingNote) {
+        onSave(updatedNote);
+      }
+      onClose();
+      return;
+    }
 
     onSave(updatedNote);
     onClose();
@@ -365,7 +396,7 @@ export function NoteEditor({ visible, mode, note, onClose, onSave }: NoteEditorP
 
   const bg = cardColorMap[noteColor] ?? cardColorMap.default;
 
-  
+
 
   return (
     <View style={styles.overlay}>
@@ -400,7 +431,7 @@ export function NoteEditor({ visible, mode, note, onClose, onSave }: NoteEditorP
             onFocus={closePopups}
           />
           <Tooltip label={isPinned ? "Bỏ ghim ghi chú" : "Ghim ghi chú"} position="bottom">
-            <TouchableOpacity onPress={() => setIsPinned(!isPinned)} style={styles.iconBtn}>
+            <TouchableOpacity onPress={() => setIsPinned(isPinned === 1 ? 0 : 1)} style={styles.iconBtn}>
               <MaterialCommunityIcons
                 name={isPinned ? "pin" : "pin-outline"}
                 size={24}
@@ -427,12 +458,17 @@ export function NoteEditor({ visible, mode, note, onClose, onSave }: NoteEditorP
                     </Text>
                   )}
                   <WebDiv
+                    key={`editor-${note?.id ?? 'new'}-${visible}`}
                     id="web-content-editor"
                     ref={contentRef}
                     contentEditable={true}
                     suppressContentEditableWarning={true}
-                    dangerouslySetInnerHTML={{ __html: content ? content.replace(/\n/g, '<br>') : '' }}
-                    onInput={(e: any) => setIsContentEmpty(!e.currentTarget.textContent?.trim())}
+                    dangerouslySetInnerHTML={htmlConfig}
+                    onInput={(e: any) => {
+                      const html = e.currentTarget.innerHTML;
+                      setContent(html); // BẮT BUỘC PHẢI CÓ DÒNG NÀY ĐỂ ĐỒNG BỘ STATE
+                      setIsContentEmpty(!e.currentTarget.textContent?.trim());
+                    }}
                     onKeyUp={updateFormattingState}
                     onMouseUp={updateFormattingState}
                     onFocus={(e: any) => { updateFormattingState(); closePopups(); }}
@@ -465,6 +501,8 @@ export function NoteEditor({ visible, mode, note, onClose, onSave }: NoteEditorP
                     multiline
                     textAlignVertical="top"
                     scrollEnabled={false}
+                    autoCorrect={false}
+                    spellCheck={false}
                     //autoFocus={!note?.content_text}
                     onFocus={closePopups}
                   />

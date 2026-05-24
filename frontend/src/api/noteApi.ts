@@ -48,18 +48,18 @@ export const updateNote = (id: string, note: Partial<NoteCardData>): Promise<Not
   }).then(res => res.data.data);
 
 export const trashNote = (id: string): Promise<void> =>
-  axiosClient.patch(`/notes/${id}`, {
+  axiosClient.patch(`/notes/${id}/trash`, {
     is_trashed: true,
     client_updated_at: new Date().toISOString(),
   });
 
+export const togglePinNote = (
+  id: string
+): Promise<NoteCardData> =>
+  axiosClient.patch(`/notes/${id}/pin`)
+    .then(res => res.data.data);
+
 // Archive
-export const archiveNote = (id: string): Promise<void> =>
-  axiosClient.patch(`/notes/${id}/`, {
-    is_archived: true,
-    client_updated_at: new Date().toISOString(),
-  });
- 
-export const deleteNote = (id: string): Promise<void> =>
-  axiosClient.delete(`/notes/${id}/`);
+export const toggleArchiveNote = (id: string): Promise<NoteCardData> =>
+  axiosClient.patch(`/notes/${id}/archive`).then(res => res.data.data);
  

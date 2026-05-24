@@ -81,9 +81,6 @@ class TagSerializer(serializers.ModelSerializer):
             "updated_at",
         ]
 
-from rest_framework import serializers
-from .models import Notes
-
 
 class UpdateNoteSerializer(serializers.ModelSerializer):
 

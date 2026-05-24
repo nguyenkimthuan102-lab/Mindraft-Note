@@ -286,11 +286,11 @@ def update_note_quick(request, note_id):
     serializer.is_valid(raise_exception=True)
 
     # UPDATE FIELDS
-    serializer.save(
+    updated_note = serializer.save(
         server_updated_at=timezone.now()
     )
 
-    response_serializer = NoteSerializer(note)
+    response_serializer = NoteSerializer(updated_note)
 
     return Response({
         "data": response_serializer.data
@@ -320,6 +320,7 @@ def trash_note(request, note_id):
     # MOVE TO TRASH
     note.is_trashed = 1
 
+    note.is_pinned = 0 
     # OPTIONAL:
     # thường archive sẽ bị bỏ khi vào trash
     note.is_archived = 0

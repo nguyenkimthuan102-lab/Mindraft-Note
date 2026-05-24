@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo } from 'react';
-import { View, StyleSheet, useWindowDimensions } from 'react-native';
+import { View, StyleSheet, useWindowDimensions, Platform } from 'react-native';
 import { useAppStore } from '../../store/useAppStore';
 import { useLayoutStore } from '../../store/useLayoutStore';
 import { NoteCard } from './NoteCard';
@@ -88,7 +88,7 @@ export function NoteList({ notes, title, onPressNote, onUpdateNote, onDeleteNote
           scrollEnabled={false}
           renderItem={({ item }: any) => (
             <View style={[
-              { paddingHorizontal: isMobile ? 4 : 6, paddingVertical: isMobile ? 2 : 3 },
+              { paddingHorizontal: isMobile ? 4 : 6, paddingTop: 12, paddingBottom: isMobile ? 2 : 3, overflow: 'visible' },
               styles.listMaxWidth
             ]}>
               <NoteCard
@@ -112,7 +112,7 @@ export function NoteList({ notes, title, onPressNote, onUpdateNote, onDeleteNote
           estimatedItemSize={200}
           scrollEnabled={false}
           renderItem={({ item }: any) => (
-            <View style={{ paddingHorizontal: isMobile ? 4 : 5, paddingVertical: isMobile ? 2 : 3 }}>
+            <View style={{ paddingHorizontal: isMobile ? 4 : 5, paddingTop: 12, paddingBottom: isMobile ? 2 : 3, overflow: 'visible' }}>
               <NoteCard
                 note={item}
                 isGridView={true}
@@ -132,6 +132,11 @@ export function NoteList({ notes, title, onPressNote, onUpdateNote, onDeleteNote
 }
 
 const styles = StyleSheet.create({
-  sectionContainer: { width: '100%', marginBottom: 20 },
+  sectionContainer: {
+    width: '100%',
+    marginBottom: 20,
+    position: 'relative',
+    ...Platform.select({ web: { zIndex: 0 } as any }),
+  },
   listMaxWidth: { maxWidth: 700, alignSelf: 'center', width: '100%' },
 });

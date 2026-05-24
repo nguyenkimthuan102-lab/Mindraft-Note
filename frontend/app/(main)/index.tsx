@@ -13,7 +13,7 @@ import { useNoteStore } from '../../src/store/useNoteStore';
 import { NoteList } from '../../src/components/notes/NoteList';
 import { useAppStore } from '@/src/store/useAppStore';
 
-import { fetchNotes, createNoteText, createNoteTodo, updateNote, trashNote, archiveNote } from '../../src/api/noteApi';
+import { fetchNotes, createNoteText, createNoteTodo, updateNote, trashNote, toggleArchiveNote, togglePinNote } from '../../src/api/noteApi';
 import { useRouter } from 'expo-router';
 
 export default function HomeScreen() {
@@ -38,6 +38,21 @@ export default function HomeScreen() {
   const isDark = theme === 'dark';
   const dynamicBg = isDark ? '#111827' : colors.bgPage;
 
+  const stripHtml = (html: string): string =>
+    html
+      .replace(/<div><br\s*\/?><\/div>/gi, '\n') // dòng trống
+      .replace(/<br\s*\/?>/gi, '\n')
+      .replace(/<div>/gi, '\n')   // ← thêm: mở div = xuống dòng
+      .replace(/<\/div>/gi, '')   // đóng div = bỏ (đã xử lý bởi dòng trên)
+      .replace(/<[^>]+>/g, '')
+      .replace(/&nbsp;/g, ' ')
+      .replace(/&amp;/g, '&')
+      .replace(/&lt;/g, '<')
+      .replace(/&gt;/g, '>')
+      .replace(/^\n/, '')         // bỏ \n thừa ở đầu nếu html bắt đầu bằng <div>
+      .replace(/\n{3,}/g, '\n\n')
+      .trim();
+
   useEffect(() => {
     clearSelection();
     setSyncing();
@@ -56,15 +71,54 @@ export default function HomeScreen() {
   }, []);
 
   const handleUpdate = async (id: string, changes: Partial<NoteCardData>) => {
-  // Cập nhật UI ngay lập tức (optimistic update)
+    // Cập nhật UI ngay lập tức (optimistic update)
     setNotes(prev => prev.map(n => n.id === id ? { ...n, ...changes } : n));
-  
+
     try {
       await updateNote(id, changes);
     } catch {
       // Nếu API lỗi, rollback lại state cũ
       setNotes(prev => prev.map(n => n.id === id ? { ...n, ...Object.fromEntries(Object.keys(changes).map(k => [k, n[k as keyof NoteCardData]])) } : n));
       Alert.alert("Lỗi", "Không thể cập nhật ghi chú. Vui lòng thử lại.");
+    }
+  };
+
+  const handleTogglePin = async (id: string) => {
+
+    // optimistic update
+    setNotes(prev =>
+      prev.map(n =>
+        n.id === id
+          ? {
+            ...n,
+            is_pinned: n.is_pinned ? 0 : 1
+          }
+          : n
+      )
+    );
+
+    try {
+
+      await togglePinNote(id);
+
+    } catch {
+
+      // rollback
+      setNotes(prev =>
+        prev.map(n =>
+          n.id === id
+            ? {
+              ...n,
+              is_pinned: n.is_pinned ? 0 : 1
+            }
+            : n
+        )
+      );
+
+      Alert.alert(
+        "Lỗi",
+        "Không thể ghim ghi chú"
+      );
     }
   };
 
@@ -78,20 +132,18 @@ export default function HomeScreen() {
   };
 
   const handleArchive = async (id: string) => {
-  // Optimistic: xóa khỏi UI ngay
-  setNotes(prev => prev.filter(n => n.id !== id));
-  
-  try {
-    await archiveNote(id);
-  } catch {
-    // Rollback: lấy lại note nếu API lỗi
-    setNotes(prev => {
-      const archivedNote = notes.find(n => n.id === id);
-      return archivedNote ? [archivedNote, ...prev] : prev;
-    });
-    Alert.alert("Lỗi", "Không thể lưu trữ ghi chú. Vui lòng thử lại.");
-  }
-};
+    // Optimistic: xóa khỏi UI ngay
+    const noteToRestore = notes.find(n => n.id === id);
+    setNotes(prev => prev.filter(n => n.id !== id));
+
+    try {
+      await toggleArchiveNote(id);
+    } catch {
+      // Rollback: lấy lại note nếu API lỗi
+      setNotes(prev => noteToRestore ? [noteToRestore, ...prev] : prev);
+      Alert.alert("Lỗi", "Không thể lưu trữ ghi chú. Vui lòng thử lại.");
+    }
+  };
 
   const openCreateText = async () => {
     const tempNote: NoteCardData = {
@@ -125,40 +177,61 @@ export default function HomeScreen() {
   };
 
   const handleSaveNote = async (note: NoteCardData) => {
-  // 1. Kiểm tra rỗng (Discard)
-  const isContentEmpty = 
-    (!note.title || note.title.trim() === '') && 
-    (!note.content_text || note.content_text.trim() === '') &&
-    (!note.todo_items || note.todo_items.length === 0);
+    // Hàm bổ trợ làm sạch sâu HTML và ký tự rác
+    const deepStripHtml = (html: string) => {
+      if (!html) return '';
+      return html
+        .replace(/<[^>]*>?/gm, '')
+        .replace(/&nbsp;/g, ' ')
+        .replace(/[\u200B-\u200D\uFEFF]/g, '')
+        .trim();
+    };
 
-  if (isContentEmpty) {
-    // Nếu là note mới (ID temp) và rỗng -> Đóng editor, không lưu
-    if (note.id.startsWith('temp-')) {
-      closeEditorStore(); 
-      return;
+    const strippedText = note.content_text ? deepStripHtml(note.content_text) : '';
+
+    const cleanNote: NoteCardData = {
+      ...note,
+      // Nếu chuỗi sau khi strip mà rỗng hoàn toàn thì set thẳng về '', không giữ lại tag gốc
+      content_text: strippedText === '' ? '' : note.content_text,
+    };
+
+    const isContentEmpty =
+      (!cleanNote.title || cleanNote.title.trim() === '') &&
+      (!cleanNote.content_text || cleanNote.content_text.trim() === '') &&
+      (!cleanNote.todo_items || cleanNote.todo_items.length === 0);
+
+    if (isContentEmpty) {
+      if (note.id.startsWith('temp-')) {
+        closeEditorStore();
+        return;
+      }
+      // Ghi chú cũ xóa hết nội dung -> Tiếp tục chạy xuống dưới để gửi PATCH/PUT chuỗi rỗng lên API
     }
-  }
 
-  // 2. Phân biệt POST (Tạo mới) hay PATCH (Cập nhật)
-  const isNewNote = note.id.startsWith('temp-');
+    const isNewNote = note.id.startsWith('temp-');
 
-  try {
-    if (isNewNote) {
-      // POST: Gọi API tạo note đúng theo type
-      const createdNote = note.type === 'text'
-        ? await createNoteText(note)
-        : await createNoteTodo(note);
-      setNotes(prev => [createdNote, ...prev.filter(n => n.id !== note.id)]);
-    } else {
-      // PATCH: Gọi API update
-      await updateNote(note.id, note);
-      setNotes(prev => prev.map(n => n.id === note.id ? note : n));
+    try {
+      if (isNewNote) {
+        const createdNote = cleanNote.type === 'text'
+          ? await createNoteText(cleanNote)
+          : await createNoteTodo(cleanNote);
+        setNotes(prev => [createdNote, ...prev.filter(n => n.id !== note.id)]);
+      } {
+        const oldNote = notes.find(n => n.id === note.id);
+
+        if (oldNote && oldNote.is_pinned !== cleanNote.is_pinned) {
+          await togglePinNote(cleanNote.id);
+        }
+
+        const updatedNote = await updateNote(cleanNote.id, cleanNote);
+        // Cập nhật lại danh sách, ép state tổng nhận giá trị mới (đã rỗng)
+        setNotes(prev => prev.map(n => n.id === cleanNote.id ? updatedNote : n));
+      }
+      closeEditorStore();
+    } catch (error) {
+      Alert.alert("Lỗi", "Không thể lưu ghi chú. Vui lòng thử lại.");
     }
-    closeEditorStore();
-  } catch (error) {
-    Alert.alert("Lỗi", "Không thể lưu ghi chú. Vui lòng thử lại.");
-  }
-};
+  };
 
   const pinned = notes.filter(n => n.is_pinned);
   const others = notes.filter(n => !n.is_pinned);
@@ -201,27 +274,31 @@ export default function HomeScreen() {
             </View>
           )}
 
-          <NoteList
-            title="Đã ghim"
-            notes={pinned}
-            onPressNote={openEditNote}
-            onUpdateNote={handleUpdate}
-            onDeleteNote={handleDelete}
-            onArchiveNote={handleArchive}
-            selectedIds={selectedIds}
-            onSelectNote={toggleSelect}
-          />
+          <View style={{ position: 'relative' }}>
+            <NoteList
+              title="Đã ghim"
+              notes={pinned}
+              onPressNote={openEditNote}
+              onUpdateNote={handleUpdate}
+              onDeleteNote={handleDelete}
+              onArchiveNote={handleArchive}
+              selectedIds={selectedIds}
+              onSelectNote={toggleSelect}
+            />
+          </View>
 
-          <NoteList
-            title="Khác"
-            notes={others}
-            onPressNote={openEditNote}
-            onUpdateNote={handleUpdate}
-            onDeleteNote={handleDelete}
-            onArchiveNote={handleArchive}
-            selectedIds={selectedIds}
-            onSelectNote={toggleSelect}
-          />
+          <View style={{ position: 'relative' }}>
+            <NoteList
+              title="Khác"
+              notes={others}
+              onPressNote={openEditNote}
+              onUpdateNote={handleUpdate}
+              onDeleteNote={handleDelete}
+              onArchiveNote={handleArchive}
+              selectedIds={selectedIds}
+              onSelectNote={toggleSelect}
+            />
+          </View>
         </View>
       </ScrollView>
 
