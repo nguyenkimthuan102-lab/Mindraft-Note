@@ -16,7 +16,7 @@ import { useAppStore } from '@/src/store/useAppStore';
 import { fetchNotes, createNoteText, createNoteTodo, updateNote, trashNote, toggleArchiveNote, togglePinNote } from '../../src/api/noteApi';
 
 export default function HomeScreen() {
-
+  // ── XÓA: router, isCreating, setIsCreating — không dùng ở màn Home ──────
   const { theme, viewMode } = useAppStore();
   const { setSyncing, setDone, setError } = useSyncStore();
   const [notes, setNotes] = useState<NoteCardData[]>([]);
@@ -24,6 +24,7 @@ export default function HomeScreen() {
     editorVisible,
     editorMode,
     editingNote,
+    // ── XÓA: openCreateTextStore, openCreateTodoStore — không dùng trực tiếp
     openEditNote: openEditNoteStore,
     closeEditor: closeEditorStore,
   } = useNoteStore();
@@ -33,35 +34,52 @@ export default function HomeScreen() {
   const isDark = theme === 'dark';
   const dynamicBg = isDark ? '#111827' : colors.bgPage;
 
+  // ── XÓA: stripHtml — không dùng ở màn Home (chỉ dùng trong editor) ──────
 
   useEffect(() => {
     clearSelection();
     setSyncing();
     const loadNotes = async () => {
       try {
-        // Chỉ lấy note active trên màn Home
         const data = await fetchNotes({ view: 'active' });
         setNotes(data);
-        setDone(); // Tắt loading
+        setDone();
       } catch (error) {
         console.error('Lỗi khi tải danh sách ghi chú:', error);
-        setError(); // Xử lý UI báo lỗi
+        setError();
       }
     };
     loadNotes();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+    // ── FIX: thêm dependencies còn thiếu vào mảng deps ───────────────────
+  }, [clearSelection, setSyncing, setDone, setError]);
 
   const handleUpdate = async (id: string, changes: Partial<NoteCardData>) => {
-    // Cập nhật UI ngay lập tức (optimistic update)
     setNotes(prev => prev.map(n => n.id === id ? { ...n, ...changes } : n));
 
     try {
       await updateNote(id, changes);
     } catch {
-      // Nếu API lỗi, rollback lại state cũ
       setNotes(prev => prev.map(n => n.id === id ? { ...n, ...Object.fromEntries(Object.keys(changes).map(k => [k, n[k as keyof NoteCardData]])) } : n));
       Alert.alert("Lỗi", "Không thể cập nhật ghi chú. Vui lòng thử lại.");
+    }
+  };
+
+  const handleTogglePin = async (id: string) => {
+    setNotes(prev =>
+      prev.map(n =>
+        n.id === id ? { ...n, is_pinned: n.is_pinned ? 0 : 1 } : n
+      )
+    );
+
+    try {
+      await togglePinNote(id);
+    } catch {
+      setNotes(prev =>
+        prev.map(n =>
+          n.id === id ? { ...n, is_pinned: n.is_pinned ? 0 : 1 } : n
+        )
+      );
+      Alert.alert("Lỗi", "Không thể ghim ghi chú");
     }
   };
 
@@ -75,32 +93,55 @@ export default function HomeScreen() {
   };
 
   const handleArchive = async (id: string) => {
-    // Optimistic: xóa khỏi UI ngay
-    const noteToRestore = notes.find(n => n.id === id);
-    const isPinned = noteToRestore?.is_pinned === 1;
+    const noteToArchive = notes.find(n => n.id === id);
     setNotes(prev => prev.filter(n => n.id !== id));
 
     try {
-      // Nếu đang ghim → bỏ ghim trước (giống GG Keep: lưu trữ tự unpin)
-      if (isPinned) {
+      await toggleArchiveNote(id);
+    } catch {
+      setNotes(prev => noteToArchive ? [noteToArchive, ...prev] : prev);
+      Alert.alert("Lỗi", "Không thể lưu trữ ghi chú. Vui lòng thử lại.");
+    }
+  };
+
+  // ── handleRestoreNote: dùng ở màn Archive, export ra ngoài nếu cần ───────
+  const handleRestoreNote = async (id: string) => {
+    const noteToRestore = notes.find(n => n.id === id);
+
+    setNotes(prev =>
+      prev.map(n =>
+        n.id === id ? { ...n, is_archived: 0, is_pinned: 0 } : n
+      )
+    );
+
+    try {
+      if (noteToRestore?.is_pinned === 1) {
         await togglePinNote(id);
       }
       await toggleArchiveNote(id);
     } catch {
-      // Rollback: lấy lại note nếu API lỗi
-      setNotes(prev => noteToRestore ? [noteToRestore, ...prev] : prev);
-      Alert.alert("Lỗi", "Không thể lưu trữ ghi chú. Vui lòng thử lại.");
+      setNotes(prev =>
+        prev.map(n =>
+          n.id === id
+            ? {
+              ...n,
+              is_archived: noteToRestore?.is_archived ?? 1,
+              is_pinned: noteToRestore?.is_pinned ?? 0,
+            }
+            : n
+        )
+      );
+      Alert.alert("Lỗi", "Không thể khôi phục ghi chú. Vui lòng thử lại.");
     }
   };
 
   const openCreateText = async () => {
     const tempNote: NoteCardData = {
-      id: `temp-${Date.now()}`, // ID tạm để React quản lý component
+      id: `temp-${Date.now()}`,
       type: 'text',
       title: '',
       content_text: '',
       color: 'default',
-      // Khởi tạo các giá trị mặc định khác nếu cần
     };
     openEditNoteStore(tempNote);
   };
@@ -125,7 +166,6 @@ export default function HomeScreen() {
   };
 
   const handleSaveNote = async (note: NoteCardData) => {
-    // Hàm bổ trợ làm sạch sâu HTML và ký tự rác
     const deepStripHtml = (html: string) => {
       if (!html) return '';
       return html
@@ -139,7 +179,6 @@ export default function HomeScreen() {
 
     const cleanNote: NoteCardData = {
       ...note,
-      // Nếu chuỗi sau khi strip mà rỗng hoàn toàn thì set thẳng về '', không giữ lại tag gốc
       content_text: strippedText === '' ? '' : note.content_text,
     };
 
@@ -153,7 +192,6 @@ export default function HomeScreen() {
         closeEditorStore();
         return;
       }
-      // Ghi chú cũ xóa hết nội dung -> Tiếp tục chạy xuống dưới để gửi PATCH/PUT chuỗi rỗng lên API
     }
 
     const isNewNote = note.id.startsWith('temp-');
@@ -172,17 +210,17 @@ export default function HomeScreen() {
         }
 
         const updatedNote = await updateNote(cleanNote.id, cleanNote);
-        // Cập nhật lại danh sách, ép state tổng nhận giá trị mới (đã rỗng)
         setNotes(prev => prev.map(n => n.id === cleanNote.id ? updatedNote : n));
       }
       closeEditorStore();
     } catch {
+      // ── FIX: xóa tham số 'error' không dùng ─────────────────────────────
       Alert.alert("Lỗi", "Không thể lưu ghi chú. Vui lòng thử lại.");
     }
   };
 
-  const pinned = notes.filter(n => n.is_pinned === 1);
-  const others = notes.filter(n => n.is_pinned !== 1);
+  const pinned = notes.filter(n => n.is_pinned);
+  const others = notes.filter(n => !n.is_pinned);
 
   const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
@@ -205,13 +243,6 @@ export default function HomeScreen() {
       >
         <View style={[
           styles.inner,
-          // CẬP NHẬT: Xóa tính toán gridMaxWidth phức tạp đi. 
-          // Cho phép vùng chứa mở rộng 100% để bám lề, kích thước thẻ đã được NoteList quản lý.
-          // isGrid ? { maxWidth: '100%' } : { maxWidth: 720 }
-
-          // FIX: Grid neo lề trái cố định (alignSelf: flex-start), không giãn theo container.
-          // List vẫn căn giữa như cũ (maxWidth: 720, alignSelf: center).
-          // Đảm bảo khoảng cách từ sidebar/lề trái không đổi khi sidebar mở/đóng.
           isGrid
             ? { maxWidth: '100%', alignSelf: 'flex-start' }
             : { maxWidth: 720, alignSelf: 'center' }
