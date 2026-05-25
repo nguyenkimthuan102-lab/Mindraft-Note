@@ -53,6 +53,9 @@ interface NoteCardProps {
   isSelected: boolean;
   onSelect: () => void;
   isGridView?: boolean;
+  // THÊM: cho phép tuỳ chỉnh nút archive (dùng cho màn Archive để hiển thị "Huỷ lưu trữ")
+  archiveLabel?: string;
+  archiveIcon?: string;
 }
 
 function Avatars({ names, isDark }: { names: string[]; isDark: boolean }) {
@@ -196,7 +199,7 @@ const stripHtml = (html: string): string =>
     .replace(/\n{3,}/g, '\n\n')
     .trim();
 
-export function NoteCard({ note, isSelected, onSelect, isGridView, onPress, onUpdate, onDelete, onArchive }: NoteCardProps) {
+export function NoteCard({ note, isSelected, onSelect, isGridView, onPress, onUpdate, onDelete, onArchive, archiveLabel = 'Lưu trữ', archiveIcon = 'archive-arrow-down-outline' }: NoteCardProps) {
   const { theme } = useAppStore(); // Lấy theme hệ thống
   const isDark = theme === 'dark';
   const { width } = useWindowDimensions();
@@ -263,16 +266,16 @@ export function NoteCard({ note, isSelected, onSelect, isGridView, onPress, onUp
         ]}
         {...hoverProps}
       >
-        {(hovered || !!localNote.is_pinned) && (
-          <View style={[styles.pinCorner, { opacity: (hovered || !!localNote.is_pinned) ? 1 : 0 }]}>
+        {(hovered || localNote.is_pinned === 1) && (
+          <View style={[styles.pinCorner, { opacity: (hovered || localNote.is_pinned === 1) ? 1 : 0 }]}>
             <HoverBtn
               onPress={() => update({ is_pinned: localNote.is_pinned === 1 ? 0 : 1 })}
-              label={localNote.is_pinned ? "Bỏ ghim" : "Ghim"}
+              label={localNote.is_pinned === 1 ? "Bỏ ghim" : "Ghim"}
             >
               <Icon
-                source={localNote.is_pinned ? 'pin' : 'pin-outline'}
+                source={localNote.is_pinned === 1 ? 'pin' : 'pin-outline'}
                 size={18}
-                color={localNote.is_pinned ? colors.primary : dynamicColors.textTertiary}
+                color={localNote.is_pinned === 1 ? colors.primary : dynamicColors.textTertiary}
               />
             </HoverBtn>
           </View>
@@ -356,7 +359,7 @@ export function NoteCard({ note, isSelected, onSelect, isGridView, onPress, onUp
             </View>
             {!isTodo && <ActionBtn icon="bell-outline" label="Nhắc nhở" onPress={() => { }} />}
             <ActionBtn icon="account-plus-outline" label="Thêm CTV" onPress={() => { }} />
-            <ActionBtn icon="archive-arrow-down-outline" label="Lưu trữ" onPress={() => onArchive?.(note.id)} />
+            <ActionBtn icon={archiveIcon} label={archiveLabel} onPress={() => onArchive?.(note.id)} />
 
             <View ref={dotBtnRef}>
               <ActionBtn

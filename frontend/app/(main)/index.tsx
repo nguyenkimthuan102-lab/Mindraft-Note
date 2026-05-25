@@ -14,11 +14,8 @@ import { NoteList } from '../../src/components/notes/NoteList';
 import { useAppStore } from '@/src/store/useAppStore';
 
 import { fetchNotes, createNoteText, createNoteTodo, updateNote, trashNote, toggleArchiveNote, togglePinNote } from '../../src/api/noteApi';
-import { useRouter } from 'expo-router';
 
 export default function HomeScreen() {
-  const router = useRouter();
-  const [isCreating, setIsCreating] = useState(false);
 
   const { theme, viewMode } = useAppStore();
   const { setSyncing, setDone, setError } = useSyncStore();
@@ -27,8 +24,6 @@ export default function HomeScreen() {
     editorVisible,
     editorMode,
     editingNote,
-    openCreateText: openCreateTextStore,
-    openCreateTodo: openCreateTodoStore,
     openEditNote: openEditNoteStore,
     closeEditor: closeEditorStore,
   } = useNoteStore();
@@ -38,20 +33,6 @@ export default function HomeScreen() {
   const isDark = theme === 'dark';
   const dynamicBg = isDark ? '#111827' : colors.bgPage;
 
-  const stripHtml = (html: string): string =>
-    html
-      .replace(/<div><br\s*\/?><\/div>/gi, '\n') // dòng trống
-      .replace(/<br\s*\/?>/gi, '\n')
-      .replace(/<div>/gi, '\n')   // ← thêm: mở div = xuống dòng
-      .replace(/<\/div>/gi, '')   // đóng div = bỏ (đã xử lý bởi dòng trên)
-      .replace(/<[^>]+>/g, '')
-      .replace(/&nbsp;/g, ' ')
-      .replace(/&amp;/g, '&')
-      .replace(/&lt;/g, '<')
-      .replace(/&gt;/g, '>')
-      .replace(/^\n/, '')         // bỏ \n thừa ở đầu nếu html bắt đầu bằng <div>
-      .replace(/\n{3,}/g, '\n\n')
-      .trim();
 
   useEffect(() => {
     clearSelection();
@@ -68,6 +49,7 @@ export default function HomeScreen() {
       }
     };
     loadNotes();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const handleUpdate = async (id: string, changes: Partial<NoteCardData>) => {
@@ -83,45 +65,6 @@ export default function HomeScreen() {
     }
   };
 
-  const handleTogglePin = async (id: string) => {
-
-    // optimistic update
-    setNotes(prev =>
-      prev.map(n =>
-        n.id === id
-          ? {
-            ...n,
-            is_pinned: n.is_pinned ? 0 : 1
-          }
-          : n
-      )
-    );
-
-    try {
-
-      await togglePinNote(id);
-
-    } catch {
-
-      // rollback
-      setNotes(prev =>
-        prev.map(n =>
-          n.id === id
-            ? {
-              ...n,
-              is_pinned: n.is_pinned ? 0 : 1
-            }
-            : n
-        )
-      );
-
-      Alert.alert(
-        "Lỗi",
-        "Không thể ghim ghi chú"
-      );
-    }
-  };
-
   const handleDelete = async (id: string) => {
     try {
       await trashNote(id);
@@ -134,9 +77,14 @@ export default function HomeScreen() {
   const handleArchive = async (id: string) => {
     // Optimistic: xóa khỏi UI ngay
     const noteToRestore = notes.find(n => n.id === id);
+    const isPinned = noteToRestore?.is_pinned === 1;
     setNotes(prev => prev.filter(n => n.id !== id));
 
     try {
+      // Nếu đang ghim → bỏ ghim trước (giống GG Keep: lưu trữ tự unpin)
+      if (isPinned) {
+        await togglePinNote(id);
+      }
       await toggleArchiveNote(id);
     } catch {
       // Rollback: lấy lại note nếu API lỗi
@@ -228,13 +176,13 @@ export default function HomeScreen() {
         setNotes(prev => prev.map(n => n.id === cleanNote.id ? updatedNote : n));
       }
       closeEditorStore();
-    } catch (error) {
+    } catch {
       Alert.alert("Lỗi", "Không thể lưu ghi chú. Vui lòng thử lại.");
     }
   };
 
-  const pinned = notes.filter(n => n.is_pinned);
-  const others = notes.filter(n => !n.is_pinned);
+  const pinned = notes.filter(n => n.is_pinned === 1);
+  const others = notes.filter(n => n.is_pinned !== 1);
 
   const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
