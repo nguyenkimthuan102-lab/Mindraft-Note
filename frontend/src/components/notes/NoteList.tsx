@@ -20,9 +20,12 @@ interface NoteListProps {
   onArchiveNote: (id: string) => void;
   selectedIds: string[];
   onSelectNote: (id: string) => void;
+  // THÊM: tuỳ chỉnh nhãn nút archive cho từng màn hình
+  archiveLabel?: string;
+  archiveIcon?: string;
 }
 
-export function NoteList({ notes, title, onPressNote, onUpdateNote, onDeleteNote, onArchiveNote, selectedIds, onSelectNote }: NoteListProps) {
+export function NoteList({ notes, title, onPressNote, onUpdateNote, onDeleteNote, onArchiveNote, selectedIds, onSelectNote, archiveLabel, archiveIcon }: NoteListProps) {
 
   const { viewMode, initSettings, sort } = useAppStore();
   const { isSidebarOpen } = useLayoutStore();
@@ -33,7 +36,6 @@ export function NoteList({ notes, title, onPressNote, onUpdateNote, onDeleteNote
     if (sort.field === 'custom') {
       return notes;
     }
-    const dir = sort.direction === 'desc' ? -1 : 1;
     return [...notes].sort((a, b) => {
       const aTime = new Date(a[sort.field] ?? 0).getTime();
       const bTime = new Date(b[sort.field] ?? 0).getTime();
@@ -43,6 +45,7 @@ export function NoteList({ notes, title, onPressNote, onUpdateNote, onDeleteNote
 
   useEffect(() => {
     initSettings(); // Lấy settings từ server khi mount màn hình
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Tính toán số cột
@@ -63,25 +66,27 @@ export function NoteList({ notes, title, onPressNote, onUpdateNote, onDeleteNote
     }
   }
 
-  if (notes.length === 0) return null;
+  const isListMode = viewMode === 'list';
+
+  if (sortedNotes.length === 0) return null;
 
   // FIX DUPLICATE: Them note IDs vao key buoc FlashList re-render
   // khi danh sach thay doi do pin/unpin, delete, archive.
-  const noteIds = notes.map((n: any) => n.id).join(',');
+  const noteIds = sortedNotes.map((n: any) => n.id).join(',');
 
   return (
-    <View style={[styles.sectionContainer, !isMobile && viewMode === 'grid' && { width: gridWidth, alignSelf: 'center' }]}>
+    <View style={[styles.sectionContainer, !isMobile && !isListMode && { width: gridWidth, alignSelf: 'center' }]}>
       {title && (
         <View style={[
-          { paddingHorizontal: isMobile ? 4 : (viewMode === 'list' ? 6 : 8) },
-          viewMode === 'list' && styles.listMaxWidth
+          { paddingHorizontal: isMobile ? 4 : (!isListMode ? 6 : 8) },
+          isListMode && styles.listMaxWidth
         ]}>
           <SectionLabel label={title} />
         </View>
       )}
-      {viewMode === 'list' ? (
+      {isListMode ? (
         <StandardFlashList
-          data={notes}
+          data={sortedNotes}
           numColumns={columns}
           key={`list-${title}-${columns}-${sort.field}-${sort.direction}-${noteIds}`}
           estimatedItemSize={200}
@@ -100,13 +105,15 @@ export function NoteList({ notes, title, onPressNote, onUpdateNote, onDeleteNote
                 onArchive={onArchiveNote}
                 isSelected={selectedIds.includes(item.id)}
                 onSelect={() => onSelectNote(item.id)}
+                archiveLabel={archiveLabel}
+                archiveIcon={archiveIcon}
               />
             </View>
           )}
         />
       ) : (
         <MasonryFlashList
-          data={notes}
+          data={sortedNotes}
           numColumns={columns}
           key={`grid-${title}-${columns}-${sort.field}-${sort.direction}-${noteIds}`}
           estimatedItemSize={200}
@@ -122,6 +129,8 @@ export function NoteList({ notes, title, onPressNote, onUpdateNote, onDeleteNote
                 onArchive={onArchiveNote}
                 isSelected={selectedIds.includes(item.id)}
                 onSelect={() => onSelectNote(item.id)}
+                archiveLabel={archiveLabel}
+                archiveIcon={archiveIcon}
               />
             </View>
           )}

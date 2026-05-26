@@ -10,6 +10,8 @@ import { SyncIndicator } from '../ui/SyncIndicator';
 import { useSelectionStore } from '../../store/useSelectionStore';
 import { useAppStore, DEFAULT_SORT } from '../../store/useAppStore';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useAuthStore } from '../../store/useAuthStore';
+import { ProfileModal } from './ProfileModal';
 
 interface TopbarProps {
   viewMode?: 'list' | 'grid';
@@ -27,8 +29,10 @@ function ActionBtn({ icon, label, isDark }: { icon: string; label: string; isDar
 }
 
 export function Topbar({ onViewModeChange }: TopbarProps) {
-  const { sort, setSort, viewMode, setViewMode, theme } = useAppStore(); // THÊM theme
+  const { sort, setSort, viewMode, setViewMode, theme } = useAppStore();
+  const { user } = useAuthStore();
   const [menuVisible, setMenuVisible] = useState(false);
+  const [profileVisible, setProfileVisible] = useState(false);
   const isSortActive = sort.field !== DEFAULT_SORT.field || sort.direction !== DEFAULT_SORT.direction;
   const insets = useSafeAreaInsets();
 
@@ -152,144 +156,154 @@ export function Topbar({ onViewModeChange }: TopbarProps) {
   }
 
   return (
-    <View style={[styles.topbar, { backgroundColor: dynamicColors.bg, borderBottomColor: dynamicColors.border, height: 66 + insets.top, paddingTop: insets.top }]}>
+    <>
+      <View style={[styles.topbar, { backgroundColor: dynamicColors.bg, borderBottomColor: dynamicColors.border, height: 66 + insets.top, paddingTop: insets.top }]}>
 
-      <View style={[styles.leftSection, isMobile && { width: 'auto' }]}>
-        <TouchableOpacity onPress={toggleSidebar} style={styles.menuBtn}>
-          <Feather name="menu" size={22} color={dynamicColors.textSec} />
-        </TouchableOpacity>
-        
+        <View style={[styles.leftSection, isMobile && { width: 'auto' }]}>
+          <TouchableOpacity onPress={toggleSidebar} style={styles.menuBtn}>
+            <Feather name="menu" size={22} color={dynamicColors.textSec} />
+          </TouchableOpacity>
+
+          {!isMobile && (
+            <TouchableOpacity
+              activeOpacity={0.7}
+              style={styles.logoContainer}
+              disabled={isSettings}
+              onPress={() => {
+                if (isHome) {
+                  router.replace('/(main)');
+                } else {
+                  router.push('/(main)');
+                }
+              }}
+            >
+              {isHome ? (
+                <>
+                  <Image source={logoIcon} style={styles.logoImg} />
+                  <Text style={[styles.brandText, { color: dynamicColors.text }]}>Mindraft Note</Text>
+                </>
+              ) : (
+                <Text style={[styles.areaTitle, { color: dynamicColors.textSec }]}>{getAreaTitle()}</Text>
+              )}
+            </TouchableOpacity>
+          )}
+        </View>
+
         {!isMobile && (
-          <TouchableOpacity
-            activeOpacity={0.7}
-            style={styles.logoContainer}
-            disabled={isSettings}
-            onPress={() => {
-              if (isHome) {
-                router.replace('/(main)');
-              } else {
-                router.push('/(main)');
-              }
-            }}
+          <View style={[styles.searchWrap, { backgroundColor: dynamicColors.searchBg }]}>
+            <Feather name="search" size={16} color={dynamicColors.textSec} style={styles.searchIcon} />
+            <TextInput
+              style={[styles.searchInput, { color: dynamicColors.text }]}
+              value={search}
+              onChangeText={setSearch}
+              placeholder="Search notes, tags, or text..."
+              placeholderTextColor={dynamicColors.placeholder}
+            />
+          </View>
+        )}
+
+        <View style={[styles.actions, isMobile && { width: 'auto' }]}>
+          {isMobile && (
+            <TouchableOpacity style={styles.iconBtn} onPress={() => setIsSearchExpanded(true)}>
+              <Feather name="search" size={20} color={dynamicColors.textSec} />
+            </TouchableOpacity>
+          )}
+
+          <SyncIndicator status={syncStatus} />
+
+          <TouchableOpacity style={styles.iconBtn} onPress={handleToggle}>
+            <Feather name={viewMode === 'list' ? "grid" : "list"} size={20} color={dynamicColors.textSec} />
+          </TouchableOpacity>
+
+          <Menu
+            visible={menuVisible}
+            onDismiss={closeMenu}
+            anchor={
+              <TouchableOpacity
+                style={[styles.iconBtn, isSortActive && styles.iconBtnActive, isSortActive && isDark && { backgroundColor: '#374151' }]}
+                onPress={openMenu}
+              >
+                <Icon source="sort-variant" size={22} color={isSortActive ? colors.primary : dynamicColors.textSec} />
+                {isSortActive && <View style={styles.sortDot} />}
+              </TouchableOpacity>
+            }
+            contentStyle={{ backgroundColor: dynamicColors.bg }}
           >
-            {isHome ? (
-              <>
-                <Image source={logoIcon} style={styles.logoImg} />
-                <Text style={[styles.brandText, { color: dynamicColors.text }]}>Mindraft Note</Text>
-              </>
+            <Menu.Item title="SẮP XẾP THEO" titleStyle={[styles.menuHeader, { color: isDark ? '#6b7280' : colors.textTertiary }]} disabled />
+
+            <Menu.Item
+              leadingIcon="drag-variant"
+              onPress={() => handleSortChange('custom', 'desc')}
+              title="Thứ tự tùy chỉnh"
+              titleStyle={{ color: dynamicColors.text }}
+              trailingIcon={sort.field === 'custom' ? "check" : undefined}
+            />
+
+            <Divider style={{ backgroundColor: dynamicColors.border }} />
+
+            <Menu.Item
+              leadingIcon="update"
+              onPress={() => handleSortChange('updated_at', 'desc')}
+              title="Sửa đổi: Mới nhất"
+              titleStyle={{ color: dynamicColors.text }}
+              trailingIcon={sort.field === 'updated_at' && sort.direction === 'desc' ? "check" : undefined}
+            />
+            <Menu.Item
+              leadingIcon="update"
+              onPress={() => handleSortChange('updated_at', 'asc')}
+              title="Sửa đổi: Cũ nhất"
+              titleStyle={{ color: dynamicColors.text }}
+              trailingIcon={sort.field === 'updated_at' && sort.direction === 'asc' ? "check" : undefined}
+            />
+
+            <Divider style={{ backgroundColor: dynamicColors.border }} />
+
+            <Menu.Item
+              leadingIcon="calendar-plus"
+              onPress={() => handleSortChange('created_at', 'desc')}
+              title="Ngày tạo: Mới nhất"
+              titleStyle={{ color: dynamicColors.text }}
+              trailingIcon={sort.field === 'created_at' && sort.direction === 'desc' ? "check" : undefined}
+            />
+            <Menu.Item
+              leadingIcon="calendar-plus"
+              onPress={() => handleSortChange('created_at', 'asc')}
+              title="Ngày tạo: Cũ nhất"
+              titleStyle={{ color: dynamicColors.text }}
+              trailingIcon={sort.field === 'created_at' && sort.direction === 'asc' ? "check" : undefined}
+            />
+
+            <Divider style={{ backgroundColor: dynamicColors.border }} />
+
+            <Menu.Item
+              leadingIcon="restore"
+              onPress={() => handleSortChange(DEFAULT_SORT.field, DEFAULT_SORT.direction)}
+              title="Đặt lại mặc định"
+              titleStyle={{ color: dynamicColors.text }}
+            />
+          </Menu>
+
+          <TouchableOpacity style={styles.iconBtn}>
+            <View>
+              <Feather name="bell" size={20} color={dynamicColors.textSec} />
+              <View style={styles.notifDot} />
+            </View>
+          </TouchableOpacity>
+
+          <TouchableOpacity style={styles.avatar} onPress={() => setProfileVisible(true)}>
+            {user?.avatar_url ? (
+              <Image source={{ uri: user.avatar_url }} style={styles.avatarImg} />
             ) : (
-              <Text style={[styles.areaTitle, { color: dynamicColors.textSec }]}>{getAreaTitle()}</Text>
+              <Text style={styles.avatarText}>
+                {(user?.name ?? 'U').split(' ').map((w: string) => w[0]).join('').toUpperCase().slice(0, 2)}
+              </Text>
             )}
           </TouchableOpacity>
-        )}
-      </View>
-
-      {!isMobile && (
-        <View style={[styles.searchWrap, { backgroundColor: dynamicColors.searchBg }]}>
-          <Feather name="search" size={16} color={dynamicColors.textSec} style={styles.searchIcon} />
-          <TextInput
-            style={[styles.searchInput, { color: dynamicColors.text }]}
-            value={search}
-            onChangeText={setSearch}
-            placeholder="Search notes, tags, or text..."
-            placeholderTextColor={dynamicColors.placeholder}
-          />
         </View>
-      )}
-
-      <View style={[styles.actions, isMobile && { width: 'auto' }]}>
-        {isMobile && (
-          <TouchableOpacity style={styles.iconBtn} onPress={() => setIsSearchExpanded(true)}>
-            <Feather name="search" size={20} color={dynamicColors.textSec} />
-          </TouchableOpacity>
-        )}
-
-        <SyncIndicator status={syncStatus} />
-
-        <TouchableOpacity style={styles.iconBtn} onPress={handleToggle}>
-          <Feather name={viewMode === 'list' ? "grid" : "list"} size={20} color={dynamicColors.textSec} />
-        </TouchableOpacity>
-
-        <Menu
-          visible={menuVisible}
-          onDismiss={closeMenu}
-          anchor={
-            <TouchableOpacity
-              style={[styles.iconBtn, isSortActive && styles.iconBtnActive, isSortActive && isDark && { backgroundColor: '#374151' }]}
-              onPress={openMenu}
-            >
-              <Icon source="sort-variant" size={22} color={isSortActive ? colors.primary : dynamicColors.textSec} />
-              {isSortActive && <View style={styles.sortDot} />}
-            </TouchableOpacity>
-          }
-          contentStyle={{ backgroundColor: dynamicColors.bg }}
-        >
-          <Menu.Item title="SẮP XẾP THEO" titleStyle={[styles.menuHeader, { color: isDark ? '#6b7280' : colors.textTertiary }]} disabled />
-
-          <Menu.Item
-            leadingIcon="drag-variant"
-            onPress={() => handleSortChange('custom', 'desc')}
-            title="Thứ tự tùy chỉnh"
-            titleStyle={{ color: dynamicColors.text }}
-            trailingIcon={sort.field === 'custom' ? "check" : undefined}
-          />
-
-          <Divider style={{ backgroundColor: dynamicColors.border }} />
-
-          <Menu.Item
-            leadingIcon="update"
-            onPress={() => handleSortChange('updated_at', 'desc')}
-            title="Sửa đổi: Mới nhất"
-            titleStyle={{ color: dynamicColors.text }}
-            trailingIcon={sort.field === 'updated_at' && sort.direction === 'desc' ? "check" : undefined}
-          />
-          <Menu.Item
-            leadingIcon="update"
-            onPress={() => handleSortChange('updated_at', 'asc')}
-            title="Sửa đổi: Cũ nhất"
-            titleStyle={{ color: dynamicColors.text }}
-            trailingIcon={sort.field === 'updated_at' && sort.direction === 'asc' ? "check" : undefined}
-          />
-
-          <Divider style={{ backgroundColor: dynamicColors.border }} />
-
-          <Menu.Item
-            leadingIcon="calendar-plus"
-            onPress={() => handleSortChange('created_at', 'desc')}
-            title="Ngày tạo: Mới nhất"
-            titleStyle={{ color: dynamicColors.text }}
-            trailingIcon={sort.field === 'created_at' && sort.direction === 'desc' ? "check" : undefined}
-          />
-          <Menu.Item
-            leadingIcon="calendar-plus"
-            onPress={() => handleSortChange('created_at', 'asc')}
-            title="Ngày tạo: Cũ nhất"
-            titleStyle={{ color: dynamicColors.text }}
-            trailingIcon={sort.field === 'created_at' && sort.direction === 'asc' ? "check" : undefined}
-          />
-
-          <Divider style={{ backgroundColor: dynamicColors.border }} />
-
-          <Menu.Item
-            leadingIcon="restore"
-            onPress={() => handleSortChange(DEFAULT_SORT.field, DEFAULT_SORT.direction)}
-            title="Đặt lại mặc định"
-            titleStyle={{ color: dynamicColors.text }}
-          />
-        </Menu>
-
-        <TouchableOpacity style={styles.iconBtn}>
-          <View>
-            <Feather name="bell" size={20} color={dynamicColors.textSec} />
-            <View style={styles.notifDot} />
-          </View>
-        </TouchableOpacity>
-
-        <TouchableOpacity style={styles.avatar}>
-          <Text style={styles.avatarText}>U</Text>
-        </TouchableOpacity>
       </View>
-    </View>
+
+      <ProfileModal visible={profileVisible} onClose={() => setProfileVisible(false)} />
+    </>
   );
 }
 
@@ -392,6 +406,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     marginLeft: 4,
+    overflow: 'hidden',
+  },
+  avatarImg: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
   },
   avatarText: {
     fontFamily: 'Inter-SemiBold',

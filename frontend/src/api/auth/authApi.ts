@@ -107,3 +107,39 @@ export const resetPassword = async (data: ResetPasswordPayload): Promise<LoginRe
 
 /** Đăng xuất */
 export const logout = () => axiosClient.post('/auth/logout/');
+
+// ─── Profile ──────────────────────────────────────────────────────────────────
+
+export interface UpdateProfilePayload {
+  name?: string;
+  avatar?: FormData; // web: FormData với file ảnh
+}
+
+export interface ProfileResponse {
+  id: string;
+  name: string;
+  email: string;
+  avatar_url: string | null;
+}
+
+/** Cập nhật tên hoặc avatar */
+export const updateProfile = async (data: UpdateProfilePayload): Promise<ProfileResponse> => {
+  if (data.avatar) {
+    const response = await axiosClient.patch('/auth/profile/', data.avatar, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+    return response.data.data as ProfileResponse;
+  }
+  const response = await axiosClient.patch('/auth/profile/', { name: data.name });
+  return response.data.data as ProfileResponse;
+};
+
+export interface ChangePasswordPayload {
+  current_password: string;
+  new_password: string;
+}
+
+/** Đổi mật khẩu khi đã đăng nhập */
+export const changePassword = async (data: ChangePasswordPayload): Promise<void> => {
+  await axiosClient.patch('/auth/change-password/', data);
+};
