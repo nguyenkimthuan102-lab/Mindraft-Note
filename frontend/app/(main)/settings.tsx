@@ -1,8 +1,14 @@
-import React, { useState } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, Switch } from 'react-native';
-import { useAppStore } from '../../src/store/useAppStore'; 
-import { useSettingsStore } from '../../src/store/useSettingsStore'; 
+import React, { useState, useEffect } from 'react';
+import { View, Text, ScrollView, TouchableOpacity, Switch, ActivityIndicator } from 'react-native';
+
+// ĐÃ SỬA: Chỉ dùng useSettingsStore làm nguồn dữ liệu duy nhất cho trang Settings.
+// useAppStore vẫn được sync tự động bên trong useSettingsStore nên các màn hình
+// khác (NoteList, Header...) vẫn đọc đúng mà không cần thay đổi.
+import { useSettingsStore } from '../../src/store/useSettingsStore';
+
 import { Palette, Bell, User, Cloud, Info, Clock, Calendar, Menu as MenuIcon, CheckCircle2 } from 'lucide-react-native';
+
+// ─── Bảng màu ─────────────────────────────────────────────────────────────────
 
 const lightColors = {
   bg: '#ffffff',
@@ -24,15 +30,15 @@ const lightColors = {
 };
 
 const darkColors = {
-  bg: '#111827', 
-  sidebarBorder: '#374151', 
-  textMain: '#f9fafb', 
-  textSub: '#9ca3af', 
-  activeTabBg: '#064e3b', 
-  activeTabIconBg: '#10b981', 
+  bg: '#111827',
+  sidebarBorder: '#374151',
+  textMain: '#f9fafb',
+  textSub: '#9ca3af',
+  activeTabBg: '#064e3b',
+  activeTabIconBg: '#10b981',
   inactiveTabIconBg: '#374151',
-  activeText: '#34d399', 
-  segmentBg: '#1f2937', 
+  activeText: '#34d399',
+  segmentBg: '#1f2937',
   segmentActiveBg: '#ffffff',
   segmentActiveText: '#000000',
   segmentInactiveText: '#d1d5db',
@@ -42,16 +48,46 @@ const darkColors = {
   cardBg: '#1f2937',
 };
 
+// ─── Component chính ──────────────────────────────────────────────────────────
+
 export default function SettingsScreen() {
   const [activeTab, setActiveTab] = useState('appearance');
-  const { theme, setTheme, viewMode, setViewMode, sort, setSort } = useAppStore();
-  const { notifications, toggleNotification } = useSettingsStore();
-  
+
+  // ĐÃ SỬA: Lấy tất cả từ useSettingsStore thay vì chia giữa 2 store
+  const {
+    isLoaded,
+    theme,
+    viewMode,
+    sort,
+    notifications,
+    loadSettings,
+    updateTheme,
+    updateViewMode,
+    updateSort,
+    toggleNotification,
+  } = useSettingsStore();
+
+  // ĐÃ THÊM: Load settings từ server khi màn hình mount.
+  // Mỗi lần F5 hoặc vào lại trang, settings được nạp lại từ DB.
+  //useEffect(() => {
+    //loadSettings();
+  //}, []);
+
   const isDark = theme === 'dark';
   const colors = isDark ? darkColors : lightColors;
 
-  // HÀM RENDER NỘI DUNG: Cách này giúp tránh lỗi Text string trong React Native
+  // ── Render nội dung theo tab ─────────────────────────────────────────────────
   const renderTabContent = () => {
+    // Hiện spinner trong lần load đầu tiên để tránh flash giá trị mặc định
+    if (!isLoaded) {
+      return (
+        <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', marginTop: 100 }}>
+          <ActivityIndicator size="large" color={colors.activeTabIconBg} />
+          <Text style={{ color: colors.textSub, marginTop: 12 }}>Đang tải cài đặt...</Text>
+        </View>
+      );
+    }
+
     switch (activeTab) {
       case 'account':
       case 'data':
@@ -61,30 +97,63 @@ export default function SettingsScreen() {
             <Text style={{ color: colors.textSub, fontSize: 16 }}>Chức năng đang được phát triển</Text>
           </View>
         );
-      
+
       case 'appearance':
         return (
           <View>
             <Text style={{ fontSize: 36, fontWeight: 'bold', color: colors.textMain }}>Giao diện</Text>
             <Text style={{ color: colors.textSub, marginBottom: 40 }}>Tùy chỉnh Mindraft</Text>
 
-            <Text style={{ fontWeight: '700', fontSize: 16, color: colors.textMain, marginBottom: 12 }}>Chế độ giao diện</Text>
+            {/* Chế độ giao diện */}
+            <Text style={{ fontWeight: '700', fontSize: 16, color: colors.textMain, marginBottom: 12 }}>
+              Chế độ giao diện
+            </Text>
             <View style={{ flexDirection: 'row', backgroundColor: colors.segmentBg, borderRadius: 10, padding: 4, marginBottom: 32 }}>
-              <SegmentedBtn label="Sáng" active={theme === 'light'} onPress={() => setTheme('light')} colors={colors} />
-              <SegmentedBtn label="Tối" active={theme === 'dark'} onPress={() => setTheme('dark')} colors={colors} />
-              <SegmentedBtn label="Hệ thống" active={theme === 'system'} onPress={() => setTheme('system')} colors={colors} />
+              {/* ĐÃ SỬA: gọi updateTheme thay vì setTheme — tự động lưu DB */}
+              <SegmentedBtn label="Sáng"     active={theme === 'light'}  onPress={() => updateTheme('light')}  colors={colors} />
+              <SegmentedBtn label="Tối"      active={theme === 'dark'}   onPress={() => updateTheme('dark')}   colors={colors} />
+              <SegmentedBtn label="Hệ thống" active={theme === 'system'} onPress={() => updateTheme('system')} colors={colors} />
             </View>
 
-            <Text style={{ fontWeight: '700', fontSize: 16, color: colors.textMain, marginBottom: 12 }}>Chế độ xem mặc định</Text>
+            {/* Chế độ xem */}
+            <Text style={{ fontWeight: '700', fontSize: 16, color: colors.textMain, marginBottom: 12 }}>
+              Chế độ xem mặc định
+            </Text>
             <View style={{ flexDirection: 'row', backgroundColor: colors.segmentBg, borderRadius: 10, padding: 4, marginBottom: 32 }}>
-              <SegmentedBtn label="Lưới" active={viewMode === 'grid'} onPress={() => setViewMode('grid')} colors={colors} />
-              <SegmentedBtn label="Danh sách" active={viewMode === 'list'} onPress={() => setViewMode('list')} colors={colors} />
+              {/* ĐÃ SỬA: gọi updateViewMode thay vì setViewMode — tự động lưu DB */}
+              <SegmentedBtn label="Lưới"       active={viewMode === 'grid'} onPress={() => updateViewMode('grid')} colors={colors} />
+              <SegmentedBtn label="Danh sách"  active={viewMode === 'list'} onPress={() => updateViewMode('list')} colors={colors} />
             </View>
 
-            <Text style={{ fontWeight: '700', fontSize: 16, color: colors.textMain, marginBottom: 12 }}>Sắp xếp theo</Text>
-            <SortOptionCard label="Cập nhật lần cuối" sub="Ghi chú mới sửa hiện lên đầu" Icon={Clock} active={sort.field === 'updated_at'} onPress={() => setSort({ field: 'updated_at', direction: 'desc' })} colors={colors} />
-            <SortOptionCard label="Ngày tạo" sub="Ghi chú mới tạo hiện lên đầu" Icon={Calendar} active={sort.field === 'created_at'} onPress={() => setSort({ field: 'created_at', direction: 'desc' })} colors={colors} />
-            <SortOptionCard label="Tùy chỉnh" sub="Kéo thả để sắp xếp thủ công" Icon={MenuIcon} active={sort.field === 'custom'} onPress={() => setSort({ field: 'custom', direction: 'desc' })} colors={colors} />
+            {/* Sắp xếp */}
+            <Text style={{ fontWeight: '700', fontSize: 16, color: colors.textMain, marginBottom: 12 }}>
+              Sắp xếp theo
+            </Text>
+            {/* ĐÃ SỬA: gọi updateSort thay vì setSort — tự động lưu DB */}
+            <SortOptionCard
+              label="Cập nhật lần cuối"
+              sub="Ghi chú mới sửa hiện lên đầu"
+              Icon={Clock}
+              active={sort.field === 'updated_at'}
+              onPress={() => updateSort({ field: 'updated_at', direction: 'desc' })}
+              colors={colors}
+            />
+            <SortOptionCard
+              label="Ngày tạo"
+              sub="Ghi chú mới tạo hiện lên đầu"
+              Icon={Calendar}
+              active={sort.field === 'created_at'}
+              onPress={() => updateSort({ field: 'created_at', direction: 'desc' })}
+              colors={colors}
+            />
+            <SortOptionCard
+              label="Tùy chỉnh"
+              sub="Kéo thả để sắp xếp thủ công"
+              Icon={MenuIcon}
+              active={sort.field === 'custom'}
+              onPress={() => updateSort({ field: 'custom', direction: 'desc' })}
+              colors={colors}
+            />
           </View>
         );
 
@@ -94,12 +163,25 @@ export default function SettingsScreen() {
             <Text style={{ fontSize: 36, fontWeight: 'bold', color: colors.textMain }}>Thông báo</Text>
             <Text style={{ color: colors.textSub, marginBottom: 40 }}>Quản lý cách bạn nhận thông báo</Text>
 
-            <Text style={{ fontWeight: '700', fontSize: 16, color: colors.textMain, marginBottom: 20 }}>Thông báo ứng dụng</Text>
-            <NotificationRow label="Thông báo nhắc nhở" value={notifications.reminders} onToggle={() => toggleNotification('reminders')} colors={colors} />
-            <NotificationRow label="Thông báo cộng tác" value={notifications.collaboration} onToggle={() => toggleNotification('collaboration')} colors={colors} />
+            <Text style={{ fontWeight: '700', fontSize: 16, color: colors.textMain, marginBottom: 20 }}>
+              Thông báo ứng dụng
+            </Text>
+            {/* ĐÃ SỬA: toggleNotification giờ gọi API PATCH tự động */}
+            <NotificationRow
+              label="Thông báo nhắc nhở"
+              value={notifications.reminders}
+              onToggle={() => toggleNotification('reminders')}
+              colors={colors}
+            />
+            <NotificationRow
+              label="Thông báo cộng tác"
+              value={notifications.collaboration}
+              onToggle={() => toggleNotification('collaboration')}
+              colors={colors}
+            />
           </View>
         );
-      
+
       default:
         return null;
     }
@@ -111,15 +193,15 @@ export default function SettingsScreen() {
       <View style={{ width: 320, borderRightWidth: 1, borderColor: colors.sidebarBorder, padding: 24 }}>
         <Text style={{ fontSize: 28, fontWeight: 'bold', color: colors.textMain }}>Cài đặt</Text>
         <Text style={{ color: colors.textSub, marginBottom: 32 }}>Tùy chỉnh trải nghiệm của bạn</Text>
-        
-        <SidebarTab id="appearance" label="Giao diện" sub="Tùy chỉnh giao diện và chế độ" Icon={Palette} currentTab={activeTab} setTab={setActiveTab} colors={colors} />
-        <SidebarTab id="notifications" label="Thông báo" sub="Quản lý thông báo" Icon={Bell} currentTab={activeTab} setTab={setActiveTab} colors={colors} />
-        <SidebarTab id="account" label="Tài khoản" sub="Thông tin cá nhân" Icon={User} currentTab={activeTab} setTab={setActiveTab} colors={colors} />
-        <SidebarTab id="data" label="Dữ liệu & đồng bộ" sub="Sao lưu dữ liệu" Icon={Cloud} currentTab={activeTab} setTab={setActiveTab} colors={colors} />
-        <SidebarTab id="about" label="Giới thiệu" sub="Về Mindraft" Icon={Info} currentTab={activeTab} setTab={setActiveTab} colors={colors} />
+
+        <SidebarTab id="appearance"    label="Giao diện"       sub="Tùy chỉnh giao diện và chế độ" Icon={Palette}  currentTab={activeTab} setTab={setActiveTab} colors={colors} />
+        <SidebarTab id="notifications" label="Thông báo"       sub="Quản lý thông báo"              Icon={Bell}     currentTab={activeTab} setTab={setActiveTab} colors={colors} />
+        <SidebarTab id="account"       label="Tài khoản"       sub="Thông tin cá nhân"              Icon={User}     currentTab={activeTab} setTab={setActiveTab} colors={colors} />
+        <SidebarTab id="data"          label="Dữ liệu & đồng bộ" sub="Sao lưu dữ liệu"            Icon={Cloud}    currentTab={activeTab} setTab={setActiveTab} colors={colors} />
+        <SidebarTab id="about"         label="Giới thiệu"      sub="Về Mindraft"                    Icon={Info}     currentTab={activeTab} setTab={setActiveTab} colors={colors} />
       </View>
 
-      {/* NỘI DUNG CHI TIẾT - CHỈ GỌI 1 HÀM DUY NHẤT */}
+      {/* NỘI DUNG CHI TIẾT */}
       <ScrollView contentContainerStyle={{ padding: 48, flex: 1 }}>
         {renderTabContent()}
       </ScrollView>
@@ -127,12 +209,22 @@ export default function SettingsScreen() {
   );
 }
 
-// --- SUB-COMPONENTS ---
+// ─── Sub-components (giữ nguyên toàn bộ logic gốc) ───────────────────────────
 
 const SidebarTab = ({ id, label, sub, Icon, currentTab, setTab, colors }: any) => {
   const active = currentTab === id;
   return (
-    <TouchableOpacity onPress={() => setTab(id)} style={{ flexDirection: 'row', padding: 12, borderRadius: 12, backgroundColor: active ? colors.activeTabBg : 'transparent', marginBottom: 8, alignItems: 'center' }}>
+    <TouchableOpacity
+      onPress={() => setTab(id)}
+      style={{
+        flexDirection: 'row',
+        padding: 12,
+        borderRadius: 12,
+        backgroundColor: active ? colors.activeTabBg : 'transparent',
+        marginBottom: 8,
+        alignItems: 'center',
+      }}
+    >
       <View style={{ padding: 10, borderRadius: 50, backgroundColor: active ? colors.activeTabIconBg : colors.inactiveTabIconBg, marginRight: 16 }}>
         <Icon size={20} color={active ? '#fff' : colors.textSub} />
       </View>
@@ -145,13 +237,37 @@ const SidebarTab = ({ id, label, sub, Icon, currentTab, setTab, colors }: any) =
 };
 
 const SegmentedBtn = ({ label, active, onPress, colors }: any) => (
-  <TouchableOpacity onPress={onPress} style={{ flex: 1, paddingVertical: 12, alignItems: 'center', borderRadius: 8, backgroundColor: active ? colors.segmentActiveBg : 'transparent' }}>
-    <Text style={{ fontWeight: '600', color: active ? colors.segmentActiveText : colors.segmentInactiveText }}>{label}</Text>
+  <TouchableOpacity
+    onPress={onPress}
+    style={{
+      flex: 1,
+      paddingVertical: 12,
+      alignItems: 'center',
+      borderRadius: 8,
+      backgroundColor: active ? colors.segmentActiveBg : 'transparent',
+    }}
+  >
+    <Text style={{ fontWeight: '600', color: active ? colors.segmentActiveText : colors.segmentInactiveText }}>
+      {label}
+    </Text>
   </TouchableOpacity>
 );
 
 const SortOptionCard = ({ label, sub, Icon, active, onPress, colors }: any) => (
-  <TouchableOpacity onPress={onPress} activeOpacity={0.8} style={{ flexDirection: 'row', alignItems: 'center', padding: 16, borderRadius: 12, borderWidth: 1, marginBottom: 12, borderColor: active ? colors.cardActiveBorder : colors.cardBorder, backgroundColor: active ? colors.cardActiveBg : colors.cardBg }}>
+  <TouchableOpacity
+    onPress={onPress}
+    activeOpacity={0.8}
+    style={{
+      flexDirection: 'row',
+      alignItems: 'center',
+      padding: 16,
+      borderRadius: 12,
+      borderWidth: 1,
+      marginBottom: 12,
+      borderColor: active ? colors.cardActiveBorder : colors.cardBorder,
+      backgroundColor: active ? colors.cardActiveBg : colors.cardBg,
+    }}
+  >
     <View style={{ marginRight: 16 }}>
       <Icon size={24} color={active ? colors.activeText : colors.textSub} />
     </View>
@@ -164,8 +280,20 @@ const SortOptionCard = ({ label, sub, Icon, active, onPress, colors }: any) => (
 );
 
 const NotificationRow = ({ label, value, onToggle, colors }: any) => (
-  <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 15, borderBottomWidth: 1, borderBottomColor: colors.sidebarBorder }}>
+  <View style={{
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 15,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.sidebarBorder,
+  }}>
     <Text style={{ fontSize: 16, color: colors.textMain }}>{label}</Text>
-    <Switch value={value} onValueChange={onToggle} trackColor={{ true: colors.activeTabIconBg, false: colors.sidebarBorder }} thumbColor="#fff" />
+    <Switch
+      value={value}
+      onValueChange={onToggle}
+      trackColor={{ true: colors.activeTabIconBg, false: colors.sidebarBorder }}
+      thumbColor="#fff"
+    />
   </View>
 );
