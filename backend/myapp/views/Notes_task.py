@@ -318,12 +318,15 @@ def trash_note(request, note_id):
         )
 
     # MOVE TO TRASH
-    note.is_trashed = 1
+    if note.is_trashed == 0:
+        note.is_trashed = 1
 
-    note.is_pinned = 0 
+        note.is_pinned = 0 
     # OPTIONAL:
     # thường archive sẽ bị bỏ khi vào trash
-    note.is_archived = 0
+        note.is_archived = 0
+    else:
+        note.is_trashed = 0
 
     note.trashed_at = timezone.now()
 
@@ -336,20 +339,29 @@ def trash_note(request, note_id):
     return Response({
         "data": serializer.data
     })
+@api_view(["PATCH"])
+@permission_classes([IsAuthenticated])
+def permanent_delete_note(request, note_id):
+    """
+    Xóa vĩnh viễn note khỏi Trash.
+    Chỉ cho phép nếu note đang ở trash (is_trashed=1).
+    """
+    try:
+        note = Notes.objects.get(
+            id=note_id,
+            user=request.user,
+            is_trashed=1,
+            is_deleted=0,
+        )
+    except Notes.DoesNotExist:
+        return Response(
+            {"error": "Note not found in trash"},
+            status=status.HTTP_404_NOT_FOUND
+        )
 
-# @api_view(["PATCH"])
-# @permission_classes([IsAuthenticated])
-# def note_detail(request, pk):
-#     try:
-#         # Ngăn không cho sửa note đã vào thùng rác
-#         note = Notes.objects.get(id=pk, user=request.user, is_trashed=0, is_deleted=0)
-#     except Notes.DoesNotExist:
-#         return Response({"error": "Không tìm thấy ghi chú hoặc ghi chú đã bị xóa/vào thùng rác"}, status=404)
+    note.is_deleted = 1
+    note.is_trashed = 0
+    note.server_updated_at = timezone.now()
+    note.save(update_fields=['is_deleted', 'is_trashed', 'server_updated_at'])
 
-#     serializer = CreateNoteSerializer(note, data=request.data, partial=True)
-#     if serializer.is_valid():
-#         # Cập nhật thời gian tại đây
-#         serializer.save(server_updated_at=timezone.now())
-#         return Response({"data": NoteSerializer(note).data})
-    
-#     return Response(serializer.errors, status=422)
+    return Response(status=status.HTTP_204_NO_CONTENT)

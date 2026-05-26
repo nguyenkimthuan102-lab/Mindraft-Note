@@ -65,7 +65,7 @@ export const toggleArchiveNote = (id: string): Promise<NoteCardData> =>
 
 // Trash
 export const restoreNote = (id: string): Promise<NoteCardData> =>
-  axiosClient.patch(`/notes/${id}/restore`).then(res => res.data.data);
+  axiosClient.patch(`/notes/${id}/trash`).then(res => res.data.data);
 
 export const deleteNotePermanently = (id: string): Promise<void> =>
-  axiosClient.delete(`/notes/${id}`);
+  axiosClient.patch(`/notes/${id}/permanent-delete`);

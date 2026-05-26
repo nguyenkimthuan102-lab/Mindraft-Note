@@ -8,6 +8,7 @@ import { useLayoutStore } from '../../store/useLayoutStore';
 import { useSyncStore } from '../../store/useSyncStore';
 import { SyncIndicator } from '../ui/SyncIndicator';
 import { useSelectionStore } from '../../store/useSelectionStore';
+import { useNoteStore } from '../../store/useNoteStore'; // THÊM IMPORT STORE NOTE
 import { useAppStore, DEFAULT_SORT } from '../../store/useAppStore';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuthStore } from '../../store/useAuthStore';
@@ -20,19 +21,22 @@ interface TopbarProps {
 
 const logoIcon = require('../../../assets/images/icon.png');
 
-function ActionBtn({ icon, label, isDark }: { icon: string; label: string; isDark?: boolean }) {
-  return (
-    <TouchableOpacity style={styles.iconBtn}>
-      <Icon source={icon} size={20} color={isDark ? '#9ca3af' : colors.textSecondary} />
-    </TouchableOpacity>
-  );
-}
+// DANH SÁCH MÀU CHO MENU
+const NOTE_COLORS = [
+  { key: 'default', bg: '#FFFFFF' }, { key: 'red', bg: '#FADADD' },
+  { key: 'orange', bg: '#FEEFC3' }, { key: 'yellow', bg: '#FEF7CD' },
+  { key: 'green', bg: '#E2F3E8' }, { key: 'teal', bg: '#D0F4EE' },
+  { key: 'blue', bg: '#D3E3FD' }, { key: 'purple', bg: '#E8DEFC' },
+  { key: 'pink', bg: '#FDCFE8' }, { key: 'brown', bg: '#F0E6DA' },
+];
 
 export function Topbar({ onViewModeChange }: TopbarProps) {
   const { sort, setSort, viewMode, setViewMode, theme } = useAppStore();
   const { user } = useAuthStore();
   const [menuVisible, setMenuVisible] = useState(false);
   const [profileVisible, setProfileVisible] = useState(false);
+  const [colorMenuVisible, setColorMenuVisible] = useState(false); // STATE MENU MÀU BATCH
+
   const isSortActive = sort.field !== DEFAULT_SORT.field || sort.direction !== DEFAULT_SORT.direction;
   const insets = useSafeAreaInsets();
 
@@ -50,7 +54,6 @@ export function Topbar({ onViewModeChange }: TopbarProps) {
   const router = useRouter();
   const { status: syncStatus } = useSyncStore();
 
-  // THÊM: Logic màu sắc động cho Dark Mode
   const isDark = theme === 'dark';
   const dynamicColors = {
     bg: isDark ? '#111827' : colors.bgSurface,
@@ -63,6 +66,9 @@ export function Topbar({ onViewModeChange }: TopbarProps) {
 
   const { selectedIds, clearSelection } = useSelectionStore();
   const selectedCount = selectedIds.length;
+
+  // LẤY ACTION TỪ NOTE STORE
+  const { batchPinAction, batchArchiveAction, batchTrashAction, batchColorAction } = useNoteStore();
 
   const handleSortChange = (field: any, direction: any) => {
     setSort({ field, direction });
@@ -88,13 +94,40 @@ export function Topbar({ onViewModeChange }: TopbarProps) {
     return 'Mindraft Note';
   };
 
+  // CÁC HÀM XỬ LÝ BATCH CHÍNH THỨC -----------------------------
+  const handleBatchPin = async () => {
+    const idsToProcess = [...selectedIds];
+    clearSelection();
+    await batchPinAction(idsToProcess);
+  };
+
+  const handleBatchArchive = async () => {
+    const idsToProcess = [...selectedIds];
+    clearSelection();
+    await batchArchiveAction(idsToProcess);
+  };
+
+  const handleBatchTrash = async () => {
+    const idsToProcess = [...selectedIds];
+    clearSelection();
+    await batchTrashAction(idsToProcess);
+  };
+
+  const handleBatchColor = async (colorKey: string) => {
+    const idsToProcess = [...selectedIds];
+    setColorMenuVisible(false);
+    clearSelection();
+    await batchColorAction(idsToProcess, colorKey);
+  };
+  // -------------------------------------------------------------
+
   if (selectedCount > 0) {
     return (
       <View
         style={[
           styles.topbar,
           {
-            backgroundColor: dynamicColors.bg,
+            backgroundColor: isDark ? '#1f2937' : '#E3F2FD', // Nổi bật thanh Topbar khi chọn nhiều
             borderBottomColor: dynamicColors.border,
             height: 66 + insets.top,
             paddingTop: insets.top,
@@ -109,7 +142,7 @@ export function Topbar({ onViewModeChange }: TopbarProps) {
           <Text
             style={[
               styles.selectionText,
-              { color: dynamicColors.text },
+              { color: isDark ? '#93c5fd' : colors.primary }, // Màu chữ nhấn mạnh
               isMobile && { fontSize: 15, marginLeft: 6 },
             ]}
           >
@@ -118,16 +151,51 @@ export function Topbar({ onViewModeChange }: TopbarProps) {
         </View>
 
         <View style={[styles.selectionActions, { gap: isMobile ? 4 : 10 }]}>
-          <ActionBtn icon="pin-outline" label="Ghim" isDark={isDark} />
-          <ActionBtn icon="bell-outline" label="Nhắc nhở" isDark={isDark} />
-          <ActionBtn icon="palette-outline" label="Màu" isDark={isDark} />
-          <ActionBtn icon="archive-arrow-down-outline" label="Lưu trữ" isDark={isDark} />
-          <ActionBtn icon="delete-outline" label="Xóa" isDark={isDark} />
+          {/* SỬ DỤNG LẠI COMPONENT NÚT CŨ NHƯNG THAY THÀNH TouchableOpacity ĐỂ CÓ THỂ BẤM */}
+          <TouchableOpacity style={styles.iconBtn} onPress={handleBatchPin}>
+            <Icon source="pin-outline" size={22} color={isDark ? '#9ca3af' : colors.textSecondary} />
+          </TouchableOpacity>
+
+          <TouchableOpacity style={styles.iconBtn} onPress={() => alert("Tính năng nhắc nhở hàng loạt chưa được hỗ trợ API")}>
+            <Icon source="bell-outline" size={22} color={isDark ? '#9ca3af' : colors.textSecondary} />
+          </TouchableOpacity>
+
+          {/* MENU CHỌN MÀU HÀNG LOẠT */}
+          <Menu
+            visible={colorMenuVisible}
+            onDismiss={() => setColorMenuVisible(false)}
+            anchor={
+              <TouchableOpacity style={styles.iconBtn} onPress={() => setColorMenuVisible(true)}>
+                <Icon source="palette-outline" size={22} color={isDark ? '#9ca3af' : colors.textSecondary} />
+              </TouchableOpacity>
+            }
+            contentStyle={{ backgroundColor: dynamicColors.bg, padding: 8, borderRadius: 8, maxWidth: 200 }}
+          >
+            <Text style={[styles.menuHeader, { marginBottom: 8, color: dynamicColors.textSec }]}>ĐỔI MÀU CÁC MỤC ĐÃ CHỌN</Text>
+            <View style={styles.colorGrid}>
+              {NOTE_COLORS.map((c) => (
+                <TouchableOpacity
+                  key={c.key}
+                  style={[styles.colorDot, { backgroundColor: c.bg }]}
+                  onPress={() => handleBatchColor(c.key)}
+                />
+              ))}
+            </View>
+          </Menu>
+
+          <TouchableOpacity style={styles.iconBtn} onPress={handleBatchArchive}>
+            <Icon source="archive-arrow-down-outline" size={22} color={isDark ? '#9ca3af' : colors.textSecondary} />
+          </TouchableOpacity>
+
+          <TouchableOpacity style={styles.iconBtn} onPress={handleBatchTrash}>
+            <Icon source="delete-outline" size={22} color={isDark ? '#9ca3af' : colors.textSecondary} />
+          </TouchableOpacity>
         </View>
       </View>
     );
   }
 
+  // ... PHẦN RENDER TOPBAR BÌNH THƯỜNG GIỮ NGUYÊN 100% NHƯ CỦA BẠN TRỞ XUỐNG ...
   if (isMobile && isSearchExpanded) {
     return (
       <View style={[styles.topbar, { backgroundColor: dynamicColors.bg, borderBottomColor: dynamicColors.border, paddingHorizontal: 12, height: 66 + insets.top, paddingTop: insets.top }]}>
@@ -308,9 +376,25 @@ export function Topbar({ onViewModeChange }: TopbarProps) {
 }
 
 const styles = StyleSheet.create({
+  // STYLES MỚI CHO BATCH COLOR
+  colorGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    padding: 8,
+    justifyContent: 'center',
+  },
+  colorDot: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: colors.borderDefault,
+  },
+  // STYLES CŨ CỦA BẠN GIỮ NGUYÊN
   selectionSection: { flexDirection: 'row', alignItems: 'center' },
   selectionText: { fontSize: 18, fontFamily: 'Inter-Medium', marginLeft: 15 },
-  selectionActions: { flexDirection: 'row', gap: 10 },
+  selectionActions: { flexDirection: 'row', gap: 10, alignItems: 'center' },
   topbar: {
     height: 66,
     justifyContent: 'space-between',

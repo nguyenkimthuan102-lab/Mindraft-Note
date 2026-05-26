@@ -46,9 +46,8 @@ interface NoteEditorProps {
   visible: boolean;
   mode: 'text' | 'todo';
   note?: NoteCardData;
-  onClose: () => void;
-  onSave: (note: NoteCardData) => void;
   inline?: boolean;
+  readOnly?: boolean;
 }
 
 function Tooltip({ label, children, position = 'top' }: { label: string; children: React.ReactNode; position?: 'top' | 'bottom' }) {
@@ -91,9 +90,18 @@ function MenuBtn({ label, onPress, disabled }: { label: string, onPress: () => v
   );
 }
 
-export function NoteEditor({ visible, mode, note, onClose, onSave }: NoteEditorProps) {
+export function NoteEditor({ visible, mode, note, inline, readOnly }: NoteEditorProps) {
   const [title, setTitle] = useState(note?.title ?? '');
   const [content, setContent] = useState(note?.content_text ?? '');
+
+  const {
+    allTags,
+    addTagToSystem,
+    saveNoteAction,
+    closeEditor,
+    archiveNoteAction,
+    trashNoteAction
+  } = useNoteStore();
 
   const [htmlConfig, setHtmlConfig] = useState({ __html: (note?.content_text ?? '').replace(/\n/g, '<br>') });
 
@@ -120,7 +128,6 @@ export function NoteEditor({ visible, mode, note, onClose, onSave }: NoteEditorP
 
   const [showTagMenu, setShowTagMenu] = useState(false);
   const [showExportMenu, setShowExportMenu] = useState(false);
-  const { allTags, addTagToSystem } = useNoteStore();
   const [noteTags, setNoteTags] = useState<string[]>(note?.labels ?? []); // Trong code của bạn dùng 'labels'[cite: 7]
 
   const contentRef = useRef<any>(null);
@@ -309,9 +316,14 @@ export function NoteEditor({ visible, mode, note, onClose, onSave }: NoteEditorP
     }
   };
 
-  const handleSaveAndClose = () => {
+  const handleSaveAndClose = async () => {
     Keyboard.dismiss();
     let currentContent = content;
+
+    if (readOnly) {
+      closeEditor();
+      return;
+    }
     if (editorMode === 'text') {
       currentContent = isWeb && contentRef.current ? contentRef.current.innerHTML : content;
     }
@@ -346,7 +358,7 @@ export function NoteEditor({ visible, mode, note, onClose, onSave }: NoteEditorP
 
     const updatedNote: NoteCardData = {
       ...note,
-      id: note?.id ?? `${Date.now()}`,
+      id: note?.id ?? `temp-${Date.now()}`,
       type: editorMode,
       color: noteColor,
       title: title.trim() || undefined,
@@ -361,14 +373,14 @@ export function NoteEditor({ visible, mode, note, onClose, onSave }: NoteEditorP
     if (!hasContent) {
       const isExistingNote = note?.id && !note.id.startsWith('temp-');
       if (isExistingNote) {
-        onSave(updatedNote);
+        await saveNoteAction(updatedNote);
       }
-      onClose();
+      closeEditor();
       return;
     }
 
-    onSave(updatedNote);
-    onClose();
+    await saveNoteAction(updatedNote);
+    closeEditor();
   };
 
   const handleSaveAndCloseRef = useRef(handleSaveAndClose);
@@ -604,16 +616,33 @@ export function NoteEditor({ visible, mode, note, onClose, onSave }: NoteEditorP
             <ToolbarBtn icon="account-plus-outline" onPress={() => { alert('Cộng tác viên sẽ được gọi API'); closePopups(); }} label="Cộng tác viên" />
             <ToolbarBtn icon="palette-outline" onPress={() => { setShowColorPicker(!showColorPicker); setShowMoreMenu(false); setShowTagMenu(false); }} label="Tùy chọn nền" />
             <ToolbarBtn icon="image-outline" onPress={() => { alert('Thêm hình ảnh sẽ xử lý upload file'); closePopups(); }} label="Thêm hình ảnh" />
-            <ToolbarBtn icon="archive-arrow-down-outline" onPress={() => { alert('Ghi chú đã được lưu trữ (Cần API)'); closePopups(); }} label="Lưu trữ" />
+            <ToolbarBtn
+              icon="archive-arrow-down-outline"
+              onPress={async () => {
+                if (note?.id && !note.id.startsWith('temp-')) {
+                  await archiveNoteAction(note.id);
+                  closeEditor();
+                } else {
+                  alert('Không thể lưu trữ ghi chú chưa được lưu');
+                }
+              }}
+              label="Lưu trữ"
+            />
 
             <View style={{ position: 'relative', zIndex: 300 }}>
               <ToolbarBtn icon="dots-vertical" onPress={() => { setShowMoreMenu(!showMoreMenu); setShowColorPicker(false); setShowExportMenu(false); }} label="Thêm tùy chọn" />
               {showMoreMenu && (
                 <View style={styles.moreMenu}>
                   <MenuBtn
-                    onPress={() => { alert('Xóa ghi chú (Cần API)'); setShowMoreMenu(false); }}
+                    onPress={async () => {
+                      if (note?.id && !note.id.startsWith('temp-')) {
+                        await trashNoteAction(note.id);
+                        closeEditor();
+                      }
+                      setShowMoreMenu(false);
+                    }}
                     label="Xóa ghi chú"
-                    disabled={!note?.id && !title.trim() && (editorMode === 'text' ? isContentEmpty : todoItems.filter(t => t.title.trim()).length === 0)}
+                    disabled={!note?.id || note.id.startsWith('temp-')}
                   />
 
                   {/* PHẦN SỬA ĐỔI CHÍNH: Menu nhãn con */}
