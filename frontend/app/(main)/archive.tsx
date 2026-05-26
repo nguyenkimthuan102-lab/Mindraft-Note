@@ -56,42 +56,51 @@ export default function ArchiveScreen() {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
-    // Trong Archive: bất kỳ thao tác pin nào đều đẩy thẻ ra All Notes (giống GG Keep)
+    // Cập nhật các thuộc tính thông thường (màu, tiêu đề...) — giữ trong Archive
     const handleUpdate = async (id: string, changes: Partial<NoteCardData>) => {
-        const isPinToggle = 'is_pinned' in changes;
-        // Capture trước khi setNotes để rollback đúng
+        setNotes(prev => prev.map(n => n.id === id ? { ...n, ...changes } : n));
+        try {
+            await updateNote(id, changes);
+        } catch {
+            setNotes(prev =>
+                prev.map(n =>
+                    n.id === id
+                        ? { ...n, ...Object.fromEntries(Object.keys(changes).map(k => [k, n[k as keyof NoteCardData]])) }
+                        : n
+                )
+            );
+            Alert.alert('Lỗi', 'Không thể cập nhật ghi chú. Vui lòng thử lại.');
+        }
+    };
+
+    // Toggle pin trong Archive → luôn đẩy thẻ ra All Notes (giống GG Keep)
+    // Tách riêng khỏi handleUpdate để giữ đúng Optimistic + Rollback pattern
+    const handleTogglePinInArchive = async (id: string, changes: Partial<NoteCardData>) => {
         const currentNote = notes.find(n => n.id === id);
 
-        if (isPinToggle) {
-            // Optimistic: xoá khỏi Archive ngay
-            setNotes(prev => prev.filter(n => n.id !== id));
-            try {
-                // Set trạng thái pin mới trực tiếp qua updateNote (tránh togglePinNote fail trên archived note)
-                await updateNote(id, { is_pinned: changes.is_pinned });
-                // Bỏ lưu trữ → thẻ chuyển sang All Notes
-                await toggleArchiveNote(id);
-            } catch {
-                // Rollback: trả thẻ về Archive
-                if (currentNote) {
-                    setNotes(prev => [currentNote, ...prev]);
-                }
-                Alert.alert('Lỗi', 'Không thể cập nhật ghi chú. Vui lòng thử lại.');
+        // Optimistic: xoá khỏi Archive ngay — thẻ sắp rời Archive
+        setNotes(prev => prev.filter(n => n.id !== id));
+
+        try {
+            // Dùng updateNote để set trạng thái pin mới một cách chắc chắn
+            await updateNote(id, { is_pinned: changes.is_pinned });
+            // Bỏ lưu trữ → thẻ chuyển sang All Notes
+            await toggleArchiveNote(id);
+        } catch {
+            // Rollback: trả thẻ về Archive với trạng thái cũ
+            if (currentNote) {
+                setNotes(prev => [currentNote, ...prev]);
             }
+            Alert.alert('Lỗi', 'Không thể cập nhật ghi chú. Vui lòng thử lại.');
+        }
+    };
+
+    // Router dùng cho cả handleUpdate lẫn handleTogglePinInArchive
+    const handleUpdateRouter = (id: string, changes: Partial<NoteCardData>) => {
+        if ('is_pinned' in changes) {
+            handleTogglePinInArchive(id, changes);
         } else {
-            // Thay đổi khác (màu, tiêu đề...) — cập nhật bình thường, giữ trong Archive
-            setNotes(prev => prev.map(n => n.id === id ? { ...n, ...changes } : n));
-            try {
-                await updateNote(id, changes);
-            } catch {
-                setNotes(prev =>
-                    prev.map(n =>
-                        n.id === id
-                            ? { ...n, ...Object.fromEntries(Object.keys(changes).map(k => [k, n[k as keyof NoteCardData]])) }
-                            : n
-                    )
-                );
-                Alert.alert('Lỗi', 'Không thể cập nhật ghi chú. Vui lòng thử lại.');
-            }
+            handleUpdate(id, changes);
         }
     };
 
@@ -105,15 +114,35 @@ export default function ArchiveScreen() {
         }
     };
 
-    // Huỷ lưu trữ (unarchive) → toggle rồi xoá khỏi danh sách
-    const handleUnarchive = async (id: string) => {
+    // Huỷ lưu trữ (Khôi phục) — tách riêng theo đúng pattern:
+    // 1. Optimistic update: vừa unarchive vừa unpin cùng lúc
+    // 2. Gọi API: unpin trước (nếu đang ghim), rồi mới unarchive
+    // 3. Rollback về trạng thái cũ nếu lỗi
+    const handleRestoreNote = async (id: string) => {
         const noteToRestore = notes.find(n => n.id === id);
-        setNotes(prev => prev.filter(n => n.id !== id));
+
+        // 1. Optimistic update — xoá khỏi Archive ngay, unarchive + unpin cùng lúc
+        setNotes(prev =>
+            prev.map(n =>
+                n.id === id
+                    ? { ...n, is_archived: 0 as 0 | 1, is_pinned: 0 as 0 | 1 } // hết lưu trữ và bỏ ghim
+                    : n
+            ).filter(n => n.id !== id) // xoá khỏi danh sách Archive
+        );
+
         try {
+            // 2. Backend nên tự xử lý việc unpin khi nhận unarchive request.
+            //    Nếu backend không hỗ trợ, gọi thêm togglePinNote trước:
+            if (noteToRestore?.is_pinned === 1) {
+                await togglePinNote(id);
+            }
             await toggleArchiveNote(id);
         } catch {
-            setNotes(prev => (noteToRestore ? [noteToRestore, ...prev] : prev));
-            Alert.alert('Lỗi', 'Không thể huỷ lưu trữ ghi chú. Vui lòng thử lại.');
+            // 3. Rollback về trạng thái cũ nếu lỗi
+            if (noteToRestore) {
+                setNotes(prev => [noteToRestore, ...prev]);
+            }
+            Alert.alert('Lỗi', 'Không thể khôi phục ghi chú. Vui lòng thử lại.');
         }
     };
 
@@ -195,7 +224,7 @@ export default function ArchiveScreen() {
                             />
                         </View>
                         <Text style={[styles.emptyText, { color: isDark ? '#6B7280' : '#9CA3AF' }]}>
-                            Bản ghi chú mà bạn đã lưu trữ sẽ xuất hiện tại đây
+                            Bạn ghi chú mà bạn đã lưu trữ sẽ xuất hiện tại đây
                         </Text>
                     </View>
                 ) : (
@@ -213,7 +242,7 @@ export default function ArchiveScreen() {
                             onPressNote={openEditNote}
                             onUpdateNote={handleUpdate}
                             onDeleteNote={handleDelete}
-                            onArchiveNote={handleUnarchive}
+                            onArchiveNote={handleRestoreNote}
                             selectedIds={selectedIds}
                             onSelectNote={toggleSelect}
                             archiveLabel="Huỷ lưu trữ"
@@ -264,7 +293,7 @@ const styles = StyleSheet.create({
     },
     emptyText: {
         fontFamily: 'Inter-Regular',
-        fontSize: 22,
+        fontSize: 17,
         color: '#9CA3AF',
         textAlign: 'center',
         maxWidth: 320,
