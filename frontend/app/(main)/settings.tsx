@@ -1,12 +1,14 @@
-import React, { useState, useEffect } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, Switch, ActivityIndicator } from 'react-native';
-
-// ĐÃ SỬA: Chỉ dùng useSettingsStore làm nguồn dữ liệu duy nhất cho trang Settings.
-// useAppStore vẫn được sync tự động bên trong useSettingsStore nên các màn hình
-// khác (NoteList, Header...) vẫn đọc đúng mà không cần thay đổi.
+import React, { useState } from 'react';
+import {
+  View, Text, ScrollView, TouchableOpacity, Switch,
+  ActivityIndicator, useWindowDimensions,
+} from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useSettingsStore } from '../../src/store/useSettingsStore';
-
-import { Palette, Bell, User, Cloud, Info, Clock, Calendar, Menu as MenuIcon, CheckCircle2 } from 'lucide-react-native';
+import {
+  Palette, Bell, User, Cloud, Info, Clock, Calendar,
+  Menu as MenuIcon, CheckCircle2, ChevronRight, ChevronLeft,
+} from 'lucide-react-native';
 
 // ─── Bảng màu ─────────────────────────────────────────────────────────────────
 
@@ -48,37 +50,44 @@ const darkColors = {
   cardBg: '#1f2937',
 };
 
+const TAB_LIST = [
+  { id: 'appearance',    label: 'Giao diện',        sub: 'Tùy chỉnh giao diện và chế độ', Icon: Palette },
+  { id: 'notifications', label: 'Thông báo',         sub: 'Quản lý thông báo',              Icon: Bell    },
+  { id: 'account',       label: 'Tài khoản',         sub: 'Thông tin cá nhân',              Icon: User    },
+  { id: 'data',          label: 'Dữ liệu & đồng bộ', sub: 'Sao lưu dữ liệu',               Icon: Cloud   },
+  { id: 'about',         label: 'Giới thiệu',        sub: 'Về Mindraft',                    Icon: Info    },
+];
+
 // ─── Component chính ──────────────────────────────────────────────────────────
 
 export default function SettingsScreen() {
-  const [activeTab, setActiveTab] = useState('appearance');
+  // null = mobile đang ở màn danh sách tab
+  const [activeTab, setActiveTab] = useState<string | null>('appearance');
 
-  // ĐÃ SỬA: Lấy tất cả từ useSettingsStore thay vì chia giữa 2 store
+  const { width } = useWindowDimensions();
+  const insets = useSafeAreaInsets();
+  const isMobile = width < 720;
+
   const {
     isLoaded,
     theme,
     viewMode,
     sort,
     notifications,
-    loadSettings,
     updateTheme,
     updateViewMode,
     updateSort,
     toggleNotification,
   } = useSettingsStore();
 
-  // ĐÃ THÊM: Load settings từ server khi màn hình mount.
-  // Mỗi lần F5 hoặc vào lại trang, settings được nạp lại từ DB.
-  //useEffect(() => {
-    //loadSettings();
-  //}, []);
-
   const isDark = theme === 'dark';
   const colors = isDark ? darkColors : lightColors;
 
-  // ── Render nội dung theo tab ─────────────────────────────────────────────────
+  const currentTabMeta = TAB_LIST.find(t => t.id === activeTab);
+
+  // ── Nội dung từng tab ────────────────────────────────────────────────────────
+
   const renderTabContent = () => {
-    // Hiện spinner trong lần load đầu tiên để tránh flash giá trị mặc định
     if (!isLoaded) {
       return (
         <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', marginTop: 100 }}>
@@ -101,35 +110,33 @@ export default function SettingsScreen() {
       case 'appearance':
         return (
           <View>
-            <Text style={{ fontSize: 36, fontWeight: 'bold', color: colors.textMain }}>Giao diện</Text>
-            <Text style={{ color: colors.textSub, marginBottom: 40 }}>Tùy chỉnh Mindraft</Text>
+            {!isMobile && (
+              <>
+                <Text style={{ fontSize: 36, fontWeight: 'bold', color: colors.textMain }}>Giao diện</Text>
+                <Text style={{ color: colors.textSub, marginBottom: 40 }}>Tùy chỉnh Mindraft</Text>
+              </>
+            )}
 
-            {/* Chế độ giao diện */}
             <Text style={{ fontWeight: '700', fontSize: 16, color: colors.textMain, marginBottom: 12 }}>
               Chế độ giao diện
             </Text>
             <View style={{ flexDirection: 'row', backgroundColor: colors.segmentBg, borderRadius: 10, padding: 4, marginBottom: 32 }}>
-              {/* ĐÃ SỬA: gọi updateTheme thay vì setTheme — tự động lưu DB */}
               <SegmentedBtn label="Sáng"     active={theme === 'light'}  onPress={() => updateTheme('light')}  colors={colors} />
               <SegmentedBtn label="Tối"      active={theme === 'dark'}   onPress={() => updateTheme('dark')}   colors={colors} />
               <SegmentedBtn label="Hệ thống" active={theme === 'system'} onPress={() => updateTheme('system')} colors={colors} />
             </View>
 
-            {/* Chế độ xem */}
             <Text style={{ fontWeight: '700', fontSize: 16, color: colors.textMain, marginBottom: 12 }}>
               Chế độ xem mặc định
             </Text>
             <View style={{ flexDirection: 'row', backgroundColor: colors.segmentBg, borderRadius: 10, padding: 4, marginBottom: 32 }}>
-              {/* ĐÃ SỬA: gọi updateViewMode thay vì setViewMode — tự động lưu DB */}
-              <SegmentedBtn label="Lưới"       active={viewMode === 'grid'} onPress={() => updateViewMode('grid')} colors={colors} />
-              <SegmentedBtn label="Danh sách"  active={viewMode === 'list'} onPress={() => updateViewMode('list')} colors={colors} />
+              <SegmentedBtn label="Lưới"      active={viewMode === 'grid'} onPress={() => updateViewMode('grid')} colors={colors} />
+              <SegmentedBtn label="Danh sách" active={viewMode === 'list'} onPress={() => updateViewMode('list')} colors={colors} />
             </View>
 
-            {/* Sắp xếp */}
             <Text style={{ fontWeight: '700', fontSize: 16, color: colors.textMain, marginBottom: 12 }}>
               Sắp xếp theo
             </Text>
-            {/* ĐÃ SỬA: gọi updateSort thay vì setSort — tự động lưu DB */}
             <SortOptionCard
               label="Cập nhật lần cuối"
               sub="Ghi chú mới sửa hiện lên đầu"
@@ -160,13 +167,15 @@ export default function SettingsScreen() {
       case 'notifications':
         return (
           <View>
-            <Text style={{ fontSize: 36, fontWeight: 'bold', color: colors.textMain }}>Thông báo</Text>
-            <Text style={{ color: colors.textSub, marginBottom: 40 }}>Quản lý cách bạn nhận thông báo</Text>
-
+            {!isMobile && (
+              <>
+                <Text style={{ fontSize: 36, fontWeight: 'bold', color: colors.textMain }}>Thông báo</Text>
+                <Text style={{ color: colors.textSub, marginBottom: 40 }}>Quản lý cách bạn nhận thông báo</Text>
+              </>
+            )}
             <Text style={{ fontWeight: '700', fontSize: 16, color: colors.textMain, marginBottom: 20 }}>
               Thông báo ứng dụng
             </Text>
-            {/* ĐÃ SỬA: toggleNotification giờ gọi API PATCH tự động */}
             <NotificationRow
               label="Thông báo nhắc nhở"
               value={notifications.reminders}
@@ -187,29 +196,114 @@ export default function SettingsScreen() {
     }
   };
 
+  // ── MOBILE LAYOUT ────────────────────────────────────────────────────────────
+
+  if (isMobile) {
+    // Màn danh sách
+    if (activeTab === null) {
+      return (
+        <View style={{ flex: 1, backgroundColor: colors.bg }}>
+          <ScrollView
+            contentContainerStyle={{
+              paddingTop: insets.top + 16,
+              paddingBottom: insets.bottom + 24,
+              paddingHorizontal: 16,
+            }}
+          >
+            <Text style={{ fontSize: 28, fontWeight: 'bold', color: colors.textMain, marginBottom: 4 }}>
+              Cài đặt
+            </Text>
+            <Text style={{ color: colors.textSub, marginBottom: 24 }}>
+              Tùy chỉnh trải nghiệm của bạn
+            </Text>
+
+            {TAB_LIST.map(({ id, label, sub, Icon }) => (
+              <MobileTabItem
+                key={id}
+                id={id}
+                label={label}
+                sub={sub}
+                Icon={Icon}
+                onPress={setActiveTab}
+                colors={colors}
+              />
+            ))}
+          </ScrollView>
+        </View>
+      );
+    }
+
+    // Màn nội dung tab
+    return (
+      <View style={{ flex: 1, backgroundColor: colors.bg }}>
+        {/* Header */}
+        <View style={{
+          flexDirection: 'row',
+          alignItems: 'center',
+          paddingTop: insets.top + 8,
+          paddingBottom: 12,
+          paddingHorizontal: 12,
+          borderBottomWidth: 1,
+          borderBottomColor: colors.sidebarBorder,
+          backgroundColor: colors.bg,
+        }}>
+          <TouchableOpacity
+            onPress={() => setActiveTab(null)}
+            style={{ padding: 8, marginRight: 4 }}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          >
+            <ChevronLeft size={24} color={colors.textMain} />
+          </TouchableOpacity>
+          <Text style={{ fontSize: 17, fontWeight: '600', color: colors.textMain }}>
+            {currentTabMeta?.label ?? 'Cài đặt'}
+          </Text>
+        </View>
+
+        {/* Nội dung */}
+        <ScrollView
+          contentContainerStyle={{
+            padding: 20,
+            paddingBottom: insets.bottom + 32,
+          }}
+        >
+          {renderTabContent()}
+        </ScrollView>
+      </View>
+    );
+  }
+
+  // ── DESKTOP LAYOUT ───────────────────────────────────────────────────────────
+
   return (
     <View style={{ flex: 1, flexDirection: 'row', backgroundColor: colors.bg }}>
-      {/* SIDEBAR CÀI ĐẶT */}
+      {/* Sidebar */}
       <View style={{ width: 320, borderRightWidth: 1, borderColor: colors.sidebarBorder, padding: 24 }}>
         <Text style={{ fontSize: 28, fontWeight: 'bold', color: colors.textMain }}>Cài đặt</Text>
         <Text style={{ color: colors.textSub, marginBottom: 32 }}>Tùy chỉnh trải nghiệm của bạn</Text>
 
-        <SidebarTab id="appearance"    label="Giao diện"       sub="Tùy chỉnh giao diện và chế độ" Icon={Palette}  currentTab={activeTab} setTab={setActiveTab} colors={colors} />
-        <SidebarTab id="notifications" label="Thông báo"       sub="Quản lý thông báo"              Icon={Bell}     currentTab={activeTab} setTab={setActiveTab} colors={colors} />
-        <SidebarTab id="account"       label="Tài khoản"       sub="Thông tin cá nhân"              Icon={User}     currentTab={activeTab} setTab={setActiveTab} colors={colors} />
-        <SidebarTab id="data"          label="Dữ liệu & đồng bộ" sub="Sao lưu dữ liệu"            Icon={Cloud}    currentTab={activeTab} setTab={setActiveTab} colors={colors} />
-        <SidebarTab id="about"         label="Giới thiệu"      sub="Về Mindraft"                    Icon={Info}     currentTab={activeTab} setTab={setActiveTab} colors={colors} />
+        {TAB_LIST.map(({ id, label, sub, Icon }) => (
+          <SidebarTab
+            key={id}
+            id={id}
+            label={label}
+            sub={sub}
+            Icon={Icon}
+            currentTab={activeTab ?? ''}
+            setTab={setActiveTab}
+            colors={colors}
+          />
+        ))}
       </View>
 
-      {/* NỘI DUNG CHI TIẾT */}
-      <ScrollView contentContainerStyle={{ padding: 48, flex: 1 }}>
+      {/* Nội dung */}
+      <ScrollView contentContainerStyle={{ padding: 48, flexGrow: 1 }}>
         {renderTabContent()}
       </ScrollView>
     </View>
   );
 }
 
-// ─── Sub-components (giữ nguyên toàn bộ logic gốc) ───────────────────────────
+// ─── Sub-components ───────────────────────────────────────────────────────────
 
 const SidebarTab = ({ id, label, sub, Icon, currentTab, setTab, colors }: any) => {
   const active = currentTab === id;
@@ -225,16 +319,54 @@ const SidebarTab = ({ id, label, sub, Icon, currentTab, setTab, colors }: any) =
         alignItems: 'center',
       }}
     >
-      <View style={{ padding: 10, borderRadius: 50, backgroundColor: active ? colors.activeTabIconBg : colors.inactiveTabIconBg, marginRight: 16 }}>
+      <View style={{
+        padding: 10,
+        borderRadius: 50,
+        backgroundColor: active ? colors.activeTabIconBg : colors.inactiveTabIconBg,
+        marginRight: 16,
+      }}>
         <Icon size={20} color={active ? '#fff' : colors.textSub} />
       </View>
       <View>
-        <Text style={{ fontWeight: '600', fontSize: 15, color: active ? colors.activeText : colors.textMain }}>{label}</Text>
+        <Text style={{ fontWeight: '600', fontSize: 15, color: active ? colors.activeText : colors.textMain }}>
+          {label}
+        </Text>
         <Text style={{ fontSize: 12, color: colors.textSub }}>{sub}</Text>
       </View>
     </TouchableOpacity>
   );
 };
+
+const MobileTabItem = ({ id, label, sub, Icon, onPress, colors }: any) => (
+  <TouchableOpacity
+    onPress={() => onPress(id)}
+    style={{
+      flexDirection: 'row',
+      alignItems: 'center',
+      paddingVertical: 14,
+      paddingHorizontal: 16,
+      borderRadius: 12,
+      backgroundColor: colors.cardBg,
+      borderWidth: 1,
+      borderColor: colors.cardBorder,
+      marginBottom: 10,
+    }}
+  >
+    <View style={{
+      padding: 10,
+      borderRadius: 50,
+      backgroundColor: colors.inactiveTabIconBg,
+      marginRight: 14,
+    }}>
+      <Icon size={20} color={colors.textSub} />
+    </View>
+    <View style={{ flex: 1 }}>
+      <Text style={{ fontWeight: '600', fontSize: 15, color: colors.textMain }}>{label}</Text>
+      <Text style={{ fontSize: 12, color: colors.textSub }}>{sub}</Text>
+    </View>
+    <ChevronRight size={18} color={colors.textSub} />
+  </TouchableOpacity>
+);
 
 const SegmentedBtn = ({ label, active, onPress, colors }: any) => (
   <TouchableOpacity
@@ -272,7 +404,9 @@ const SortOptionCard = ({ label, sub, Icon, active, onPress, colors }: any) => (
       <Icon size={24} color={active ? colors.activeText : colors.textSub} />
     </View>
     <View style={{ flex: 1 }}>
-      <Text style={{ fontWeight: '600', fontSize: 16, color: active ? colors.activeText : colors.textMain }}>{label}</Text>
+      <Text style={{ fontWeight: '600', fontSize: 16, color: active ? colors.activeText : colors.textMain }}>
+        {label}
+      </Text>
       <Text style={{ fontSize: 13, color: colors.textSub }}>{sub}</Text>
     </View>
     {active && <CheckCircle2 size={20} color={colors.activeText} />}
