@@ -115,11 +115,12 @@ api.interceptors.response.use(
 
     try {
       let newToken: string | null = null;
+      let newUser: any = null; // Tạo biến hứng dữ liệu User trả về từ Backend của bạn
 
       if (Platform.OS === 'web') {
-        // Web: Gửi cookie lên để refresh, bóc tách access_token từ JSON kết quả trả về
         const { data } = await axios.post(`${getBaseUrl()}/auth/refresh/`, {}, { withCredentials: true });
         newToken = data?.data?.access_token;
+        newUser = data?.data?.user; //  Bốc cục user ra từ hàm refresh_token_view Backend
 
         if (!newToken) throw new Error('Thất bại: Không tìm thấy access_token trong response refresh của Web');
         await saveAccessToken(newToken);
@@ -133,10 +134,16 @@ api.interceptors.response.use(
           { headers: { 'Content-Type': 'application/json', 'X-Platform': 'mobile' } }
         );
 
-        // ĐÃ SỬA: Loại bỏ từ khóa 'const' để gán trực tiếp vào biến nằm ngoài block scope
         newToken = data?.data?.access_token;
+        newUser = data?.data?.user; // Bốc cục user ra từ hàm refresh_token_view Backend
         if (!newToken) throw new Error('Thất bại: Không tìm thấy access_token trong response refresh của Mobile');
         await saveAccessToken(newToken);
+      }
+
+      // ĐỒNG BỘ RAM STORE: Nạp ngược thông tin User mới nhất vào Zustand để UI cập nhật theo ngầm
+      if (newUser) {
+        const { useAuthStore } = require('../store/useAuthStore'); // Import động để tránh lỗi xoay vòng (circular dependency)
+        useAuthStore.getState().setUser(newUser);
       }
 
       processQueue(null, newToken);

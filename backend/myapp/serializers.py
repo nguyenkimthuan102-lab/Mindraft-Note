@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import Notes, TodoItems,UserSettings,Tags, Reminders
+from .models import Notes, TodoItems,UserSettings,Tags, Reminders, Users
 
 class ChecklistItemSerializer(serializers.ModelSerializer):
     class Meta:
@@ -154,3 +154,16 @@ class UpdateReminderSerializer(serializers.ModelSerializer):
     class Meta:
         model = Reminders
         fields = ['remind_at', 'repeat_type', 'is_notified']
+
+class UserProfileSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Users
+        fields = ['id', 'name', 'email', 'avatar_url', 'created_at']
+        read_only_fields = ['id', 'email', 'created_at']
+
+    def validate_name(self, value):
+        user = self.context['request'].user
+        # Kiểm tra trùng tên theo Contract lỗi NAME_ALREADY_EXISTS (409)
+        if Users.objects.exclude(id=user.id).filter(name=value).exists():
+            raise serializers.ValidationError("NAME_ALREADY_EXISTS")
+        return value
