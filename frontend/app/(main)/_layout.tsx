@@ -3,23 +3,16 @@ import React from 'react';
 import { View, StyleSheet, TouchableOpacity, PanResponder, useWindowDimensions, ActivityIndicator } from 'react-native';
 import { Slot, useRouter } from 'expo-router';
 import { Platform } from 'react-native';
-import * as SecureStore from 'expo-secure-store';
 
 import { Sidebar } from '../../src/components/layout/Sidebar';
 import { Topbar }  from '../../src/components/layout/Topbar';
 import { colors }  from '../../src/constants/colors';
 import { useLayoutStore }   from '../../src/store/useLayoutStore';
 import { useSettingsStore } from '../../src/store/useSettingsStore';
-import { useAppStore }      from '../../src/store/useAppStore';
+import { useAuthStore }     from '../../src/store/useAuthStore'; // Nạp Store Auth 
 import { SafeAreaView } from 'react-native-safe-area-context';
+import * as SecureStore from 'expo-secure-store';
 
-// ─── Helpers đọc token (đồng bộ với axiosClient.ts) ───────────────────────────
-
-/**
- * Đọc access_token từ nơi lưu trữ phù hợp với platform:
- *   - Web    → localStorage
- *   - Mobile → expo-secure-store
- */
 async function getStoredAccessToken(): Promise<string | null> {
   if (Platform.OS === 'web') {
     return localStorage.getItem('access_token');
@@ -27,11 +20,6 @@ async function getStoredAccessToken(): Promise<string | null> {
   return SecureStore.getItemAsync('access_token');
 }
 
-/**
- * Kiểm tra JWT còn hạn hay không.
- * JWT có dạng header.payload.signature, payload là base64url JSON.
- * Trả về true nếu token hợp lệ VÀ chưa hết hạn (còn ít nhất 30 giây).
- */
 function isTokenValid(token: string): boolean {
   try {
     const parts = token.split('.');
@@ -40,7 +28,6 @@ function isTokenValid(token: string): boolean {
     const base64Url = parts[1];
     const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
     
-    // ĐÃ SỬA: Giải mã Base64 an toàn cho cả Web (atob) và Điện thoại Mobile (hàm dịch thủ công)
     let jsonPayload = '';
     if (Platform.OS === 'web') {
       jsonPayload = atob(base64);
@@ -66,7 +53,6 @@ function isTokenValid(token: string): boolean {
     const payload = JSON.parse(jsonPayload) as { exp?: number };
     if (!payload.exp) return false;
 
-    // Còn ít nhất 30 giây thì coi là hợp lệ
     return payload.exp * 1000 > Date.now() + 30_000;
   } catch (error) {
     console.error('[Layout] Lỗi phân tích JWT Token:', error);
@@ -74,82 +60,53 @@ function isTokenValid(token: string): boolean {
   }
 }
 
-// ─── Component ────────────────────────────────────────────────────────────────
-
 export default function MainLayout() {
-  const router                = useRouter();
+  const router                                = useRouter();
   const { isSidebarOpen, toggleSidebar } = useLayoutStore();
-  const { loadSettings }      = useSettingsStore();
-  const { width }             = useWindowDimensions();
-  const isMobile              = width < 720;
+  const { loadSettings }                      = useSettingsStore();
+  const { width }                             = useWindowDimensions();
+  const isMobile                              = width < 720;
 
-  /**
-   * isBootstrapping: true trong khi đang kiểm tra token + load settings.
-   * Tránh render nội dung bảo vệ trước khi xác minh xong.
-   */
+// 🔥 Thêm lại biến kiểm soát local bảo vệ luồng không bị Loop chuyển trang [_layout.tsx]
   const [isBootstrapping, setIsBootstrapping] = React.useState(true);
+  const { isAuthenticated, isLoading, initialize } = useAuthStore(); // Chỉ lấy 2 món này từ Store
 
-  // ── 1. Ẩn sidebar mặc định trên mobile ──────────────────────────────────────
+  // Giữ nguyên logic sidebar của bạn [_layout.tsx]
   React.useEffect(() => {
     if (isMobile && isSidebarOpen) {
       toggleSidebar();
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isMobile]);
 
-  // ── 2. Auto-login + load settings khi app/tab khởi động ─────────────────────
+  // Luồng chạy khởi tạo an toàn tuyệt đối
   React.useEffect(() => {
-    let cancelled = false;
-
     async function bootstrap() {
       try {
-        const token = await getStoredAccessToken();
-
-        // ── Trường hợp 1: Không có token nào → chưa đăng nhập lần nào ──────────
-        if (!token) {
-          if (!cancelled) router.replace('/(auth)/login');
-          return;
-        }
-
-        // ── Trường hợp 2: Có token và còn hạn → load settings bình thường ──────
-        if (isTokenValid(token)) {
-          // loadSettings dùng instance api có interceptor — nếu server vẫn trả
-          // 401 (status_token không khớp), interceptor sẽ tự thử refresh một lần.
-          // Nếu refresh cũng thất bại → loadSettings throw → rơi vào catch bên dưới.
-          // Nếu loadSettings lỗi mạng (không liên quan auth) → vẫn ở lại app,
-          // chỉ không có settings từ server (isLoaded = true với giá trị mặc định).
-          await loadSettings();
-          return;
-        }
-
-        // ── Trường hợp 3: Có token nhưng hết hạn → thử refresh qua axiosClient ─
-        // Gọi loadSettings sẽ trigger request → server trả 401 → interceptor tự
-        // gọi POST /auth/refresh (dùng HttpOnly Cookie trên Web, SecureStore trên Mobile).
-        //   - Refresh thành công → interceptor lưu token mới, retry request → settings load OK
-        //   - Refresh thất bại   → interceptor clearTokens() rồi throw → rơi vào catch
-        await loadSettings();
-
-      } catch {
-        // Chỉ redirect về login khi rõ ràng không còn session hợp lệ.
-        // (loadSettings lỗi mạng thuần túy không rơi vào đây vì
-        //  useSettingsStore.loadSettings() tự catch và không re-throw.)
-        if (!cancelled) router.replace('/(auth)/login');
+        setIsBootstrapping(true); // Bật khiên băng, khóa chặt con app lại [_layout.tsx]
+        await initialize();       // Gọi Store đi verify danh tính ngầm dưới Backend
+        await loadSettings();     // Load nốt cấu hình UI cài đặt [_layout.tsx]
+      } catch (err) {
+        console.error('[Layout] Bootstrap auth thất bại:', err);
       } finally {
-        if (!cancelled) setIsBootstrapping(false);
+        setIsBootstrapping(false); // Xác minh xong xuôi mới mở xích ra [_layout.tsx]
       }
     }
 
     bootstrap();
-
-    return () => { cancelled = true; };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // ── 3. Swipe từ cạnh trái để mở sidebar (mobile) ────────────────────────────
+  // Điều hướng chuẩn chỉ, chỉ hoạt động khi quá trình kiểm tra (isBootstrapping) đã xong
+  React.useEffect(() => {
+    if (isBootstrapping) return; // 🔥 THẦN CHÚ: Đang kiểm tra token thì ĐỨNG IM không chuyển hướng! [_layout.tsx]
+
+    if (!isAuthenticated) {
+      router.replace('/(auth)/login'); // Thực sự không có phiên mới đá ra Login [_layout.tsx]
+    }
+  }, [isAuthenticated, isBootstrapping]);
+
   const panResponder = React.useRef(
     PanResponder.create({
       onStartShouldSetPanResponderCapture: (evt, _gestureState) => {
-        // Chỉ bắt sự kiện khi chạm vào 40px đầu bên trái và sidebar đang đóng
         return isMobile && !isSidebarOpen && evt.nativeEvent.pageX < 40;
       },
       onMoveShouldSetPanResponder: (evt, gestureState) => {
@@ -161,7 +118,6 @@ export default function MainLayout() {
         );
       },
       onPanResponderRelease: (_evt, gestureState) => {
-        // Mở sidebar nếu vuốt > 50px sang phải
         if (!isSidebarOpen && gestureState.dx > 50) {
           toggleSidebar();
         }
@@ -169,8 +125,8 @@ export default function MainLayout() {
     }),
   ).current;
 
-  // ── 4. Hiển thị màn hình loading trong khi bootstrap ────────────────────────
-  if (isBootstrapping) {
+  // 🔥 Hiển thị loading nếu Store đang fetch dữ liệu HOẶC luồng bootstrap đang khóa xích bảo vệ
+  if (isLoading || isBootstrapping) { 
     return (
       <SafeAreaView style={styles.loadingContainer} edges={['bottom']}>
         <ActivityIndicator size="large" color={colors.primary ?? '#6366f1'} />
@@ -178,7 +134,6 @@ export default function MainLayout() {
     );
   }
 
-  // ── 5. Render layout chính ───────────────────────────────────────────────────
   return (
     <SafeAreaView
       style={{ flex: 1 }}
@@ -215,8 +170,6 @@ export default function MainLayout() {
   );
 }
 
-// ─── Styles ───────────────────────────────────────────────────────────────────
-
 const styles = StyleSheet.create({
   loadingContainer: {
     flex: 1,
@@ -243,7 +196,7 @@ const styles = StyleSheet.create({
   leftSection: {
     flexDirection: 'row',
     alignItems:    'center',
-    width:         250, // CỐ ĐỊNH bằng hoặc gần bằng width Sidebar
+    width:         250, 
   },
   logoImg:   { width: 32, height: 32, marginLeft: 8 },
   brandText: { fontSize: 18, fontWeight: '500', marginLeft: 10 },
@@ -254,6 +207,6 @@ const styles = StyleSheet.create({
     color:      colors.textPrimary,
   },
   searchContainer: {
-    flex: 1, // Tự giãn rộng ra
+    flex: 1, 
   },
 });

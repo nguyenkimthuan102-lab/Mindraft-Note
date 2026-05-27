@@ -7,7 +7,8 @@ from ..utils.otp import (generate_otp, hash_otp, save_and_send_otp, cache_pendin
 from ..utils.response import success, error
 from rest_framework.decorators import api_view, throttle_classes, authentication_classes, permission_classes
 from rest_framework.response import Response
-from ..models import Users, OtpVerifications
+from rest_framework import status
+from ..models import Users, OtpVerifications, RefreshTokens
 from ..utils.token import *
 from django.core.cache import cache
 from rest_framework.permissions import AllowAny
@@ -145,11 +146,7 @@ def resend_otp_view(request):
 @permission_classes([AllowAny])
 def refresh_token_view(request):
     is_mobile = request.headers.get('X-Platform') == 'mobile'
-    raw_token = (
-        request.data.get("refresh_token")
-        if is_mobile
-        else request.COOKIES.get("refresh_token")
-    )
+    raw_token = request.data.get("refresh_token") if is_mobile else request.COOKIES.get("refresh_token")
 
     if not raw_token:
         return error("REFRESH_TOKEN_INVALID", "Refresh token không hợp lệ.", 401)
@@ -157,30 +154,37 @@ def refresh_token_view(request):
     try:
         record = verify_refresh_token(raw_token)
     except ValueError as e:
-        code = str(e)  # "REFRESH_TOKEN_INVALID" hoặc "REFRESH_TOKEN_EXPIRED"
-        messages = {
-            "REFRESH_TOKEN_INVALID": "Refresh token không hợp lệ.",
-            "REFRESH_TOKEN_EXPIRED": "Refresh token hết hạn.",
-        }
+        code = str(e)
+        messages = {"REFRESH_TOKEN_INVALID": "Refresh token không hợp lệ.", "REFRESH_TOKEN_EXPIRED": "Refresh token hết hạn."}
         return error(code, messages.get(code, "Lỗi xác thực."), 401)
 
-    user = Users.objects.get(id=record.user_id)
+    # ── VÁ LỖI CHÍ MẠNG Ở ĐÂY: Query lấy thông tin user thật từ DB ──
+    try:
+        user = Users.objects.get(id=record.user_id)
+    except Users.DoesNotExist:
+        return error("REFRESH_TOKEN_INVALID", "User không tồn tại.", 401)
 
-    # Rotation: revoke cũ, cấp mới
     revoke_refresh_token(raw_token)
     new_raw = generate_refresh_token()
     save_refresh_token(user.id, new_raw)
 
+    # ĐÍNH KÈM THÊM OBJECT USER THEO ĐÚNG CONTRACT 1.6 ĐỂ FRONTEND KHÔNG BỊ VĂNG
     data = {
         "access_token": make_access_token(user),
         "expires_in": 900,
+        "user": {
+            "id": user.id,
+            "name": user.name,
+            "email": user.email,
+            "avatar_url": user.avatar_url,
+        }
     }
     if is_mobile:
         data["refresh_token"] = new_raw
 
     response = success(data)
     if not is_mobile:
-        response.set_cookie('refresh_token', new_raw, httponly=True)
+        response.set_cookie('refresh_token', new_raw, httponly=True, samesite='Lax')
     return response
 
 @api_view(['POST'])
@@ -392,4 +396,30 @@ def reset_password_view(request):
             httponly=True,
             samesite='Lax',
         )
+    return response
+
+@api_view(['POST'])
+@permission_classes([AllowAny]) # Mở ra để Frontend gọi lên xóa phiên dễ dàng
+@authentication_classes([])     # Tắt check Token bảo vệ để luồng dọn dẹp không bị nghẽn 401
+def logout_view(request):
+    # Kiểm tra xem thằng gọi là Web hay App Mobile (theo Contract quy ước)
+    is_mobile = request.headers.get('X-Platform') == 'mobile'
+    
+    # Bốc mã refresh_token ra tùy theo môi trường thiết bị
+    raw_token = request.data.get("refresh_token") if is_mobile else request.COOKIES.get("refresh_token")
+
+    if raw_token:
+        # 🔥 ĐÃ SỬA: Gọi chính xác hàm revoke được nhóm viết sẵn trong token.py để dập lỗi 500
+        from ..utils.token import revoke_refresh_token
+        
+        # Hàm này tự băm sha256 và update(revoked_at=now()) dưới DB chuẩn chỉ
+        revoke_refresh_token(raw_token)
+
+    # Trả về đúng mã trạng thái HTTP 204 No Content theo đúng mục 1.7 Contract
+    response = Response(status=status.HTTP_204_NO_CONTENT)
+
+    # Nếu là môi trường Web trình duyệt thì quét sạch luôn HttpOnly Cookie cho an toàn
+    if not is_mobile:
+        response.delete_cookie('refresh_token')
+
     return response

@@ -13,20 +13,20 @@ import { logout } from '../../api/auth/authApi';
 import axiosClient from '../../api/axiosClient';
 
 // ─── Inline API helpers ───────────────────────────────────────────────────────
-const apiUpdateProfile = async (data: { name?: string }): Promise<{ name: string; avatar_url: string | null }> => {
-    const res = await axiosClient.patch('/auth/profile/', data);
+const apiUpdateProfile = async (data: { name?: string; avatar_url?: string | null }): Promise<{ name: string; avatar_url: string | null }> => {
+    const res = await axiosClient.patch('/users/me', data);
     return res.data.data;
 };
 
-const apiUploadAvatar = async (formData: FormData): Promise<{ avatar_url: string | null }> => {
-    const res = await axiosClient.patch('/auth/profile/', formData, {
-        headers: { 'Content-Type': 'multipart/form-data' },
-    });
-    return res.data.data;
-};
+//const apiUploadAvatar = async (formData: FormData): Promise<{ avatar_url: string | null }> => {
+    //const res = await axiosClient.patch('/users/me', formData, { // 👈 ĐÃ SỬA
+        //headers: { 'Content-Type': 'multipart/form-data' },
+    //});
+    //return res.data.data;
+//};
 
 const apiChangePassword = async (data: { current_password: string; new_password: string }): Promise<void> => {
-    await axiosClient.patch('/auth/change-password/', data);
+    await axiosClient.patch('/users/me/password', data); //
 };
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -311,28 +311,56 @@ export function ProfileModal({ visible, onClose }: ProfileModalProps) {
         }
     };
 
+    // Xử lý ảnh đại diện
     const handleFileChange = async (e: any) => {
         const file = e.target?.files?.[0];
         if (!file) return;
-        // Reset input để có thể chọn lại cùng file
         e.target.value = '';
         setUploadingAvatar(true);
+
         try {
-            const formData = new FormData();
-            formData.append('avatar', file);
-            const updated = await apiUploadAvatar(formData);
-            setUser({ ...user!, avatar_url: updated.avatar_url });
-        } catch {
-            Alert.alert('Lỗi', 'Không thể tải ảnh lên. Vui lòng thử lại.');
+        // Bước 1: Gọi API lên Backend xin vé Presigned URL
+        const presignRes = await axiosClient.post('/media/presigned-url', {
+            file_name: file.name,
+            file_type: file.type,
+            file_size: file.size,
+            purpose: 'avatar'
+        });
+
+        const { upload_url, file_url } = presignRes.data.data;
+
+        // Bước 2: Dùng lệnh PUT đẩy file binary thẳng lên link chứa ảnh (AWS S3 hoặc Cổng Fake Local của Backend)
+        await fetch(upload_url, {
+            method: 'PUT',
+            body: file,
+            headers: { 'Content-Type': file.type }
+        });
+
+        // Bước 3: Đẩy cái chuỗi URL ảnh tương lai vào hàm PATCH profile để Backend lưu chặt link text vào DB
+        const updated = await apiUpdateProfile({ avatar_url: file_url });
+        // Bẻ gãy Cache trình duyệt bằng cách gắn thêm Timestamp vào sau đuôi ảnh
+        const antiCacheUrl = `${updated.avatar_url}?t=${new Date().getTime()}`;
+        
+        // Nạp thẳng dữ liệu mới này vào hàm setUser có sẵn của Store để ép cả con app cập nhật RAM
+        setUser({
+            ...user!,
+            avatar_url: antiCacheUrl
+        });
+        Alert.alert('Thành công', 'Đã cập nhật ảnh đại diện thành công.');
+        } catch (err) {
+        console.error('Lỗi luồng up avatar:', err);
+        Alert.alert('Lỗi', 'Không thể tải ảnh lên. Vui lòng thử lại.');
         } finally {
-            setUploadingAvatar(false);
+        setUploadingAvatar(false);
         }
     };
-
     // ── Đăng xuất ─────────────────────────────────────────────────────────────
     const handleLogout = async () => {
         setLoggingOut(true);
-        try { await logout(); } catch { /* ignore */ }
+        try { 
+            // Thêm dòng này để gọi API Backend xóa cookie/token dưới DB
+            await axiosClient.post('/auth/logout/'); 
+        } catch { /* ignore */ }
         storeLogout();
         onClose();
         router.replace('/(auth)/login');

@@ -6,8 +6,9 @@ import { AuthCard } from '../../src/components/ui/AuthCard';
 import { Input } from '../../src/components/ui/Input';
 import { colors } from '../../src/constants/colors';
 import { loginWithEmail } from '../../src/api/auth/authApi';
-import { saveTokens } from '../../src/api/axiosClient';
+import { saveTokens, saveAccessToken } from '../../src/api/axiosClient';
 import { useGoogleAuth } from '../../src/api/auth/googleAuth';
+import { useAuthStore } from '../../src/store/useAuthStore';
 
 export default function LoginScreen() {
   const [email, setEmail] = useState('');
@@ -17,23 +18,33 @@ export default function LoginScreen() {
 
   const passwordRef = useRef<any>(null);
   const { signIn: googleSignIn, request: googleRequest } = useGoogleAuth();
+  const { setUser } = useAuthStore();
+  const isAuthenticated = useAuthStore((state) => state.isAuthenticated);
+  React.useEffect(() => {
+    // Nếu Root Layout cứu phiên thành công ngầm, lập tức đá user vào thẳng trang chủ
+    if (isAuthenticated) {
+      router.replace('/(main)');
+    }
+  }, [isAuthenticated]);
 
   // ─── Đăng nhập thường ──────────────────────────────────────────────────────
-  const handleLogin = async () => {
-    if (!email.trim() || !password) return;
+const handleLogin = async () => {
+    if (loading || useAuthStore.getState().isAuthenticated) return; //
+    if (!email.trim() || !password) return; //
 
-    setLoading(true);
+    setLoading(true); //
     try {
-      const data = await loginWithEmail({ email: email.trim(), password });
+      const data = await loginWithEmail({ email: email.trim(), password }); //
 
-      // Mobile: lưu token vào SecureStore
-      if (Platform.OS !== 'web' && data.refresh_token) {
+      if (Platform.OS === 'web') {
+        await saveAccessToken(data.access_token);
+      } else if (data.refresh_token) {
         await saveTokens(data.access_token, data.refresh_token);
       }
-      // Web: access_token nằm trong response, refresh_token trong HttpOnly Cookie —
-      //       axiosClient sẽ tự attach cookie cho mỗi request sau nhờ withCredentials.
 
-      router.replace('/(main)');
+      setUser(data.user); //
+
+      router.replace('/(main)'); //
     } catch (e: any) {
       const code = e.response?.data?.error?.code;
       if (code === 'INVALID_CREDENTIALS') {
