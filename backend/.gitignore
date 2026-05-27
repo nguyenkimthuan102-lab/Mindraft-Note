@@ -1,0 +1,31 @@
+# Cấu hình cá nhân và Mật khẩu (QUAN TRỌNG NHẤT)
+.env
+local_settings.py
+
+# Python Cache (Rác do Python sinh ra)
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Môi trường ảo (Nếu ai đó trong nhóm dùng venv thay vì pipenv)
+.venv/
+env/
+venv/
+ENV/
+
+# Database cục bộ mặc định của Django
+db.sqlite3
+db.sqlite3-journal
+
+# Logs
+*.log
+
+# IDE / Editor (Chặn các file cấu hình giao diện của trình code)
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS generated files (Rác của hệ điều hành)
+.DS_Store
+Thumbs.db

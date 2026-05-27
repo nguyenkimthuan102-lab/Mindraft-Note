@@ -1,0 +1,1 @@
+Mindraft Note là một ứng dụng ghi chú đa nền tảng sử dụng công nghệ react native với expo, Django, Mysql. Ứng dụng cho phép ghi chép đồng bộ, cộng tác, tạo text/ to-do list, lưu trữ file đơn giản.
