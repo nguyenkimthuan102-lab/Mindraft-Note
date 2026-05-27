@@ -45,12 +45,12 @@ export default function MainLayout() {
   return (
     <SafeAreaView style={{ flex: 1 }} edges={['bottom']} {...panResponder.panHandlers}>
       {/* Topbar nằm trên cùng, chiếm toàn bộ chiều ngang */}
-      <Topbar /> 
-      
+      <Topbar />
+
       <View style={{ flex: 1, flexDirection: 'row', position: 'relative' }}>
         {/* Sidebar nằm bên trái (Chỉ render trong hàng khi không phải mobile) */}
         {!isMobile && <Sidebar />}
-        
+
         {/* Nội dung chính nằm bên phải */}
         <View style={{ flex: 1 }}>
           <Slot />
