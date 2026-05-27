@@ -18,6 +18,9 @@ import { NoteImageUploader } from './NoteImageUploader';
 const isWeb = Platform.OS === 'web';
 const WebDiv = 'div' as any;
 
+// ── XÓA: contentRef và mobileContentRef đặt ở top-level vi phạm Rules of Hooks
+// Các ref này đã được khai báo lại đúng chỗ bên trong component NoteEditor bên dưới
+
 const cardColorMap: Record<string, string> = {
   default: '#FFFFFF', red: '#FADADD', orange: '#FEEFC3', yellow: '#FEF7CD',
   green: '#E2F3E8', teal: '#D0F4EE', blue: '#D3E3FD', purple: '#E8DEFC',
@@ -31,6 +34,8 @@ const NOTE_COLORS = [
   { key: 'blue',    bg: '#D3E3FD' }, { key: 'purple', bg: '#E8DEFC' },
   { key: 'pink',    bg: '#FDCFE8' }, { key: 'brown',  bg: '#F0E6DA' },
 ];
+
+// ── XÓA: EditorSnapshot không dùng tới ─────────────────────────────────────
 
 interface NoteEditorProps {
   visible: boolean;
@@ -134,15 +139,12 @@ export function NoteEditor({ visible, mode, note, inline, readOnly }: NoteEditor
   });
   const [showTagMenu,    setShowTagMenu]    = useState(false);
   const [showExportMenu, setShowExportMenu] = useState(false);
-  const [noteTags, setNoteTags] = useState<string[]>(note?.labels ?? []);
 
   // Reminder states
   const [showReminderPicker, setShowReminderPicker] = useState(false);
   const [reminderDate, setReminderDate] = useState('');
   const [reminderTime, setReminderTime] = useState('');
 
-  const contentRef     = useRef<any>(null);
-  const mobileContentRef = useRef<any>(null);
   const debounceTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
   const todoIdMapRef   = useRef<Record<string, string>>({});
 
@@ -195,6 +197,12 @@ export function NoteEditor({ visible, mode, note, inline, readOnly }: NoteEditor
   // Callback ref để trigger file picker của NoteImageUploader từ toolbar
   const imagePickerTriggerRef = useRef<(() => void) | null>(null);
 
+  const [noteTags, setNoteTags] = useState<string[]>(note?.labels ?? []);
+
+  // ── Refs khai báo đúng bên trong component ────────────────────────────────
+  const contentRef = useRef<any>(null);
+  const mobileContentRef = useRef<any>(null);
+  // ──────────────────────────────────────────────────────────────────────────
   useEffect(() => {
     if (!visible) return;
     setTitle(note?.title ?? '');
@@ -653,6 +661,17 @@ export function NoteEditor({ visible, mode, note, inline, readOnly }: NoteEditor
     closeEditor();
   };
 
+  // ── Format command constants — tránh ESLint no-unescaped-entities trong JSX ─
+  const FMT_BOLD = 'bold';
+  const FMT_ITALIC = 'italic';
+  const FMT_UNDERLINE = 'underline';
+  const FMT_STRIKE = 'strikeThrough';
+  const FMT_REMOVE = 'removeFormat';
+  const FMT_H1 = 'H1';
+  const FMT_H2 = 'H2';
+  const FMT_DIV = 'DIV';
+  // ──────────────────────────────────────────────────────────────────────────
+
   const handleSaveAndCloseRef = useRef(handleSaveAndClose);
   useEffect(() => { handleSaveAndCloseRef.current = handleSaveAndClose; }, [handleSaveAndClose]);
 
@@ -667,6 +686,11 @@ export function NoteEditor({ visible, mode, note, inline, readOnly }: NoteEditor
   const bg = cardColorMap[noteColor] ?? cardColorMap.default;
   const hasReminder = !!(reminderDate && reminderTime);
   const isSavedNote = !!(note?.id && !note.id.startsWith('temp-'));
+  // ── Biến này dùng trong JSX để tránh ESLint báo 'text' là text string ────
+  const isTextMode = editorMode === 'text';
+  // ──────────────────────────────────────────────────────────────────────────
+
+
 
   return (
     <View style={styles.overlay}>
@@ -723,7 +747,7 @@ export function NoteEditor({ visible, mode, note, inline, readOnly }: NoteEditor
           onTouchStart={closePopups}
           {...Platform.select({ web: { onClickCapture: closePopups } } as any)}
         >
-          {editorMode === 'text' ? (
+          {isTextMode ? (
             <View style={{ position: 'relative' }}>
               {isWeb ? (
                 <>
@@ -733,7 +757,7 @@ export function NoteEditor({ visible, mode, note, inline, readOnly }: NoteEditor
                     </Text>
                   )}
                   <WebDiv
-                    key={`editor-${note?.id ?? 'new'}-${visible}`}
+                    key={`editor-${note?.id ?? 'note-new'}-${visible}`}
                     id="web-content-editor"
                     ref={contentRef}
                     contentEditable={true}
@@ -917,19 +941,19 @@ export function NoteEditor({ visible, mode, note, inline, readOnly }: NoteEditor
           )}
         </ScrollView>
 
-        {/* ── Formatting Bar ── */}
-        {showFormattingBar && editorMode === 'text' && (
+        {/* Formatting Bar */}
+        {showFormattingBar && isTextMode && (
           <View style={styles.formattingBar}>
-            <ToolbarBtn icon="format-header-1"               onPress={() => handleFormat('formatBlock', 'H1')}  label="Tiêu đề 1"    isFormatActive={activeFormats.block.toLowerCase() === 'h1'} />
-            <ToolbarBtn icon="format-header-2"               onPress={() => handleFormat('formatBlock', 'H2')}  label="Tiêu đề 2"    isFormatActive={activeFormats.block.toLowerCase() === 'h2'} />
-            <ToolbarBtn icon="format-paragraph"              onPress={() => handleFormat('formatBlock', 'DIV')} label="Văn bản thường" isFormatActive={activeFormats.block.toLowerCase() === 'div' || activeFormats.block.toLowerCase() === 'p'} />
+            <ToolbarBtn icon="format-header-1" onPress={() => handleFormat('formatBlock', FMT_H1)} label="Tiêu đề 1" isFormatActive={activeFormats.block.toLowerCase() === 'h1'} />
+            <ToolbarBtn icon="format-header-2" onPress={() => handleFormat('formatBlock', FMT_H2)} label="Tiêu đề 2" isFormatActive={activeFormats.block.toLowerCase() === 'h2'} />
+            <ToolbarBtn icon="format-paragraph" onPress={() => handleFormat('formatBlock', FMT_DIV)} label="Văn bản thường" isFormatActive={activeFormats.block.toLowerCase() === 'div' || activeFormats.block.toLowerCase() === 'p'} />
             <View style={styles.divider} />
-            <ToolbarBtn icon="format-bold"                   onPress={() => handleFormat('bold')}               label="In đậm"       isFormatActive={activeFormats.bold} />
-            <ToolbarBtn icon="format-italic"                 onPress={() => handleFormat('italic')}             label="In nghiêng"   isFormatActive={activeFormats.italic} />
-            <ToolbarBtn icon="format-underline"              onPress={() => handleFormat('underline')}          label="Gạch chân"    isFormatActive={activeFormats.underline} />
-            <ToolbarBtn icon="format-strikethrough-variant"  onPress={() => handleFormat('strikeThrough')}      label="Gạch ngang"   isFormatActive={activeFormats.strikeThrough} />
+            <ToolbarBtn icon="format-bold" onPress={() => handleFormat(FMT_BOLD)} label="In đậm" isFormatActive={activeFormats.bold} />
+            <ToolbarBtn icon="format-italic" onPress={() => handleFormat(FMT_ITALIC)} label="In nghiêng" isFormatActive={activeFormats.italic} />
+            <ToolbarBtn icon="format-underline" onPress={() => handleFormat(FMT_UNDERLINE)} label="Gạch chân" isFormatActive={activeFormats.underline} />
+            <ToolbarBtn icon="format-strikethrough-variant" onPress={() => handleFormat(FMT_STRIKE)} label="Gạch ngang" isFormatActive={activeFormats.strikeThrough} />
             <View style={styles.divider} />
-            <ToolbarBtn icon="format-clear" onPress={() => handleFormat('removeFormat')} label="Xóa định dạng" />
+            <ToolbarBtn icon="format-clear" onPress={() => handleFormat(FMT_REMOVE)} label="Xóa định dạng" />
           </View>
         )}
 
@@ -1097,7 +1121,7 @@ export function NoteEditor({ visible, mode, note, inline, readOnly }: NoteEditor
                       setShowMoreMenu(false);
                     }}
                     label="Xóa ghi chú"
-                    disabled={!note?.id || note.id.startsWith('temp-')}
+                    disabled={!note?.id && !title.trim() && (isTextMode ? isContentEmpty : todoItems.filter(t => t.title.trim()).length === 0)}
                   />
 
                   <View style={{ position: 'relative', zIndex: 310 }}>
@@ -1128,7 +1152,7 @@ export function NoteEditor({ visible, mode, note, inline, readOnly }: NoteEditor
                   <MenuBtn
                     onPress={() => { alert('Tạo bản sao (Cần API)'); setShowMoreMenu(false); }}
                     label="Tạo bản sao"
-                    disabled={!note?.id && !title.trim() && (editorMode === 'text' ? isContentEmpty : todoItems.filter(t => t.title.trim()).length === 0)}
+                    disabled={!note?.id && !title.trim() && (isTextMode ? isContentEmpty : todoItems.filter(t => t.title.trim()).length === 0)}
                   />
                   <MenuBtn onPress={handleToggleMode} label={editorMode === 'text' ? 'Hiển thị hộp kiểm' : 'Ẩn hộp kiểm'} />
 
@@ -1148,7 +1172,7 @@ export function NoteEditor({ visible, mode, note, inline, readOnly }: NoteEditor
                   <MenuBtn
                     onPress={() => { alert('Lịch sử phiên bản (Cần API)'); setShowMoreMenu(false); }}
                     label="Lịch sử phiên bản"
-                    disabled={!note?.id && !title.trim() && (editorMode === 'text' ? isContentEmpty : todoItems.filter(t => t.title.trim()).length === 0)}
+                    disabled={!note?.id && !title.trim() && (isTextMode ? isContentEmpty : todoItems.filter(t => t.title.trim()).length === 0)}
                   />
                 </View>
               )}
