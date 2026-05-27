@@ -1,5 +1,7 @@
 ﻿import { create } from 'zustand';
 import type { NoteCardData } from '../components/notes/NoteCard';
+import { getTags, createTag, addTagToNote, removeTagFromNote, type Tag } from '../api/tagApi';
+import { useAppStore } from './useAppStore';
 
 type ViewMode = 'grid' | 'list';
 type EditorMode = 'text' | 'todo';
@@ -17,9 +19,12 @@ interface NoteUIState {
   openEditNote: (note: NoteCardData) => void;
   closeEditor: () => void;
 
-  allTags: string[];
+  allTags: string[];           // tên tag — giữ nguyên cho TagMenu tương thích
+  allTagObjects: Tag[];        // tag đầy đủ {id, name} để gọi API
+  tagIdByName: Record<string, string>; // name → id mapping
   noteTagsMap: Record<string, string[]>;
 
+  loadTagsFromServer: () => Promise<void>;
   addTagToSystem: (tag: string) => Promise<void>;
   updateNoteTags: (noteId: string, tags: string[]) => Promise<void>;
 }
@@ -79,31 +84,64 @@ export const useNoteStore = create<NoteUIState>((set, get) => ({
       editingNote: undefined,
     }),
 
-  allTags: ['ehr', 'g', 'gse'],
+  allTags: [],
+  allTagObjects: [],
+  tagIdByName: {},
   noteTagsMap: {},
+
+  // fetch tất cả tags từ server (gọi khi app mount)
+  loadTagsFromServer: async () => {
+    try {
+      const serverTags = await getTags();
+      const names = serverTags.map((t: Tag) => t.name);
+      const idByName: Record<string, string> = {};
+      serverTags.forEach((t: Tag) => { idByName[t.name] = t.id; });
+      set({
+        allTagObjects: serverTags,
+        allTags: names,
+        tagIdByName: idByName,
+      });
+      // Đồng bộ sang AppStore để Sidebar hiển thị đúng
+      useAppStore.getState().setTags(serverTags);
+    } catch {
+      // giữ nguyên state nếu lỗi
+    }
+  },
 
   addTagToSystem: async (rawTag) => {
     const tag = normalizeTag(rawTag);
     if (!tag) return;
 
     const previousTags = get().allTags;
+    const previousObjects = get().allTagObjects;
+    const previousIdByName = get().tagIdByName;
 
     if (previousTags.includes(tag)) {
       return;
     }
 
+    // Optimistic: thêm tạm vào list
     set({
       allTags: [...previousTags, tag],
     });
 
     try {
-      // TODO: gọi API backend
-      // await api.createTag({ name: tag });
+      const created = await createTag(tag);
+      const newIdByName = { ...get().tagIdByName, [created.name]: created.id };
+      const newTagObjects = [...get().allTagObjects, created];
+      set({
+        allTagObjects: newTagObjects,
+        tagIdByName: newIdByName,
+        allTags: get().allTags.map(t => t === tag ? created.name : t),
+      });
+      // ✅ Sync sang AppStore để Sidebar tự động cập nhật tag mới
+      useAppStore.getState().setTags(newTagObjects);
     } catch (error) {
       set({
         allTags: previousTags,
+        allTagObjects: previousObjects,
+        tagIdByName: previousIdByName,
       });
-
       throw error;
     }
   },
@@ -128,8 +166,21 @@ export const useNoteStore = create<NoteUIState>((set, get) => ({
     }));
 
     try {
-      // TODO: gọi API backend
-      // await api.updateNoteTags(noteId, normalizedTags);
+      const tagIdByName = get().tagIdByName;
+
+      const toAdd = normalizedTags.filter(t => !previousNoteTags.includes(t));
+      const toRemove = previousNoteTags.filter(t => !normalizedTags.includes(t));
+
+      await Promise.all([
+        ...toAdd.map(name => {
+          const tagId = tagIdByName[name];
+          return tagId ? addTagToNote(noteId, tagId) : Promise.resolve();
+        }),
+        ...toRemove.map(name => {
+          const tagId = tagIdByName[name];
+          return tagId ? removeTagFromNote(noteId, tagId) : Promise.resolve();
+        }),
+      ]);
     } catch (error) {
       set((state) => ({
         allTags: previousSystemTags,
