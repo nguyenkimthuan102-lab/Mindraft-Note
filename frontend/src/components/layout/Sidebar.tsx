@@ -1,7 +1,4 @@
-import {
-  View, Text, StyleSheet, TouchableOpacity, ScrollView,
-  Platform, Animated, useWindowDimensions
-} from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Platform, Animated, useWindowDimensions } from 'react-native';
 import React from 'react';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter, usePathname } from 'expo-router';
@@ -26,6 +23,7 @@ function NavItem({ icon, label, href, active, isDark, onPress }: NavItemProps) {
   const activeBg = isDark ? '#064e3b' : colors.primarySubtle;
   const activeTextColor = isDark ? '#34d399' : colors.primary;
   const inactiveTextColor = isDark ? '#9ca3af' : colors.textSecondary;
+
   return (
     <TouchableOpacity
       style={[styles.navItem, active && { backgroundColor: activeBg }]}
@@ -49,6 +47,8 @@ export function Sidebar() {
   const router = useRouter();
   const { openCreateText, openCreateTodo } = useNoteStore();
   const [isNewNoteOpen, setIsNewNoteOpen] = React.useState(false);
+
+  // ── File 1: tags thật + EditLabelsModal ──────────────────────────────────
   const { theme, tags, fetchTags } = useAppStore();
   const [showEditLabels, setShowEditLabels] = React.useState(false);
   const isDark = theme === 'dark';
@@ -57,9 +57,10 @@ export function Sidebar() {
 
   const handleEditLabelsClose = React.useCallback(() => {
     setShowEditLabels(false);
-    fetchTags();
+    fetchTags(); // Refresh sau khi sửa nhãn
   }, [fetchTags]);
 
+  // ── Layout từ File 2 ──────────────────────────────────────────────────────
   const { width } = useWindowDimensions();
   const isMobile = width < 720;
   const insets = useSafeAreaInsets();
@@ -91,7 +92,7 @@ export function Sidebar() {
 
   if (!isMobile && !isSidebarOpen) return null;
 
-  const nav = (href: string) => {
+  const handleNavItemPress = (href: string) => {
     if (isMobile && isSidebarOpen) toggleSidebar();
     router.push(href as any);
   };
@@ -110,19 +111,6 @@ export function Sidebar() {
     if (isMobile && isSidebarOpen) toggleSidebar();
   };
 
-  const hasTags = tags.length > 0;
-
-  /*
-   * ROOT CAUSE đã tìm ra:
-   * Sidebar nằm trong <View flexDirection="row"> ở _layout.tsx
-   * → sidebar bị stretch theo chiều dọc của row container (full screen height)
-   * → mọi "spacer flex:1" hay "flex:1 ScrollView" bên trong đều chiếm hết chiều cao đó
-   * → tạo khoảng trống khổng lồ
-   *
-   * GIẢI PHÁP ĐÚNG:
-   * Dùng `position: absolute` cho footer → nó luôn nằm ở đáy sidebar
-   * Phần nội dung phía trên chỉ stack tự nhiên, không cần flex magic
-   */
   return (
     <Animated.View
       style={[
@@ -131,6 +119,7 @@ export function Sidebar() {
         isMobile && {
           position: 'absolute',
           left: 0, top: 0, bottom: 0, zIndex: 1000,
+          height: '100%',
           paddingTop: insets.top > 0 ? insets.top + 12 : 20,
           transform: [{ translateX: slideAnim }],
           shadowColor: '#000',
@@ -138,18 +127,17 @@ export function Sidebar() {
           shadowRadius: 10,
           shadowOffset: { width: 4, height: 0 },
           elevation: 16,
-        }
+        },
       ]}
     >
-      {/* ── Phần nội dung trên: stack tự nhiên từ trên xuống ── */}
-      {/* Có padding bottom để không bị footer absolute che khuất */}
-      <View style={styles.topContent}>
-        {/* New note */}
+      {/* ── Fixed top: New note + main nav ── */}
+      <View style={styles.fixedTopNav}>
         <View style={styles.newNoteWrapper}>
           <TouchableOpacity style={styles.newNote} activeOpacity={0.8} onPress={() => setIsNewNoteOpen(!isNewNoteOpen)}>
             <Feather name="plus" size={18} color={dc.textMain} />
             <Text style={[styles.newNoteText, { color: dc.textMain }]}>New note</Text>
           </TouchableOpacity>
+
           {isNewNoteOpen && (
             <View style={[styles.dropdownContent, { borderLeftColor: dc.border }]}>
               <TouchableOpacity style={styles.dropdownItem} onPress={handleCreateText}>
@@ -164,51 +152,58 @@ export function Sidebar() {
           )}
         </View>
 
-        {/* Main nav */}
-        <NavItem icon="file-text" label="All notes" href="/(main)" active={pathname === '/'} isDark={isDark} onPress={() => nav('/(main)')} />
-        <NavItem icon="bell" label="Reminders" href="/(main)/reminders" active={pathname === '/reminders'} isDark={isDark} onPress={() => nav('/(main)/reminders')} />
+        <NavItem icon="file-text" label="All notes" href="/(main)" active={pathname === '/'} isDark={isDark} onPress={() => handleNavItemPress('/(main)')} />
+        <NavItem icon="bell" label="Reminders" href="/(main)/reminders" active={pathname === '/reminders'} isDark={isDark} onPress={() => handleNavItemPress('/(main)/reminders')} />
 
         <View style={[styles.divider, { backgroundColor: dc.border }]} />
-
-        {/* Labels */}
-        {hasTags ? (
-          <>
-            <Text style={[styles.sectionLabel, { color: dc.textTer }]}>LABELS</Text>
-            {tags.map((tag) => {
-              const isActive = pathname === `/label/${tag.id}`;
-              return (
-                <TouchableOpacity
-                  key={tag.id}
-                  style={[styles.navItem, isActive && { backgroundColor: isDark ? '#064e3b' : colors.primarySubtle }]}
-                  activeOpacity={0.7}
-                  onPress={() => nav(`/(main)/label/${tag.id}`)}
-                >
-                  <Feather name="tag" size={16} color={isActive ? (isDark ? '#34d399' : colors.primary) : dc.textSec} />
-                  <Text
-                    style={[styles.navLabel, { color: isActive ? (isDark ? '#34d399' : colors.primary) : dc.textSec }, isActive && { fontFamily: 'Inter-Medium' }]}
-                    numberOfLines={1}
-                  >
-                    {tag.name}
-                  </Text>
-                </TouchableOpacity>
-              );
-            })}
-          </>
-        ) : null}
-
-        {/* Edit labels — luôn hiện ngay dưới nav/labels, không có gap */}
-        <TouchableOpacity style={styles.editLabels} onPress={() => setShowEditLabels(true)}>
-          <Feather name="edit-2" size={13} color={dc.textTer} />
-          <Text style={[styles.editLabelsText, { color: dc.textTer }]}>Edit labels</Text>
-        </TouchableOpacity>
       </View>
 
-      {/* ── Footer: position absolute, luôn bám đáy ── */}
-      <View style={[styles.footer, { backgroundColor: dc.bg, borderTopColor: dc.border }]}>
+      {/* ── ScrollView labels (layout File 2) + logic thật (File 1) ── */}
+      <View style={styles.scrollArea}>
+        <ScrollView showsVerticalScrollIndicator={false} style={styles.scroll}>
+          <Text style={[styles.sectionLabel, { color: dc.textTer }]}>LABELS</Text>
+
+          {tags.map((tag) => {
+            const isActive = pathname === `/label/${tag.id}`;
+            return (
+              <TouchableOpacity
+                key={tag.id}
+                style={[styles.navItem, isActive && { backgroundColor: isDark ? '#064e3b' : colors.primarySubtle }]}
+                activeOpacity={0.7}
+                onPress={() => handleNavItemPress(`/(main)/label/${tag.id}`)}
+              >
+                <Feather
+                  name="tag"
+                  size={16}
+                  color={isActive ? (isDark ? '#34d399' : colors.primary) : dc.textSec}
+                />
+                <Text
+                  style={[
+                    styles.navLabel, { color: dc.textSec },
+                    isActive && { color: isDark ? '#34d399' : colors.primary, fontFamily: 'Inter-Medium' },
+                  ]}
+                  numberOfLines={1}
+                >
+                  {tag.name}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+
+          {/* Edit labels — mở modal thật */}
+          <TouchableOpacity style={styles.editLabels} onPress={() => setShowEditLabels(true)}>
+            <Feather name="edit-2" size={13} color={dc.textTer} />
+            <Text style={[styles.editLabelsText, { color: dc.textTer }]}>Edit labels</Text>
+          </TouchableOpacity>
+        </ScrollView>
+      </View>
+
+      {/* ── Footer ── */}
+      <View style={styles.footer}>
         <View style={[styles.divider, { backgroundColor: dc.border }]} />
-        <NavItem icon="archive" label="Archive" href="/(main)/archive" active={pathname === '/archive'} isDark={isDark} onPress={() => nav('/(main)/archive')} />
-        <NavItem icon="trash-2" label="Trash" href="/(main)/trash" active={pathname === '/trash'} isDark={isDark} onPress={() => nav('/(main)/trash')} />
-        <NavItem icon="settings" label="Settings" href="/(main)/settings" active={pathname === '/settings'} isDark={isDark} onPress={() => nav('/(main)/settings')} />
+        <NavItem icon="archive" label="Archive" href="/(main)/archive" active={pathname === '/archive'} isDark={isDark} onPress={() => handleNavItemPress('/(main)/archive')} />
+        <NavItem icon="trash-2" label="Trash" href="/(main)/trash" active={pathname === '/trash'} isDark={isDark} onPress={() => handleNavItemPress('/(main)/trash')} />
+        <NavItem icon="settings" label="Settings" href="/(main)/settings" active={pathname === '/settings'} isDark={isDark} onPress={() => handleNavItemPress('/(main)/settings')} />
       </View>
 
       <EditLabelsModal visible={showEditLabels} onClose={handleEditLabelsClose} />
@@ -216,41 +211,32 @@ export function Sidebar() {
   );
 }
 
-// Tính chiều cao footer để làm paddingBottom cho topContent
-// Archive + Trash + Settings = 3 × 42px + divider 25px + paddingBottom 20px ≈ 176px
-const FOOTER_HEIGHT = 176;
-
 const styles = StyleSheet.create({
   sidebar: {
     width: 250,
-    // KHÔNG dùng height:'100%' hay flex:1 — để parent _layout quyết định chiều cao
-    // alignSelf:'stretch' để sidebar kéo dài theo chiều cao của row container
-    alignSelf: 'stretch',
-    flexDirection: 'column',
     backgroundColor: colors.bgSurface,
     borderRightWidth: 1,
     borderRightColor: colors.borderDefault,
     paddingTop: Platform.OS === 'web' ? 0 : 44,
-    // position relative để footer absolute hoạt động đúng
-    position: 'relative',
+    // File 2 layout: column với flex
+    flexDirection: 'column',
   },
-
-  // Phần nội dung phía trên: stack tự nhiên, có padding bottom = chiều cao footer
-  topContent: {
+  fixedTopNav: {
     paddingHorizontal: 18,
-    paddingBottom: FOOTER_HEIGHT,
   },
-
-  // Footer luôn ở đáy sidebar nhờ position absolute
+  // File 2: ScrollView cho labels
+  scrollArea: {
+    flex: 1,
+    paddingHorizontal: 0,
+  },
+  scroll: {
+    flex: 1,
+    paddingHorizontal: 18,
+  },
   footer: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
     paddingHorizontal: 18,
     paddingBottom: Platform.OS === 'ios' ? 30 : 20,
   },
-
   newNote: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -260,6 +246,7 @@ const styles = StyleSheet.create({
     marginTop: 8,
   },
   newNoteWrapper: {
+    marginTop: 8,
     marginBottom: 4,
   },
   dropdownContent: {
@@ -302,7 +289,7 @@ const styles = StyleSheet.create({
     fontFamily: 'Inter-Medium',
     fontSize: 10,
     letterSpacing: 0.7,
-    marginTop: 4,
+    marginTop: 16,
     marginBottom: 6,
     marginLeft: 10,
   },
@@ -321,6 +308,7 @@ const styles = StyleSheet.create({
   },
   divider: {
     height: 1,
+    backgroundColor: colors.borderDefault,
     marginVertical: 12,
   },
 });
