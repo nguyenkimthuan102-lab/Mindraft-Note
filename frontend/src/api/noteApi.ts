@@ -14,6 +14,10 @@ interface CreateNotePayload {
 interface FetchNotesParams {
   view?: 'active' | 'archived' | 'trash' | 'all';
   sort_by?: 'created_at' | 'position' | 'updated_at';
+  tag_id?: string;   // 5. NOTE TAGS — lọc note theo tag (GET /notes?tag_id=uuid)
+  search?: string;
+  page?: number;
+  limit?: number;
 }
 
 export const fetchNotes = (params?: FetchNotesParams): Promise<NoteCardData[]> =>

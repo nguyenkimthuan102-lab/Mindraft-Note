@@ -20,6 +20,9 @@ const deleteRemindersForNote = async (noteId: string) => {
   }
 };
 
+import { getTags, createTag, addTagToNote, removeTagFromNote, type Tag } from '../api/tagApi';
+import { useAppStore } from './useAppStore';
+
 type ViewMode = 'grid' | 'list';
 type EditorMode = 'text' | 'todo';
 
@@ -61,8 +64,13 @@ interface NoteStoreState {
   openCreateTodo: () => void;
   openEditNote: (note: NoteCardData) => void;
   closeEditor: () => void;
-  allTags: string[];
+
+  allTags: string[];           // tên tag — giữ nguyên cho TagMenu tương thích
+  allTagObjects: Tag[];        // tag đầy đủ {id, name} để gọi API
+  tagIdByName: Record<string, string>; // name → id mapping
   noteTagsMap: Record<string, string[]>;
+
+  loadTagsFromServer: () => Promise<void>;
   addTagToSystem: (tag: string) => Promise<void>;
   updateNoteTags: (noteId: string, tags: string[]) => Promise<void>;
   batchPinAction: (ids: string[]) => Promise<void>;
@@ -358,24 +366,123 @@ export const useNoteStore = create<NoteStoreState>((set, get) => ({
   openEditNote: (note) => set({ editorVisible: true, editorMode: note.type, editingNote: note }),
   closeEditor: () => set({ editorVisible: false, editingNote: undefined }),
 
-  allTags: ['ehr', 'g', 'gse'],
+  allTags: [],
+  allTagObjects: [],
+  tagIdByName: {},
   noteTagsMap: {},
+
+  // fetch tất cả tags từ server (gọi khi app mount)
+  loadTagsFromServer: async () => {
+    try {
+      const serverTags = await getTags();
+      const names = serverTags.map((t: Tag) => t.name);
+      const idByName: Record<string, string> = {};
+      serverTags.forEach((t: Tag) => { idByName[t.name] = t.id; });
+      set({
+        allTagObjects: serverTags,
+        allTags: names,
+        tagIdByName: idByName,
+      });
+      // Đồng bộ sang AppStore để Sidebar hiển thị đúng
+      useAppStore.getState().setTags(serverTags);
+    } catch {
+      // giữ nguyên state nếu lỗi
+    }
+  },
+
   addTagToSystem: async (rawTag) => {
     const tag = normalizeTag(rawTag);
     if (!tag) return;
     const previousTags = get().allTags;
-    if (previousTags.includes(tag)) return;
-    set({ allTags: [...previousTags, tag] });
+    const previousObjects = get().allTagObjects;
+    const previousIdByName = get().tagIdByName;
+
+    if (previousTags.includes(tag)) {
+      return;
+    }
+
+    // Optimistic: thêm tạm vào list
+    set({
+      allTags: [...previousTags, tag],
+    });
+
+    try {
+      const created = await createTag(tag);
+      const newIdByName = { ...get().tagIdByName, [created.name]: created.id };
+      const newTagObjects = [...get().allTagObjects, created];
+      set({
+        allTagObjects: newTagObjects,
+        tagIdByName: newIdByName,
+        allTags: get().allTags.map(t => t === tag ? created.name : t),
+      });
+      // ✅ Sync sang AppStore để Sidebar tự động cập nhật tag mới
+      useAppStore.getState().setTags(newTagObjects);
+    } catch (error) {
+      set({
+        allTags: previousTags,
+        allTagObjects: previousObjects,
+        tagIdByName: previousIdByName,
+      });
+      throw error;
+    }
   },
 
   updateNoteTags: async (noteId, tags) => {
     const normalizedTags = uniqueTags(tags);
+
     const previousSystemTags = get().allTags;
-    const mergedSystemTags = uniqueTags([...previousSystemTags, ...normalizedTags]);
+    const previousNoteTags = get().noteTagsMap[noteId] || [];
+
+    const mergedSystemTags = uniqueTags([
+      ...previousSystemTags,
+      ...normalizedTags,
+    ]);
+
     set((state) => ({
       allTags: mergedSystemTags,
-      noteTagsMap: { ...state.noteTagsMap, [noteId]: normalizedTags },
+      noteTagsMap: {
+        ...state.noteTagsMap,
+        [noteId]: normalizedTags,
+      },
     }));
+
+    try {
+      const tagIdByName = get().tagIdByName;
+
+      const toAdd = normalizedTags.filter(
+        t => !previousNoteTags.includes(t)
+      );
+
+      const toRemove = previousNoteTags.filter(
+        t => !normalizedTags.includes(t)
+      );
+
+      await Promise.all([
+        ...toAdd.map(name => {
+          const tagId = tagIdByName[name];
+          return tagId
+            ? addTagToNote(noteId, tagId)
+            : Promise.resolve();
+        }),
+
+        ...toRemove.map(name => {
+          const tagId = tagIdByName[name];
+          return tagId
+            ? removeTagFromNote(noteId, tagId)
+            : Promise.resolve();
+        }),
+      ]);
+    } catch (error) {
+      set((state) => ({
+        allTags: previousSystemTags,
+        noteTagsMap: {
+          ...state.noteTagsMap,
+          [noteId]: previousNoteTags,
+        },
+      }));
+
+      throw error;
+    }
   },
 
   batchPinAction: async (ids) => {
@@ -389,13 +496,30 @@ export const useNoteStore = create<NoteStoreState>((set, get) => ({
 
   batchArchiveAction: async (ids) => {
     if (ids.length === 0) return;
+
     const oldNotes = get().notes;
-    const pinnedIds = oldNotes.filter(n => ids.includes(n.id) && n.is_pinned === 1).map(n => n.id);
-    set({ notes: oldNotes.filter(n => !ids.includes(n.id)) });
+
+    const pinnedIds = oldNotes
+      .filter(n => ids.includes(n.id) && n.is_pinned === 1)
+      .map(n => n.id);
+
+    set({
+      notes: oldNotes.filter(n => !ids.includes(n.id)),
+    });
+
     try {
-      if (pinnedIds.length > 0) await Promise.all(pinnedIds.map(id => togglePinNote(id)));
-      await Promise.all(ids.map(id => toggleArchiveNote(id)));
-    } catch { set({ notes: oldNotes }); }
+      if (pinnedIds.length > 0) {
+        await Promise.all(
+          pinnedIds.map(id => togglePinNote(id))
+        );
+      }
+
+      await Promise.all(
+        ids.map(id => toggleArchiveNote(id))
+      );
+    } catch {
+      set({ notes: oldNotes });
+    }
   },
 
   batchTrashAction: async (ids) => {
@@ -455,19 +579,20 @@ export const useNoteStore = create<NoteStoreState>((set, get) => ({
       .map(item => ({
         ...item,
         subtasks: (item.subtasks || []).filter(sub => !sub.is_completed),
+
       }));
 
     set({
       notes: currentNotes.map(n =>
         n.id === noteId
           ? {
-              ...n,
-              todo_items: updatedItems,
-              todo_total: updatedItems.reduce(
-                (acc, i) => acc + 1 + (i.subtasks?.length ?? 0), 0
-              ),
-              todo_completed: 0,
-            }
+            ...n,
+            todo_items: updatedItems,
+            todo_total: updatedItems.reduce(
+              (acc, i) => acc + 1 + (i.subtasks?.length ?? 0), 0
+            ),
+            todo_completed: 0,
+          }
           : n
       ),
     });
