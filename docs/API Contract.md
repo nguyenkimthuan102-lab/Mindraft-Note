@@ -39,16 +39,6 @@
 |410|Gone (note đã xóa vĩnh viễn)|
 |422|Unprocessable Entity|
 
-### Header đặc biệt — Mobile Client
-
-```
-X-Platform: mobile
-```
-
-> React Native không hỗ trợ HttpOnly Cookie. Khi backend nhận header `X-Platform: mobile`, các endpoint auth trả `refresh_token` trực tiếp trong JSON body thay vì `Set-Cookie`. Client mobile lưu token bằng `expo-secure-store`.
-
----
-
 ### JWT Payload
 
 ```json
@@ -132,12 +122,7 @@ POST /auth/verify-otp
 }
 ```
 
-> **Web:** `refresh_token` được set trong **HttpOnly Cookie**.  
-> **Mobile** (`X-Platform: mobile`): `refresh_token` trả thêm trong JSON body:
-> 
-> ```json
-> { "data": { "access_token": "...", "refresh_token": "<uuid>", "expires_in": 900, "user": { ... } } }
-> ```
+> `refresh_token` được set trong **HttpOnly Cookie**.
 
 **Response khi `purpose = "reset_password"` → 200:**
 
@@ -213,8 +198,7 @@ POST /auth/login
 }
 ```
 
-> **Web:** `refresh_token` được set trong **HttpOnly Cookie**.  
-> **Mobile** (`X-Platform: mobile`): `refresh_token` trả thêm trong JSON body (cấu trúc giống 1.2).
+> `refresh_token` được set trong **HttpOnly Cookie**.
 
 **Errors:** `INVALID_CREDENTIALS` (401), `ACCOUNT_NOT_VERIFIED` (403)
 
@@ -232,7 +216,7 @@ POST /auth/google
 { "id_token": "<google_id_token>" }
 ```
 
-**Response 200 / 201:** (giống 1.4, bao gồm `refresh_token` trong body khi mobile)
+**Response 200 / 201:** (giống 1.4)
 
 ---
 
@@ -242,12 +226,7 @@ POST /auth/google
 POST /auth/refresh
 ```
 
-> **Web:** Không cần body. `refresh_token` đọc từ HttpOnly Cookie.  
-> **Mobile** (`X-Platform: mobile`): Gửi `refresh_token` trong body:
-> 
-> ```json
-> { "refresh_token": "<uuid>" }
-> ```
+> Không cần body. `refresh_token` đọc từ HttpOnly Cookie.
 
 **Response 200:**
 
@@ -260,8 +239,6 @@ POST /auth/refresh
 }
 ```
 
-> **Mobile:** Response cũng trả `refresh_token` mới trong body (rotation).
-
 **Errors:** `REFRESH_TOKEN_INVALID` (401), `REFRESH_TOKEN_EXPIRED` (401)
 
 ---
@@ -272,8 +249,7 @@ POST /auth/refresh
 POST /auth/logout
 ```
 
-> Server revoke `refresh_token` từ cookie (set `revoked_at = NOW()`).  
-> **Mobile:** Client cần gọi `DELETE /users/me/push-token` trước khi logout để huỷ đăng ký push notification.
+> Server revoke `refresh_token` từ cookie (set `revoked_at = NOW()`).
 
 **Response 204**
 
@@ -330,8 +306,7 @@ POST /auth/reset-password
 }
 ```
 
-> **Web:** `refresh_token` mới được set trong **HttpOnly Cookie**.  
-> **Mobile** (`X-Platform: mobile`): `refresh_token` trả thêm trong JSON body (cấu trúc giống 1.2).
+> `refresh_token` mới được set trong **HttpOnly Cookie**.
 
 **Errors:** `RESET_TOKEN_INVALID` (400), `RESET_TOKEN_EXPIRED` (400), `SAME_PASSWORD` (422)
 
@@ -448,57 +423,6 @@ PATCH /users/me/settings
 > Giá trị hợp lệ `sort_by`: `"updated_at"`, `"created_at"`, `"custom"` (LexoRank).
 
 **Response 200:** trả về settings đã cập nhật.
-
----
-
-### 2.6 Đăng ký Push Token
-
-```
-POST /users/me/push-token
-```
-
-> Dùng cho mobile (Expo Push Notification). Gọi sau khi đăng nhập thành công và user cấp quyền nhận thông báo. Server lưu token để gửi push notification khi reminder được trigger hoặc app đang background/killed.
-
-**Body:**
-
-```json
-{
-  "push_token": "ExponentPushToken[xxxxxx]",
-  "platform": "ios"
-}
-```
-
-> `platform`: `"ios"` hoặc `"android"`.
-
-**Response 200:**
-
-```json
-{ "data": { "message": "Push token đã được đăng ký." } }
-```
-
-**Errors:** `INVALID_PUSH_TOKEN` (400)
-
----
-
-### 2.7 Huỷ đăng ký Push Token
-
-```
-DELETE /users/me/push-token
-```
-
-> Gọi khi user đăng xuất hoặc tắt thông báo. Server xóa push token khỏi DB để không gửi notification cho thiết bị này nữa.
-
-**Body:**
-
-```json
-{
-  "push_token": "ExponentPushToken[xxxxxx]"
-}
-```
-
-**Response 204**
-
-**Errors:** `PUSH_TOKEN_NOT_FOUND` (404)
 
 ---
 
@@ -624,18 +548,6 @@ DELETE /users/me/push-token
 ]
 ```
 
-**Giải thích `remind_at` và `repeat_type` trên TodoItem:**
-
-> `remind_at`: thời điểm nhắc nhở riêng cho task này (độc lập với Reminder của note). Chỉ áp dụng cho task cấp 1 (`parent_id = null`).  
-> `repeat_type` cho TodoItem: sau khi reminder được trigger, server tự tính `remind_at` tiếp theo theo chu kỳ và reset `is_notified = false`:
-> 
-> - `"none"` — không lặp, sau khi trigger xong `remind_at` giữ nguyên, `is_notified = true`
-> - `"daily"` — cộng thêm 1 ngày
-> - `"weekly"` — cộng thêm 7 ngày
-> - `"monthly"` — cộng thêm 1 tháng (same day-of-month)
-> 
-> Frontend hiển thị: nếu `remind_at != null` thì render badge nhắc nhở dưới todo item. Nếu `repeat_type != "none"` thì hiển thị icon lặp kèm label (ví dụ: "Hàng ngày").
-
 ---
 
 ### 3.1 Lấy danh sách note
@@ -650,12 +562,10 @@ GET /notes
 |---|---|---|---|
 |`view`|Bộ lọc trạng thái|`active` \| `archived` \| `trashed`|`active`|
 |`tag_id`|Lọc theo tag|uuid|—|
-|`search`|Full-text search theo `title` và `content_text`|string|—|
 |`page`|Số trang (Infinite Scroll)|integer|1|
 |`limit`|Số item / trang|integer|50|
 
 > `active`: note không archived, không trashed — gồm cả note được chia sẻ (CTV đã accepted).  
-> `search`: khi có `search`, server bỏ qua `sort_by` và sort theo relevance score (PostgreSQL `ts_rank`). Pinned notes không còn ưu tiên đứng đầu khi search.  
 > Pinned notes **luôn đứng đầu** bất kể `sort_by`. Sau đó sort theo `user_settings.sort_by`.  
 > `sort_by = custom`: sort theo `position` (LexoRank). Server thực hiện sort.
 
@@ -763,21 +673,6 @@ PATCH /notes/:id
 ```
 
 > Server từ chối nếu `client_updated_at` trong request < `client_updated_at` trong DB → 409 CONFLICT.
-
-**Response 409 CONFLICT:**
-
-```json
-{
-  "error": {
-    "code": "CONFLICT",
-    "message": "Note đã được cập nhật từ thiết bị khác.",
-    "server_updated_at": "2025-01-02T05:30:00Z",
-    "client_updated_at": "2025-01-02T05:00:00Z"
-  }
-}
-```
-
-> Frontend nhận 409: lấy `server_updated_at` từ error body → hiển thị thông báo conflict → fetch lại note mới nhất từ `GET /notes/:id` → cho user chọn giữ bản local hay bản server.
 
 **Response 200:** `{ "data": { ...NoteModel } }`  
 **Errors:** `NOTE_NOT_FOUND` (404), `NOTE_DELETED` (410), `CONFLICT` (409), `FORBIDDEN` (403)
@@ -1060,26 +955,6 @@ POST /notes/:id/collaborators/accept
 **Response 200:** `{ "data": { "accepted_at": "2025-01-01T00:00:00Z" } }`  
 **Errors:** `INVITATION_NOT_FOUND` (404), `ALREADY_ACCEPTED` (409)
 
-**WS Event** (phát tới owner và tất cả CTV đã accepted của note):
-
-```json
-{
-  "event": "COLLABORATOR_ACCEPTED",
-  "payload": {
-    "note_id": "uuid",
-    "user": {
-      "id": "uuid",
-      "name": "Nguyen Van B",
-      "email": "b@example.com",
-      "avatar_url": null,
-      "accepted_at": "2025-01-01T00:00:00Z"
-    }
-  }
-}
-```
-
-> Frontend nhận event này: thêm user vào danh sách collaborators trong NoteModel local để cập nhật UI `CollaboratorAvatars` mà không cần fetch lại.
-
 ---
 
 ### 6.4 Xóa cộng tác viên / Tự rời khỏi cộng tác
@@ -1142,17 +1017,13 @@ POST /media/presigned-url
   "file_name": "image.png",
   "file_type": "image/png",
   "file_size": 204800,
-  "note_id": "uuid",
-  "purpose": "note_media"
+  "note_id": "uuid"
 }
 ```
 
-> `note_id`: bắt buộc khi `purpose = "note_media"`. Bỏ qua khi `purpose = "avatar"`.  
-> `purpose`: `"note_media"` (mặc định) | `"avatar"`. Khi `"avatar"`, server lưu file vào path `users/<user_id>/avatar.<ext>` và không tạo bản ghi `media`.
-
-> Giới hạn dung lượng: image ≤ 5MB (kể cả avatar), video ≤ 30MB, PDF ≤ 10MB.  
+> Giới hạn dung lượng: image ≤ 5MB, video ≤ 30MB, PDF ≤ 10MB.  
 > Loại file chấp nhận: `image/*`, `video/*`, `application/pdf`.  
-> Server lưu metadata vào bảng `media` ngay tại bước này (ngoại trừ avatar) — không cần gọi API xác nhận sau.
+> Server lưu metadata vào bảng `media` ngay tại bước này — không cần gọi API xác nhận sau.
 
 **Response 201:**
 
@@ -1167,8 +1038,7 @@ POST /media/presigned-url
 }
 ```
 
-> `media_id`: `null` khi `purpose = "avatar"`.  
-> Client sau khi `PUT <upload_url>` thành công với avatar: gọi tiếp `PATCH /users/me` với `{ "avatar_url": "<file_url>" }` để cập nhật profile.
+> Client sau khi nhận response: thực hiện `PUT <upload_url>` với body binary file và header `Content-Type: image/png` trực tiếp lên S3. Không cần gọi thêm API.
 
 **Errors:** `UNSUPPORTED_FILE_TYPE` (422), `FILE_TOO_LARGE` (422), `NOTE_NOT_FOUND` (404)
 
