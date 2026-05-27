@@ -4,9 +4,11 @@ import { useState, useRef, useEffect } from 'react';
 import { TagChip } from '../ui/TagChip';
 import { colors } from '../../constants/colors';
 import { HoverBtn } from '../ui/HoverBtn';
-// THÊM: Import AppStore để lấy trạng thái theme
 import { useAppStore } from '../../store/useAppStore';
 import { useSelectionStore } from '../../store/useSelectionStore';
+import { exportToTxt, exportToPdf, exportToDocx } from '../../utils/exportNote';
+import { NoteTagMenu } from './TagMenu';
+import { Tag } from '../../api/tagApi';
 
 // Bảng màu cho Chế độ Sáng (Giữ nguyên của bạn)
 const cardColorMap: Record<string, string> = {
@@ -37,7 +39,8 @@ export interface TodoItemData {
 export interface NoteCardData {
   id: string; type: 'text' | 'todo'; color: string;
   title?: string; content_text?: string; is_pinned?: 0 | 1; is_archived?: 0 | 1; is_trashed?: 0 | 1;
-  tags?: string[]; collaborators?: { name: string }[];
+  // ── CHUẨN API: tags là mảng Tag objects { id, name } ──────────────────────
+  tags?: Tag[]; collaborators?: { name: string }[];
   todo_items?: TodoItemData[]; todo_total?: number;
   todo_completed?: number; date?: string; reminder?: string;
   images?: string[];
@@ -56,6 +59,9 @@ interface NoteCardProps {
   // THÊM: cho phép tuỳ chỉnh nút archive (dùng cho màn Archive để hiển thị "Huỷ lưu trữ")
   archiveLabel?: string;
   archiveIcon?: string;
+  // THÊM: prop từ NoteList
+  onTogglePin?: () => void;
+  onRestoreNote?: () => void;
 }
 
 function Avatars({ names, isDark }: { names: string[]; isDark: boolean }) {
@@ -101,32 +107,78 @@ function DotMenu({ isTodo, onAction, onClose, isDark }: {
   onClose: () => void;
   isDark: boolean;
 }) {
-  const baseItems = [
-    { key: 'tag', label: 'Thêm tag' },
-    { key: 'duplicate', label: 'Tạo bản sao' },
-    { key: 'history', label: 'Xem lịch sử phiên bản' },
+  const [showExportSub, setShowExportSub] = useState(false);
+
+  const menuBg = isDark ? '#1F2937' : '#fff';
+  const textColor = isDark ? '#F9FAFB' : colors.textSecondary;
+  const subBg = isDark ? '#111827' : '#F9FAFB';
+  const borderColor = isDark ? '#374151' : colors.borderDefault;
+
+  // 6 items — khớp hoàn toàn với NoteEditor
+  const items = [
     { key: 'delete', label: 'Xóa ghi chú', danger: true },
+    { key: 'tag', label: 'Thêm nhãn' },
+    { key: 'export-file', label: 'Xuất file', hasArrow: true },
+    { key: 'duplicate', label: 'Tạo bản sao' },
+    { key: 'toggle_checkbox', label: isTodo ? 'Ẩn hộp kiểm' : 'Hiển thị hộp kiểm' },
+    { key: 'history', label: 'Lịch sử phiên bản' },
   ];
-  const todoItems = [
-    { key: 'sort', label: 'Sắp xếp theo' },
-    { key: 'clear_done', label: 'Xóa tất cả việc đã hoàn thành' },
+
+  const exportFormats = [
+    { key: 'export_txt', label: 'Xuất ra .TXT' },
+    { key: 'export_pdf', label: 'Xuất ra .PDF' },
+    { key: 'export_docx', label: 'Xuất ra .DOCX' },
   ];
-  const items = isTodo ? [...baseItems.slice(0, 1), ...todoItems, ...baseItems.slice(1)] : baseItems;
 
   return (
-    <View style={[styles.dotMenu, isDark && { backgroundColor: '#1F2937', borderColor: '#374151' }]}>
+    <View style={[styles.dotMenu, { backgroundColor: menuBg, borderColor }]}>
       {items.map((item) => (
-        <HoverBtn
-          key={item.key}
-          style={styles.dotMenuItem}
-          onPress={() => { onAction(item.key); onClose(); }}
-          fullWidth
-          borderRadius={0}
-        >
-          <Text style={[styles.dotMenuText, isDark && { color: '#F9FAFB' }, (item as any).danger && { color: colors.danger }]}>
-            {item.label}
-          </Text>
-        </HoverBtn>
+        <View key={item.key}>
+          <HoverBtn
+            style={styles.dotMenuItem}
+            onPress={() => {
+              if (item.key === 'export-file') {
+                setShowExportSub(v => !v);
+              } else {
+                onAction(item.key);
+                onClose();
+              }
+            }}
+            fullWidth
+            borderRadius={0}
+          >
+            <Text style={[
+              styles.dotMenuText,
+              { color: (item as any).danger ? colors.danger : textColor },
+            ]}>
+              {item.label}
+            </Text>
+            {(item as any).hasArrow && (
+              <Icon
+                source={showExportSub ? 'chevron-up' : 'chevron-down'}
+                size={16}
+                color={textColor}
+              />
+            )}
+          </HoverBtn>
+
+          {/* Sub-menu Xuất file */}
+          {(item.key === 'export-file') && showExportSub && (
+            <View style={[styles.exportSubMenu, { backgroundColor: subBg, borderColor }]}>
+              {exportFormats.map(fmt => (
+                <HoverBtn
+                  key={fmt.key}
+                  style={styles.exportSubItem}
+                  onPress={() => { onAction(fmt.key); onClose(); }}
+                  fullWidth
+                  borderRadius={0}
+                >
+                  <Text style={[styles.dotMenuText, { color: textColor }]}>{fmt.label}</Text>
+                </HoverBtn>
+              ))}
+            </View>
+          )}
+        </View>
       ))}
     </View>
   );
@@ -199,7 +251,7 @@ const stripHtml = (html: string): string =>
     .replace(/\n{3,}/g, '\n\n')
     .trim();
 
-export function NoteCard({ note, isSelected, onSelect, isGridView, onPress, onUpdate, onDelete, onArchive, archiveLabel = 'Lưu trữ', archiveIcon = 'archive-arrow-down-outline' }: NoteCardProps) {
+export function NoteCard({ note, isSelected, onSelect, isGridView, onPress, onUpdate, onDelete, onArchive, archiveLabel = 'Lưu trữ', archiveIcon = 'archive-arrow-down-outline', onTogglePin, onRestoreNote }: NoteCardProps) {
   const { theme } = useAppStore(); // Lấy theme hệ thống
   const isDark = theme === 'dark';
   const { width } = useWindowDimensions();
@@ -211,6 +263,11 @@ export function NoteCard({ note, isSelected, onSelect, isGridView, onPress, onUp
   const [hovered, setHovered] = useState(false);
   const [showColorPicker, setShowColorPicker] = useState(false);
   const [showDotMenu, setShowDotMenu] = useState(false);
+  // ── THÊM: state cho TagMenu ────────────────────────────────────────────────
+  const [showTagMenu, setShowTagMenu] = useState(false);
+  const [tagMenuPos, setTagMenuPos] = useState({ x: 0, y: 0 });
+  const tagBtnRef = useRef<View>(null);
+  // ──────────────────────────────────────────────────────────────────────────
 
   const [localNote, setLocalNote] = useState(note);
 
@@ -234,8 +291,40 @@ export function NoteCard({ note, isSelected, onSelect, isGridView, onPress, onUp
     onUpdate?.(note.id, changes);
   };
 
-  const handleDotAction = (action: string) => {
-    if (action === 'delete') onDelete?.(note.id);
+  const handleDotAction = async (action: string) => {
+    if (action === 'delete') {
+      onDelete?.(note.id);
+    } else if (action === 'tag') {
+      // ── MỞ TagMenu inline — giống Google Keep ────────────────────────────
+      tagBtnRef.current?.measureInWindow((x, y, w, h) => {
+        const screenHeight = Dimensions.get('window').height;
+        const menuHeight = 320;
+        const spaceBelow = screenHeight - (y + h);
+        if (spaceBelow < menuHeight) {
+          setTagMenuPos({ x: x - 200, y: y - menuHeight });
+        } else {
+          setTagMenuPos({ x: x - 200, y: y + h + 4 });
+        }
+        setShowTagMenu(true);
+      });
+      // ────────────────────────────────────────────────────────────────────
+    } else if (action === 'export_txt') {
+      await exportToTxt(note);
+    } else if (action === 'export_pdf') {
+      await exportToPdf(note);
+    } else if (action === 'export_docx') {
+      await exportToDocx(note);
+    } else if (action === 'duplicate') {
+      // Placeholder — sẽ gọi API tạo bản sao
+      alert('Tạo bản sao (Cần API)');
+    } else if (action === 'toggle_checkbox') {
+      // Chuyển đổi giữa text ↔ todo
+      const newType = note.type === 'todo' ? 'text' : 'todo';
+      onUpdate?.(note.id, { type: newType });
+    } else if (action === 'history') {
+      // Placeholder — sẽ gọi API lịch sử
+      alert('Lịch sử phiên bản (Cần API)');
+    }
   };
 
   // Logic chọn bảng màu bg
@@ -321,7 +410,7 @@ export function NoteCard({ note, isSelected, onSelect, isGridView, onPress, onUp
 
           {localNote.tags && localNote.tags.length > 0 && (
             <View style={styles.tagsRow}>
-              {localNote.tags.map((tag) => <TagChip key={tag} label={tag} />)}
+              {localNote.tags.map((tag) => <TagChip key={tag.id} label={tag.name} />)}
             </View>
           )}
 
@@ -382,12 +471,44 @@ export function NoteCard({ note, isSelected, onSelect, isGridView, onPress, onUp
                 }}
               />
             </View>
+
+            {/* Ref ẩn để đo vị trí mở TagMenu — gắn vào nút "Thêm nhãn" trong DotMenu */}
+            <View ref={tagBtnRef} style={{ width: 0, height: 0, position: 'absolute' }} />
+
             <Modal visible={showDotMenu} transparent animationType="none" onRequestClose={() => setShowDotMenu(false)}>
               <TouchableOpacity style={StyleSheet.absoluteFillObject} onPress={() => setShowDotMenu(false)} activeOpacity={1} />
               <View style={[styles.dotMenu, { position: 'absolute', top: dotMenuPos.y, left: dotMenuPos.x }]}>
                 <DotMenu isTodo={isTodo} onAction={handleDotAction} onClose={() => setShowDotMenu(false)} isDark={isDark} />
               </View>
             </Modal>
+
+            {/* ── TagMenu Modal — Google Keep style ────────────────────────── */}
+            <Modal
+              visible={showTagMenu}
+              transparent
+              animationType="none"
+              onRequestClose={() => setShowTagMenu(false)}
+            >
+              <TouchableOpacity
+                style={StyleSheet.absoluteFillObject}
+                onPress={() => setShowTagMenu(false)}
+                activeOpacity={1}
+              />
+              <View style={{ position: 'absolute', top: tagMenuPos.y, left: tagMenuPos.x, zIndex: 9999 }}>
+                <NoteTagMenu
+                  noteId={note.id}
+                  noteTags={localNote.tags ?? []}
+                  onTagsChange={(updatedTags) => {
+                    // Cập nhật local state ngay
+                    setLocalNote(prev => ({ ...prev, tags: updatedTags }));
+                    // Cập nhật lên parent (index.tsx / store)
+                    onUpdate?.(note.id, { tags: updatedTags });
+                  }}
+                  onClose={() => setShowTagMenu(false)}
+                />
+              </View>
+            </Modal>
+            {/* ─────────────────────────────────────────────────────────────── */}
           </View>
         )}
 
@@ -482,8 +603,24 @@ const styles = StyleSheet.create({
       web: { boxShadow: '0 4px 16px rgba(0,0,0,0.12)' } as any,
     }),
   },
-  dotMenuItem: { paddingHorizontal: 16, paddingVertical: 10, ...Platform.select({ web: { cursor: 'pointer' } as any }), },
-  dotMenuText: { fontFamily: 'Inter-Regular', fontSize: 14, color: colors.textSecondary },
+  dotMenuItem: {
+    paddingHorizontal: 16, paddingVertical: 10,
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    ...Platform.select({ web: { cursor: 'pointer' } as any }),
+  },
+  dotMenuText: { fontFamily: 'Inter-Regular', fontSize: 14, color: colors.textSecondary, flex: 1 },
+  exportSubMenu: {
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.borderDefault,
+  },
+  exportSubItem: {
+    paddingHorizontal: 28,
+    paddingVertical: 9,
+    flexDirection: 'row',
+    alignItems: 'center',
+    ...Platform.select({ web: { cursor: 'pointer' } as any }),
+  },
   tooltip: { position: 'absolute', bottom: '100%', left: '50%', backgroundColor: 'rgba(0,0,0,0.75)', borderRadius: 4, paddingHorizontal: 8, paddingVertical: 4, zIndex: 999, marginBottom: 4, ...Platform.select({ web: { transform: 'translateX(-50%)', whiteSpace: 'nowrap' } as any }) } as any,
   tooltipText: { fontFamily: 'Inter-Regular', fontSize: 12, color: '#fff' },
 });
