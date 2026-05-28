@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import Notes, TodoItems,UserSettings,Tags, Reminders, Users
+from .models import Notes, TodoItems,UserSettings,Tags,Media,Users
 
 class ChecklistItemSerializer(serializers.ModelSerializer):
     class Meta:
@@ -81,6 +81,9 @@ class TagSerializer(serializers.ModelSerializer):
             "updated_at",
         ]
 
+from rest_framework import serializers
+from .models import Notes
+
 
 class UpdateNoteSerializer(serializers.ModelSerializer):
 
@@ -140,6 +143,10 @@ class UpdateNoteSerializer(serializers.ModelSerializer):
             )
 
         return value
+# serializers.py
+from rest_framework import serializers
+from .models import Reminders
+
 class ReminderSerializer(serializers.ModelSerializer):
     class Meta:
         model = Reminders
@@ -154,6 +161,64 @@ class UpdateReminderSerializer(serializers.ModelSerializer):
     class Meta:
         model = Reminders
         fields = ['remind_at', 'repeat_type', 'is_notified']
+
+# serializers.py
+from rest_framework import serializers
+from .models import Notifications
+
+class NotificationSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Notifications
+        fields = ['id', 'user', 'type', 'note', 'payload', 'is_read', 'created_at']
+        read_only_fields = ['id', 'user', 'type', 'note', 'payload', 'created_at']
+
+class CreateNotificationSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Notifications
+        fields = ['type', 'note', 'payload']
+
+# serializers.py
+from rest_framework import serializers
+from .models import TodoItems
+
+class TodoItemChildSerializer(serializers.ModelSerializer):
+    """Serializer cho todo con (không lồng thêm)"""
+    class Meta:
+        model = TodoItems
+        fields = ['id', 'title', 'content', 'is_completed', 'position', 
+                  'remind_at', 'repeat_type', 'is_notified', 'created_at', 'updated_at']
+
+class TodoItemSerializer(serializers.ModelSerializer):
+    """Serializer cho todo cha — bao gồm danh sách con"""
+    children = serializers.SerializerMethodField()
+
+    class Meta:
+        model = TodoItems
+        fields = ['id', 'note', 'parent', 'title', 'content', 'is_completed',
+                  'position', 'remind_at', 'repeat_type', 'is_notified',
+                  'created_at', 'updated_at', 'children']
+
+    def get_children(self, obj):
+        children = TodoItems.objects.filter(parent=obj).order_by('position')
+        return TodoItemChildSerializer(children, many=True).data
+
+class CreateTodoItemSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = TodoItems
+        fields = ['note', 'parent', 'title', 'content', 'position', 'remind_at', 'repeat_type']
+
+class UpdateTodoItemSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = TodoItems
+        fields = ['title', 'content', 'is_completed', 'position', 'remind_at', 'repeat_type']
+
+
+
+class MediaSerializer(serializers.ModelSerializer):
+
+    class Meta:
+        model = Media
+        fields = "__all__"
 
 class UserProfileSerializer(serializers.ModelSerializer):
     class Meta:
