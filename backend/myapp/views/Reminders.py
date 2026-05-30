@@ -75,10 +75,11 @@ def reminder_detail(request, reminder_id):
     """
     GET    /reminders/<id>/  - Lấy chi tiết reminder
     PUT    /reminders/<id>/  - Cập nhật reminder
-    DELETE /reminders/<id>/  - Xóa mềm reminder
+    DELETE /reminders/<id>/  - Xóa CỨNG (Hard Delete) hoàn toàn khỏi Database
     """
     try:
-        reminder = Reminders.objects.get(id=reminder_id, user=request.user, is_deleted=False)
+        # Tìm bản ghi của chính user đó 
+        reminder = Reminders.objects.get(id=reminder_id, user=request.user)
     except Reminders.DoesNotExist:
         return Response({'error': 'Reminder không tồn tại'}, status=status.HTTP_404_NOT_FOUND)
 
@@ -105,8 +106,10 @@ def reminder_detail(request, reminder_id):
 
         return Response(ReminderSerializer(reminder).data)
 
+    # 🔥 ĐOẠN ĐÃ SỬA: Thực hiện Xóa cứng vĩnh viễn dữ liệu khỏi bảng
     elif request.method == 'DELETE':
-        reminder.is_deleted = True
-        reminder.updated_at = timezone.now()
-        reminder.save()
-        return Response(status=status.HTTP_204_NO_CONTENT)
+        reminder.delete() # 👈 Xóa hẳn bản ghi bằng ORM .delete() thay vì gán cờ is_deleted = True
+        return Response(
+            {"message": "Đã xóa vĩnh viễn nhắc nhở khỏi hệ thống"}, 
+            status=status.HTTP_200_OK
+        )

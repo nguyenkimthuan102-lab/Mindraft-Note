@@ -1,11 +1,25 @@
+// src/utils/useLocalNotification.ts
 import * as Notifications from 'expo-notifications';
 import { Platform } from 'react-native';
 import { ReminderData } from '../api/reminderApi';
+import { createNotification } from '../api/notificationApi';
+import { useNotificationStore } from '../store/useNotificationStore';
+import {
+  scheduleWebNotification,
+  cancelWebNotification,
+  requestWebNotificationPermission,
+} from './webNotification'; // ← THÊM
 
 export const useLocalNotification = () => {
-  
-  // Đăng ký quyền hiển thị thông báo với HĐH
+
+  const { loadNotifications } = useNotificationStore.getState();
+
   const registerForPushNotifications = async () => {
+    // Web dùng Web Notification API riêng
+    if (Platform.OS === 'web') {
+      return await requestWebNotificationPermission();
+    }
+
     if (Platform.OS === 'android') {
       await Notifications.setNotificationChannelAsync('reminder-channel', {
         name: 'Nhắc nhở công việc',
@@ -24,20 +38,33 @@ export const useLocalNotification = () => {
     return finalStatus === 'granted';
   };
 
-  // Tạo lịch phát thông báo cục bộ dựa trên thời gian nhắc nhở (remind_at) và chế độ lặp
-  const scheduleReminderNotification = async (reminder: ReminderData, titleFallback: string) => {
+  const scheduleReminderNotification = async (
+    reminder: ReminderData,
+    titleFallback: string
+  ) => {
+    const triggerDate = new Date(reminder.remind_at);
+    if (triggerDate < new Date()) return null;
+
+    // ── WEB: dùng Web Notification API ──────────────────────────────────
+    if (Platform.OS === 'web') {
+      const success = await scheduleWebNotification({
+        id: reminder.id,
+        title: '🔔 Nhắc nhở ghi chú',
+        body: titleFallback,
+        remindAt: triggerDate,
+        noteId: reminder.note,
+      });
+      return success ? reminder.id : null;
+    }
+
+    // ── MOBILE: dùng expo-notifications ─────────────────────────────────
+    await cancelReminderNotification(reminder.id);
+
     const hasPermission = await registerForPushNotifications();
     if (!hasPermission) return null;
 
-    // Hủy lịch cũ nếu trùng mã Note ID để tránh lặp lặp âm thanh vô cớ
-    await cancelReminderNotification(reminder.id);
-
-    const triggerDate = new Date(reminder.remind_at);
-    if (triggerDate < new Date()) return null; // Quá khứ thì không schedule
-
     let trigger: Notifications.NotificationTriggerInput;
 
-    // Phân loại kiểu lặp tương thích với chuẩn Expo SDK mới
     if (reminder.repeat_type === 'daily') {
       trigger = {
         hour: triggerDate.getHours(),
@@ -46,7 +73,7 @@ export const useLocalNotification = () => {
       } as Notifications.CalendarTriggerInput;
     } else if (reminder.repeat_type === 'weekly') {
       trigger = {
-        weekday: triggerDate.getDay() + 1, // Expo weekday bắt đầu từ 1 (Chủ Nhật)
+        weekday: triggerDate.getDay() + 1,
         hour: triggerDate.getHours(),
         minute: triggerDate.getMinutes(),
         repeats: true,
@@ -59,19 +86,20 @@ export const useLocalNotification = () => {
         repeats: true,
       } as Notifications.CalendarTriggerInput;
     } else {
-      // Sửa lỗi ở đây: Bọc đối tượng Date vào thuộc tính date theo chuẩn DateTriggerInput
-      trigger = {
-        date: triggerDate,
-      } as Notifications.DateTriggerInput;
+      trigger = { date: triggerDate } as Notifications.DateTriggerInput;
     }
 
     try {
       const localId = await Notifications.scheduleNotificationAsync({
-        identifier: reminder.id, // Dùng chính id của reminder làm identifier để dễ hủy
+        identifier: reminder.id,
         content: {
           title: '🔔 Nhắc nhở ghi chú',
           body: titleFallback,
-          data: { note_id: reminder.note }, // Đính kèm payload nhảy màn hình
+          data: {
+            note_id: reminder.note,
+            reminder_id: reminder.id,
+            note_title: titleFallback,
+          },
           sound: true,
         },
         trigger,
@@ -83,8 +111,13 @@ export const useLocalNotification = () => {
     }
   };
 
-  // Hủy thông báo theo ID định danh
   const cancelReminderNotification = async (reminderId: string) => {
+    // Web
+    if (Platform.OS === 'web') {
+      cancelWebNotification(reminderId);
+      return;
+    }
+    // Mobile
     try {
       await Notifications.cancelScheduledNotificationAsync(reminderId);
     } catch (e) {
@@ -92,9 +125,33 @@ export const useLocalNotification = () => {
     }
   };
 
+  const handleNotificationReceived = async (
+    notification: Notifications.Notification
+  ) => {
+    const data = notification.request.content.data;
+    if (!data?.reminder_id) return;
+
+    try {
+      // ĐÚNG — ép về string
+        await createNotification({
+        type: 'reminder',
+        note: typeof data.note_id === 'string' ? data.note_id : null,
+        payload: {
+        message: String(notification.request.content.body ?? 'Nhắc nhở'),
+        note_title: String(data.note_title ?? ''),
+        reminder_id: String(data.reminder_id ?? ''),
+          },
+        });
+      await loadNotifications();
+    } catch (err) {
+      console.error('Lỗi tạo server notification:', err);
+    }
+  };
+
   return {
     registerForPushNotifications,
     scheduleReminderNotification,
     cancelReminderNotification,
+    handleNotificationReceived,
   };
 };

@@ -156,6 +156,10 @@ class Notes(models.Model):
     is_archived = models.IntegerField()
     is_trashed = models.IntegerField()
     is_deleted = models.IntegerField()
+<<<<<<< HEAD
+=======
+    is_reminded = models.IntegerField()
+>>>>>>> df26e1e (Update reminder and notifications)
 
     deleted_at = models.DateTimeField(
         blank=True,
@@ -201,7 +205,11 @@ class Notifications(models.Model):
         blank=True,
         null=True
     )
+<<<<<<< HEAD
 
+=======
+    is_deleted = models.IntegerField()
+>>>>>>> df26e1e (Update reminder and notifications)
     is_read = models.IntegerField()
     created_at = models.DateTimeField()
 

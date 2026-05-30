@@ -94,51 +94,41 @@ def handle_get_notes(request):
 
 def handle_create_note(request):
     serializer = CreateNoteSerializer(data=request.data)
+    
+    # Chỉ cần validate 1 lần duy nhất ở đây
     if not serializer.is_valid():
-            return Response({
-                "error": {
-                    "code": "INVALID_DATA",
-                    "message": "Dữ liệu gửi lên không hợp lệ."
-                }
-            }, status=status.HTTP_422_UNPROCESSABLE_ENTITY)
+        return Response({
+            "error": {
+                "code": "INVALID_DATA",
+                "message": "Dữ liệu gửi lên không hợp lệ."
+            }
+        }, status=status.HTTP_422_UNPROCESSABLE_ENTITY)
 
     note_type = serializer.validated_data.get("type")
-
-    serializer.is_valid(raise_exception=True)
-
     now = timezone.now()
 
     # CREATE NOTE
     note = Notes.objects.create(
         id=str(uuid.uuid4()),
-
         user=request.user,
-
         title=serializer.validated_data.get("title", ""),
-
-        content=serializer.validated_data.get("content", []), # Sử dụng validated_data của serializer để validate, 
-        #tránh cho phép dữ liệu rác vào database
-
+        
+        # Sử dụng validated_data của serializer để tránh dữ liệu rác vào database
+        content=serializer.validated_data.get("content", []), 
         content_text=serializer.validated_data.get("content_text", ""),
-
         type=note_type,
-
         color=serializer.validated_data.get("color", "default"),
-
+        
+        # Thiết lập giá trị mặc định cho các cờ trạng thái số nguyên (Integer)
         is_pinned=0,
-
         is_archived=0,
-
         is_trashed=0,
-
         is_deleted=0,
-
+        is_reminded=0,  # 🔥 THÊM DÒNG NÀY: Khắc phục lỗi MySQL Column 'is_reminded' cannot be null
+        
         position=serializer.validated_data.get("position", "a0"),
-
         created_at=now,
-
         server_updated_at=now,
-
         client_updated_at=serializer.validated_data.get("client_updated_at", now),
     )
 
@@ -484,6 +474,45 @@ def toggle_archive_note(request, note_id):
     return Response({
         "data": serializer.data
     })
+@api_view(["PATCH"])
+@permission_classes([IsAuthenticated])
+def toggle_reminded_note(request, note_id):
+
+    try:
+
+        note = Notes.objects.get(
+            id=note_id,
+            user=request.user,
+            is_deleted=0
+        )
+
+    except Notes.DoesNotExist:
+
+        return Response(
+            {
+                "error": "Note not found"
+            },
+            status=status.HTTP_404_NOT_FOUND
+        )
+
+    # TOGGLE ARCHIVE
+    if note.is_reminded == 1:
+
+        note.is_reminded = 0
+
+    else:
+
+        note.is_reminded = 1
+
+    note.server_updated_at = timezone.now()
+
+    note.save()
+
+    serializer = NoteSerializer(note)
+
+    return Response({
+        "data": serializer.data
+    })
 
 
 @api_view(["PATCH"])
@@ -592,7 +621,6 @@ def trash_note(request, note_id):
 @api_view(["POST"])
 @permission_classes([IsAuthenticated])
 def upload_note_image(request, note_id):
-
     file = request.FILES.get("file")
 
     if not file:
@@ -602,9 +630,10 @@ def upload_note_image(request, note_id):
         )
 
     try:
+        # 🔥 ĐÃ SỬA: Đổi từ owner=request.user thành user=request.user theo chuẩn models.py của bạn
         note = Notes.objects.get(
             id=note_id,
-            owner=request.user,
+            user=request.user,
             is_deleted=0
         )
     except Notes.DoesNotExist:
@@ -613,31 +642,30 @@ def upload_note_image(request, note_id):
             status=status.HTTP_404_NOT_FOUND
         )
 
+    # Lấy định dạng mở rộng file
     ext = os.path.splitext(file.name)[1]
-
     filename = f"{uuid.uuid4()}{ext}"
 
-    upload_dir = os.path.join(
-        settings.MEDIA_ROOT,
-        "notes"
-    )
-
+    # Đường dẫn lưu file vật lý cục bộ
+    upload_dir = os.path.join(settings.MEDIA_ROOT, "notes")
     os.makedirs(upload_dir, exist_ok=True)
+    file_path = os.path.join(upload_dir, filename)
 
-    file_path = os.path.join(
-        upload_dir,
-        filename
-    )
-
+    # Ghi file theo từng chunk để tối ưu RAM
     with open(file_path, "wb+") as destination:
         for chunk in file.chunks():
             destination.write(chunk)
+
+    # Tạo đường dẫn URL tuyệt đối giúp React Native đọc được từ xa dễ dàng
+    # Sử dụng request.build_absolute_uri() để tự động gắn http://domain:port/ tương ứng
+    relative_url = f"{settings.MEDIA_URL}notes/{filename}"
+    absolute_url = request.build_absolute_uri(relative_url)
 
     media = Media.objects.create(
         id=str(uuid.uuid4()),
         note=note,
         uploaded_by=request.user,
-        file_url=f"/media/notes/{filename}",
+        file_url=absolute_url, # 🔥 Trả về full link tuyệt đối
         file_type=file.content_type,
         file_size=file.size,
         is_deleted=0,
