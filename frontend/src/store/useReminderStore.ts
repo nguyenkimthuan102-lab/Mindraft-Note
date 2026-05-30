@@ -2,26 +2,51 @@ import { create } from 'zustand';
 import {
   ReminderData,
   fetchReminders,
+  createReminder,
   updateReminder,
   deleteReminder,
-} from 'src/api/reminderApi';
-// 🔥 IMPORT HOOK THÔNG BÁO CỤC BỘ
-import { useLocalNotification } from 'src/hooks/useLocalNotification';
+} from '../api/reminderApi';
 
 interface ReminderStore {
   reminders: ReminderData[];
   loading: boolean;
   loadReminders: () => Promise<void>;
+  createReminderAction: (
+    data: Pick<ReminderData, 'note' | 'remind_at' | 'repeat_type'> & {
+      note_title?: string;
+      note_color?: string;
+    },
+    onSuccessNotification?: (created: ReminderData) => Promise<void>
+  ) => Promise<ReminderData>;
   updateReminderAction: (
     id: string,
-    data: Partial<Pick<ReminderData, 'remind_at' | 'repeat_type' | 'is_notified'>>
+    data: Partial<Pick<ReminderData, 'remind_at' | 'repeat_type' | 'is_notified'>>,
+    onSuccessNotification?: (updatedData: ReminderData) => Promise<void>
   ) => Promise<void>;
-  deleteReminderAction: (id: string) => Promise<void>;
+  deleteReminderAction: (
+    id: string,
+    onSuccessNotification?: () => Promise<void>
+  ) => Promise<void>;
 }
 
 export const useReminderStore = create<ReminderStore>((set, get) => ({
   reminders: [],
   loading: false,
+
+  createReminderAction: async (data, onSuccessNotification) => {
+    try {
+      const created = await createReminder(data);
+      // Thêm vào đầu danh sách để hiện ngay
+      set(s => ({ reminders: [created, ...s.reminders] }));
+      if (onSuccessNotification) {
+        await onSuccessNotification(created);
+      }
+      return created;
+    } catch (err) {
+      console.error('Lỗi tạo nhắc nhở:', err);
+      throw new Error('Không thể tạo nhắc nhở');
+    }
+  },
 
   loadReminders: async () => {
     set({ loading: true });
@@ -30,16 +55,15 @@ export const useReminderStore = create<ReminderStore>((set, get) => ({
       // Lọc is_deleted = 0 ở frontend phòng trường hợp backend trả về cả deleted
       const active = data.filter(r => r.is_deleted === 0);
       set({ reminders: active });
+    } catch (err) {
+      console.error('Lỗi tải danh sách nhắc nhở:', err);
     } finally {
       set({ loading: false });
     }
   },
 
-  updateReminderAction: async (id, data) => {
-    // Kích hoạt hàm quản lý notification từ hook
-    const { scheduleReminderNotification } = useLocalNotification();
-
-    // Optimistic update (Cập nhật giao diện trước để tạo cảm giác mượt mà)
+  updateReminderAction: async (id, data, onSuccessNotification) => {
+    // Optimistic update: Cập nhật giao diện trước cho mượt mà
     set(s => ({
       reminders: s.reminders.map(r => r.id === id ? { ...r, ...data } : r),
     }));
@@ -50,36 +74,35 @@ export const useReminderStore = create<ReminderStore>((set, get) => ({
         reminders: s.reminders.map(r => r.id === id ? updated : r),
       }));
 
-      // 🔥 THÊM: Nếu cập nhật hoặc thiết lập thời gian, tự động cập nhật lịch báo thức tương ứng
-      if (data.remind_at) {
-        // Tái tạo lại chuỗi ký tự hiển thị từ thông tin note_id
-        const titleFallback = `Nội dung ghi chú #${updated.note.slice(0, 8)}`;
-        await scheduleReminderNotification(updated, titleFallback);
+      // Nếu cập nhật thời gian thành công và có hàm callback notification từ UI truyền xuống
+      if (data.remind_at && onSuccessNotification) {
+        await onSuccessNotification(updated);
       }
-    } catch {
-      await get().loadReminders(); // rollback nếu lỗi mạng/server
-      throw new Error('Không thể cập nhật');
+    } catch (err) {
+      await get().loadReminders(); // Rollback khôi phục lại dữ liệu cũ nếu API lỗi
+      throw new Error('Không thể cập nhật nhắc nhở');
     }
   },
 
-  deleteReminderAction: async (id) => {
-    // Kích hoạt hàm hủy notification từ hook
-    const { cancelReminderNotification } = useLocalNotification();
-    
+  deleteReminderAction: async (id, onSuccessNotification) => {
     const backup = get().reminders.find(r => r.id === id);
     
-    // Xóa khỏi UI ngay (optimistic)
+    // Xóa ngay lập tức khỏi giao diện (Optimistic UI)
     set(s => ({ reminders: s.reminders.filter(r => r.id !== id) }));
 
     try {
-      await deleteReminder(id); // backend soft delete: is_deleted = 1
+      await deleteReminder(id); // Gọi API soft delete phía backend
       
-      // 🔥 THÊM: Hủy hẳn lịch báo thức trên máy của người dùng sau khi xóa thành công
-      await cancelReminderNotification(id);
-    } catch {
-      // Rollback đưa phần tử cũ về vị trí nếu API lỗi
-      if (backup) set(s => ({ reminders: [backup, ...s.reminders] }));
-      throw new Error('Không thể xóa');
+      // Nếu xóa backend thành công và có hàm callback từ UI truyền xuống thì tiến hành hủy lịch báo thức trên thiết bị
+      if (onSuccessNotification) {
+        await onSuccessNotification();
+      }
+    } catch (err) {
+      // Rollback đưa phần tử cũ về vị trí ban đầu nếu API bị lỗi
+      if (backup) {
+        set(s => ({ reminders: [backup, ...s.reminders] }));
+      }
+      throw new Error('Không thể xóa nhắc nhở');
     }
   },
 }));

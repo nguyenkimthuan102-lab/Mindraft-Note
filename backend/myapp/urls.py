@@ -7,8 +7,6 @@ from .views.Notes_task import *
 from .views.Reminders import *
 from .views.Notify import *
 from .views.Todoitems import *
-#from .views.tag_views import *
-#from .views.media_views import *
 
 # Import cụ thể từ profile view (ở file 1)
 from .views.profile import (
@@ -48,13 +46,15 @@ urlpatterns = [
     path('notes/<str:note_id>/pin', toggle_pin_note),
     path('notes/<str:note_id>/archive', toggle_archive_note),
     path('notes/<str:note_id>/trash', trash_note),
+    path('notes/<str:note_id>/toggle-remind/', toggle_reminded_note, name='toggle-remind-note'),
     path("notes/<str:note_id>/permanent-delete", permanent_delete_note),
 
     # ==========================================
     # MEDIA (Hình ảnh & File)
     # ==========================================
-    path("media/presigned-url", presigned_url_view, name="presigned-url"), 
     path('notes/<str:note_id>/media', upload_note_image, name='upload_note_image'),
+    path('notes/<str:note_id>/media/list/', get_note_media, name='get_note_media'),    
+    path('notes/media/<str:media_id>/delete/', delete_media, name='delete_media'),
 
     # ==========================================
     # TAGS (Nhãn)

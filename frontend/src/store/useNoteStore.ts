@@ -4,6 +4,20 @@ import {
   fetchNotes, updateNote, trashNote, toggleArchiveNote, togglePinNote,
   createNoteText, createNoteTodo, restoreNote, deleteNotePermanently,
 } from '../api/noteApi';
+import { deleteReminder, fetchReminders } from '../api/reminderApi';
+
+// Helper: tìm và xóa tất cả reminder của một note (silent, không throw)
+const deleteRemindersForNote = async (noteId: string) => {
+  try {
+    const reminders = await fetchReminders();
+    const toDelete = reminders.filter(r => r.note === noteId && r.is_deleted === 0);
+    if (toDelete.length > 0) {
+      await Promise.all(toDelete.map(r => deleteReminder(r.id)));
+    }
+  } catch (err) {
+    console.warn('Không thể xóa reminder của note:', noteId, err);
+  }
+};
 
 type ViewMode = 'grid' | 'list';
 type EditorMode = 'text' | 'todo';
@@ -101,6 +115,8 @@ export const useNoteStore = create<NoteStoreState>((set, get) => ({
     set({ notes: oldNotes.filter(n => n.id !== id) });
     try {
       await trashNote(id);
+      // Xóa luôn các reminder liên quan (không chặn UI, lỗi chỉ log)
+      deleteRemindersForNote(id);
     } catch {
       set({ notes: oldNotes });
     }
@@ -123,6 +139,7 @@ export const useNoteStore = create<NoteStoreState>((set, get) => ({
     set({ notes: oldNotes.filter(n => n.id !== id) });
     try {
       await deleteNotePermanently(id);
+      deleteRemindersForNote(id);
     } catch {
       set({ notes: oldNotes });
     }
@@ -135,6 +152,8 @@ export const useNoteStore = create<NoteStoreState>((set, get) => ({
     set({ notes: [] });
     try {
       await Promise.all(oldNotes.map(n => deleteNotePermanently(n.id)));
+      // Xóa reminder của tất cả note trong trash
+      await Promise.all(oldNotes.map(n => deleteRemindersForNote(n.id)));
     } catch {
       set({ notes: oldNotes });
     }
@@ -264,6 +283,7 @@ export const useNoteStore = create<NoteStoreState>((set, get) => ({
     set({ notes: oldNotes.filter(n => !ids.includes(n.id)) });
     try {
       await Promise.all(ids.map(id => trashNote(id)));
+      ids.forEach(id => deleteRemindersForNote(id));
     } catch {
       set({ notes: oldNotes });
     }

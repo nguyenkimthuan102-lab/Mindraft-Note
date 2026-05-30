@@ -4,7 +4,10 @@ import {
   StyleSheet, Alert, Platform,
 } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { ReminderData } from 'src/api/reminderApi';
+import { ReminderData } from '../../api/reminderApi';
+import { useLocalNotification } from '../../hooks/useLocalNotification';
+
+const isWeb = Platform.OS === 'web';
 
 const REPEAT_OPTIONS = [
   { label: 'Không lặp', value: 'none' },
@@ -19,34 +22,53 @@ const NOTE_COLOR_MAP: Record<string, string> = {
   blue: '#D3E3FD', purple: '#E8DEFC', pink: '#FDCFE8', brown: '#F0E6DA',
 };
 
+// Chuyển Date → chuỗi "YYYY-MM-DDTHH:MM" cho input datetime-local
+const toDatetimeLocal = (d: Date): string => {
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+};
+
 interface Props {
   reminder: ReminderData;
   isDark: boolean;
-  onUpdate: (id: string, data: Partial<ReminderData>) => Promise<void>;
-  onDelete: (id: string) => Promise<void>;
+  onUpdate: (
+    id: string,
+    data: Partial<ReminderData>,
+    onSuccessNotification?: (updatedData: ReminderData) => Promise<void>
+  ) => Promise<void>;
+  onDelete: (
+    id: string,
+    onSuccessNotification?: () => Promise<void>
+  ) => Promise<void>;
 }
 
 export const ReminderCard = ({ reminder, isDark, onUpdate, onDelete }: Props) => {
   const [expanded, setExpanded] = useState(false);
   const [editDate, setEditDate] = useState(new Date(reminder.remind_at));
+  // State riêng cho Web input (chuỗi datetime-local)
+  const [webDatetimeValue, setWebDatetimeValue] = useState(
+    toDatetimeLocal(new Date(reminder.remind_at))
+  );
   const [editRepeat, setEditRepeat] = useState<ReminderData['repeat_type']>(reminder.repeat_type);
   const [saving, setSaving] = useState(false);
+  const [errorMsg, setErrorMsg] = useState('');
+
+  const { scheduleReminderNotification, cancelReminderNotification } = useLocalNotification();
 
   const c = {
-    card:      isDark ? '#1f2937' : '#ffffff',
-    border:    isDark ? '#374151' : '#e5e7eb',
-    text:      isDark ? '#f9fafb' : '#111827',
-    sub:       isDark ? '#9ca3af' : '#6b7280',
-    chip:      isDark ? '#374151' : '#f3f4f6',
-    chipActive:isDark ? '#1d4ed8' : '#3b82f6',
-    expandBg:  isDark ? '#111827' : '#f9fafb',
+    card:       isDark ? '#1f2937' : '#ffffff',
+    border:     isDark ? '#374151' : '#e5e7eb',
+    text:       isDark ? '#f9fafb' : '#111827',
+    sub:        isDark ? '#9ca3af' : '#6b7280',
+    chip:       isDark ? '#374151' : '#f3f4f6',
+    chipActive: isDark ? '#1d4ed8' : '#3b82f6',
+    expandBg:   isDark ? '#111827' : '#f9fafb',
+    inputBg:    isDark ? '#1f2937' : '#ffffff',
   };
 
   const isPast = new Date(reminder.remind_at) < new Date();
-  
   const noteBg = NOTE_COLOR_MAP[reminder.note_color ?? 'default'];
   const displayTitle = reminder.note_title || `Ghi chú #${reminder.note?.slice(0, 8) || ''}`;
-  
   const repeatLabel = REPEAT_OPTIONS.find(r => r.value === reminder.repeat_type)?.label ?? '';
 
   const formatDate = (d: Date) =>
@@ -55,6 +77,7 @@ export const ReminderCard = ({ reminder, isDark, onUpdate, onDelete }: Props) =>
       year: 'numeric', hour: '2-digit', minute: '2-digit',
     });
 
+  // Mobile only: chỉnh từng field bằng nút +/−
   const adjustDate = (field: 'day' | 'hour' | 'minute', delta: number) => {
     const d = new Date(editDate);
     if (field === 'day')    d.setDate(d.getDate() + delta);
@@ -63,68 +86,111 @@ export const ReminderCard = ({ reminder, isDark, onUpdate, onDelete }: Props) =>
     setEditDate(d);
   };
 
-  // 🔥 ĐIỂM KÍCH HOẠT: Đã tối ưu hóa kiểm tra lỗi
+  // Web only: xử lý khi input datetime-local thay đổi
+  const handleWebDatetimeChange = (e: any) => {
+    const val = e.target.value; // "YYYY-MM-DDTHH:MM"
+    setWebDatetimeValue(val);
+    if (val) {
+      setEditDate(new Date(val));
+      setErrorMsg('');
+    }
+  };
+
+  const showAlert = (title: string, message: string) => {
+    if (isWeb) {
+      setErrorMsg(message);
+    } else {
+      Alert.alert(title, message);
+    }
+  };
+
   const handleSave = async () => {
     if (saving) return;
+    setErrorMsg('');
 
-    // Chặn chống đặt lịch báo thức trong quá khứ
-    if (editDate < new Date()) {
-      Alert.alert('Thời gian không hợp lệ', 'Không thể đặt lịch nhắc nhở vào thời gian đã qua.');
+    const targetDate = isWeb ? new Date(webDatetimeValue) : editDate;
+
+    if (!targetDate || isNaN(targetDate.getTime())) {
+      showAlert('Lỗi', 'Thời gian không hợp lệ.');
+      return;
+    }
+
+    if (targetDate < new Date()) {
+      showAlert('Thời gian không hợp lệ', 'Không thể đặt nhắc nhở vào thời gian đã qua.');
       return;
     }
 
     setSaving(true);
     try {
-      // 🚀 Store (useReminderStore) nhận data này sẽ tự chạy ngầm luồng xin quyền + đặt lịch expo-notifications
+      const handleNotificationSetup = async (updatedData: ReminderData) => {
+        const titleFallback = `Nội dung ghi chú #${updatedData.note.slice(0, 8)}`;
+        await scheduleReminderNotification(updatedData, titleFallback);
+      };
+
       await onUpdate(reminder.id, {
-        remind_at: editDate.toISOString(),
+        remind_at: targetDate.toISOString(),
         repeat_type: editRepeat,
-      });
+      }, handleNotificationSetup);
+
       setExpanded(false);
     } catch (err) {
-      Alert.alert('Lỗi', 'Không thể lưu lịch nhắc. Vui lòng thử lại.');
+      showAlert('Lỗi', 'Không thể lưu lịch nhắc. Vui lòng thử lại.');
     } finally {
       setSaving(false);
     }
   };
 
   const handleDelete = () => {
-    Alert.alert(
-      'Xóa nhắc nhở',
-      `Xóa nhắc nhở cho "${displayTitle}"?`,
-      [
-        { text: 'Hủy', style: 'cancel' },
-        {
-          text: 'Xóa', style: 'destructive',
-          onPress: async () => {
-            try { 
-              // 🚀 Store nhận lệnh xóa sẽ tự hủy lịch thông báo trên máy người dùng
-              await onDelete(reminder.id); 
-            } catch { 
-              Alert.alert('Lỗi', 'Không thể xóa.'); 
-            }
-          },
-        },
-      ]
-    );
+    const doDelete = async () => {
+      try {
+        const handleNotificationCancel = async () => {
+          await cancelReminderNotification(reminder.id);
+        };
+        await onDelete(reminder.id, handleNotificationCancel);
+      } catch {
+        showAlert('Lỗi', 'Không thể xóa nhắc nhở.');
+      }
+    };
+
+    if (isWeb) {
+      // Web: confirm đơn giản bằng window.confirm
+      if (typeof window !== 'undefined' && window.confirm(`Xóa nhắc nhở cho "${displayTitle}"?`)) {
+        doDelete();
+      }
+    } else {
+      Alert.alert(
+        'Xóa nhắc nhở',
+        `Xóa nhắc nhở cho "${displayTitle}"?`,
+        [
+          { text: 'Hủy', style: 'cancel' },
+          { text: 'Xóa', style: 'destructive', onPress: doDelete },
+        ]
+      );
+    }
+  };
+
+  const handleCancel = () => {
+    setExpanded(false);
+    setErrorMsg('');
+    const original = new Date(reminder.remind_at);
+    setEditDate(original);
+    setWebDatetimeValue(toDatetimeLocal(original));
+    setEditRepeat(reminder.repeat_type);
   };
 
   return (
     <View style={[styles.card, { backgroundColor: c.card, borderColor: c.border }]}>
-      {/* Dải màu note bên trái */}
       <View style={[
         styles.colorStrip,
         { backgroundColor: noteBg === '#FFFFFF' ? c.border : noteBg },
       ]} />
 
       <View style={{ flex: 1 }}>
-        {/* ── Row chính ── */}
         <TouchableOpacity
           style={styles.mainRow}
-          onPress={() => setExpanded(v => !v)}
+          onPress={() => { setExpanded(v => !v); setErrorMsg(''); }}
           activeOpacity={0.75}
         >
-          {/* Icon bell */}
           <View style={[
             styles.iconWrap,
             { backgroundColor: isPast ? '#fef2f2' : '#eff6ff' },
@@ -136,12 +202,10 @@ export const ReminderCard = ({ reminder, isDark, onUpdate, onDelete }: Props) =>
             />
           </View>
 
-          {/* Nội dung */}
           <View style={{ flex: 1 }}>
             <Text style={[styles.noteTitle, { color: c.text }]} numberOfLines={1}>
               {displayTitle}
             </Text>
-            
             <View style={styles.metaRow}>
               <MaterialCommunityIcons
                 name="clock-outline" size={12}
@@ -169,78 +233,76 @@ export const ReminderCard = ({ reminder, isDark, onUpdate, onDelete }: Props) =>
           />
         </TouchableOpacity>
 
-        {/* ── Panel chỉnh sửa ── */}
         {expanded && (
           <View style={[styles.expandPanel, {
             backgroundColor: c.expandBg,
             borderTopColor: c.border,
           }]}>
 
-            {/* Chỉnh ngày giờ bằng nút +/- */}
             <Text style={[styles.editLabel, { color: c.sub }]}>Thời gian nhắc</Text>
-            <View style={[styles.dateBox, { borderColor: c.border, backgroundColor: c.card }]}>
-              <Text style={[styles.dateText, { color: c.text }]}>
-                {formatDate(editDate)}
-              </Text>
-            </View>
-            <View style={styles.adjustRow}>
-              {/* Ngày */}
-              <View style={styles.adjustGroup}>
-                <Text style={[styles.adjustLabel, { color: c.sub }]}>Ngày</Text>
-                <View style={styles.adjustBtns}>
-                  <TouchableOpacity
-                    onPress={() => adjustDate('day', -1)}
-                    style={[styles.adjBtn, { borderColor: c.border }]}
-                  >
-                    <MaterialCommunityIcons name="minus" size={16} color={c.text} />
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    onPress={() => adjustDate('day', 1)}
-                    style={[styles.adjBtn, { borderColor: c.border }]}
-                  >
-                    <MaterialCommunityIcons name="plus" size={16} color={c.text} />
-                  </TouchableOpacity>
-                </View>
-              </View>
-              {/* Giờ */}
-              <View style={styles.adjustGroup}>
-                <Text style={[styles.adjustLabel, { color: c.sub }]}>Giờ</Text>
-                <View style={styles.adjustBtns}>
-                  <TouchableOpacity
-                    onPress={() => adjustDate('hour', -1)}
-                    style={[styles.adjBtn, { borderColor: c.border }]}
-                  >
-                    <MaterialCommunityIcons name="minus" size={16} color={c.text} />
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    onPress={() => adjustDate('hour', 1)}
-                    style={[styles.adjBtn, { borderColor: c.border }]}
-                  >
-                    <MaterialCommunityIcons name="plus" size={16} color={c.text} />
-                  </TouchableOpacity>
-                </View>
-              </View>
-              {/* Phút */}
-              <View style={styles.adjustGroup}>
-                <Text style={[styles.adjustLabel, { color: c.sub }]}>Phút</Text>
-                <View style={styles.adjustBtns}>
-                  <TouchableOpacity
-                    onPress={() => adjustDate('minute', -15)}
-                    style={[styles.adjBtn, { borderColor: c.border }]}
-                  >
-                    <MaterialCommunityIcons name="minus" size={16} color={c.text} />
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    onPress={() => adjustDate('minute', 15)}
-                    style={[styles.adjBtn, { borderColor: c.border }]}
-                  >
-                    <MaterialCommunityIcons name="plus" size={16} color={c.text} />
-                  </TouchableOpacity>
-                </View>
-              </View>
-            </View>
 
-            {/* Repeat chips */}
+            {/* ===== WEB: input datetime-local ===== */}
+            {isWeb ? (
+              <input
+                type="datetime-local"
+                value={webDatetimeValue}
+                onChange={handleWebDatetimeChange}
+                style={{
+                  width: '100%',
+                  padding: '8px 12px',
+                  borderRadius: 8,
+                  border: `1px solid ${c.border}`,
+                  backgroundColor: c.inputBg,
+                  color: c.text,
+                  fontSize: 14,
+                  fontFamily: 'Inter-Regular',
+                  marginBottom: 12,
+                  outline: 'none',
+                  boxSizing: 'border-box',
+                } as any}
+              />
+            ) : (
+              /* ===== MOBILE: hiển thị + nút +/− ===== */
+              <>
+                <View style={[styles.dateBox, { borderColor: c.border, backgroundColor: c.card }]}>
+                  <Text style={[styles.dateText, { color: c.text }]}>
+                    {formatDate(editDate)}
+                  </Text>
+                </View>
+                <View style={styles.adjustRow}>
+                  {(['day', 'hour', 'minute'] as const).map((field) => (
+                    <View key={field} style={styles.adjustGroup}>
+                      <Text style={[styles.adjustLabel, { color: c.sub }]}>
+                        {field === 'day' ? 'Ngày' : field === 'hour' ? 'Giờ' : 'Phút'}
+                      </Text>
+                      <View style={styles.adjustBtns}>
+                        <TouchableOpacity
+                          onPress={() => adjustDate(field, field === 'minute' ? -15 : -1)}
+                          style={[styles.adjBtn, { borderColor: c.border }]}
+                        >
+                          <MaterialCommunityIcons name="minus" size={16} color={c.text} />
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          onPress={() => adjustDate(field, field === 'minute' ? 15 : 1)}
+                          style={[styles.adjBtn, { borderColor: c.border }]}
+                        >
+                          <MaterialCommunityIcons name="plus" size={16} color={c.text} />
+                        </TouchableOpacity>
+                      </View>
+                    </View>
+                  ))}
+                </View>
+              </>
+            )}
+
+            {/* Error message inline (Web) */}
+            {!!errorMsg && (
+              <View style={styles.errorBox}>
+                <MaterialCommunityIcons name="alert-circle-outline" size={14} color="#ef4444" />
+                <Text style={styles.errorText}>{errorMsg}</Text>
+              </View>
+            )}
+
             <Text style={[styles.editLabel, { color: c.sub, marginTop: 14 }]}>Lặp lại</Text>
             <View style={styles.chips}>
               {REPEAT_OPTIONS.map(opt => {
@@ -249,13 +311,9 @@ export const ReminderCard = ({ reminder, isDark, onUpdate, onDelete }: Props) =>
                   <TouchableOpacity
                     key={opt.value}
                     onPress={() => setEditRepeat(opt.value)}
-                    style={[styles.chip, {
-                      backgroundColor: active ? c.chipActive : c.chip,
-                    }]}
+                    style={[styles.chip, { backgroundColor: active ? c.chipActive : c.chip }]}
                   >
-                    <Text style={[styles.chipText, {
-                      color: active ? '#fff' : c.sub,
-                    }]}>
+                    <Text style={[styles.chipText, { color: active ? '#fff' : c.sub }]}>
                       {opt.label}
                     </Text>
                   </TouchableOpacity>
@@ -263,7 +321,6 @@ export const ReminderCard = ({ reminder, isDark, onUpdate, onDelete }: Props) =>
               })}
             </View>
 
-            {/* Nút hành động */}
             <View style={styles.editActions}>
               <TouchableOpacity onPress={handleDelete} style={styles.deleteBtn}>
                 <MaterialCommunityIcons name="trash-can-outline" size={16} color="#ef4444" />
@@ -271,11 +328,7 @@ export const ReminderCard = ({ reminder, isDark, onUpdate, onDelete }: Props) =>
               </TouchableOpacity>
               <View style={styles.saveCancelRow}>
                 <TouchableOpacity
-                  onPress={() => {
-                    setExpanded(false);
-                    setEditDate(new Date(reminder.remind_at));
-                    setEditRepeat(reminder.repeat_type);
-                  }}
+                  onPress={handleCancel}
                   style={[styles.cancelBtn, { borderColor: c.border }]}
                 >
                   <Text style={[styles.cancelBtnText, { color: c.sub }]}>Hủy</Text>
@@ -359,6 +412,7 @@ const styles = StyleSheet.create({
   adjustRow: {
     flexDirection: 'row',
     gap: 16,
+    marginBottom: 12,
   },
   adjustGroup: { alignItems: 'center', gap: 6 },
   adjustLabel: {
@@ -372,6 +426,22 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  errorBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: '#fef2f2',
+    borderRadius: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+    marginBottom: 8,
+  },
+  errorText: {
+    fontFamily: 'Inter-Regular',
+    fontSize: 13,
+    color: '#ef4444',
+    flex: 1,
   },
   chips: {
     flexDirection: 'row',

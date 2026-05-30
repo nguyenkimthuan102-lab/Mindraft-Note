@@ -1,4 +1,4 @@
-// ─── 1a. src/api/notificationApi.ts ───
+// src/api/notificationApi.ts
 import axiosClient from './axiosClient';
 
 export interface NotificationData {
@@ -11,7 +11,7 @@ export interface NotificationData {
     message?: string;
     [key: string]: any;
   } | null;
-  is_read: number; // Backend trả về IntegerField (0 hoặc 1)
+  is_read: number;
   created_at: string;
 }
 
@@ -26,3 +26,11 @@ export const markAllNotificationsRead = (): Promise<{ message: string }> =>
 
 export const deleteNotification = (id: string): Promise<void> =>
   axiosClient.delete(`/notifications/${id}/`).then(res => res.data);
+
+// ── THÊM: Tạo notification mới trên server ────────────────────────────────
+export const createNotification = (data: {
+  type: NotificationData['type'];
+  note?: string | null;
+  payload?: NotificationData['payload'];
+}): Promise<NotificationData> =>
+  axiosClient.post('/notifications/', data).then(res => res.data);

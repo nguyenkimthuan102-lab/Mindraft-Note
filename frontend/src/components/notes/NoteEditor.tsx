@@ -7,12 +7,13 @@ import { useNoteStore } from '@/src/store/useNoteStore';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { TagMenu } from './TagMenu';
 import { exportToTxt, exportToPdf, exportToDocx } from '../../utils/exportNote';
+import { useReminderStore } from '@/src/store/useReminderStore';
+import { useLocalNotification } from '@/src/hooks/useLocalNotification';
 
 const isWeb = Platform.OS === 'web';
 const WebDiv = 'div' as any;
 
-const contentRef = useRef<any>(null);
-const mobileContentRef = useRef<any>(null);
+const mobileContentRef = { current: null } as any;
 
 const cardColorMap: Record<string, string> = {
   default: '#FFFFFF', red: '#FADADD', orange: '#FEEFC3', yellow: '#FEF7CD',
@@ -103,6 +104,9 @@ export function NoteEditor({ visible, mode, note, inline, readOnly }: NoteEditor
     trashNoteAction
   } = useNoteStore();
 
+  const { createReminderAction } = useReminderStore();
+  const { scheduleReminderNotification } = useLocalNotification();
+
   const [htmlConfig, setHtmlConfig] = useState({ __html: (note?.content_text ?? '').replace(/\n/g, '<br>') });
 
   const [todoItems, setTodoItems] = useState<TodoItemData[]>(note?.todo_items?.length ? note.todo_items : [
@@ -128,7 +132,12 @@ export function NoteEditor({ visible, mode, note, inline, readOnly }: NoteEditor
 
   const [showTagMenu, setShowTagMenu] = useState(false);
   const [showExportMenu, setShowExportMenu] = useState(false);
-  const [noteTags, setNoteTags] = useState<string[]>(note?.labels ?? []); // Trong code của bạn dùng 'labels'[cite: 7]
+  const [noteTags, setNoteTags] = useState<string[]>(note?.labels ?? []);
+
+  // Reminder states
+  const [showReminderPicker, setShowReminderPicker] = useState(false);
+  const [reminderDate, setReminderDate] = useState('');
+  const [reminderTime, setReminderTime] = useState('');
 
   const contentRef = useRef<any>(null);
 
@@ -136,37 +145,30 @@ export function NoteEditor({ visible, mode, note, inline, readOnly }: NoteEditor
     if (!visible) return;
     setTitle(note?.title ?? '');
     setContent(note?.content_text ?? '');
-
     setHtmlConfig({ __html: (note?.content_text ?? '').replace(/\n/g, '<br>') });
-
     setTodoItems(note?.todo_items?.length ? note.todo_items : [
       { id: `${Date.now()}-1`, title: '', is_completed: false },
     ]);
     setIsPinned(note?.is_pinned ?? 0);
     setNoteColor(note?.color ?? 'default');
-
     setEditorMode(mode);
     setShowColorPicker(false);
     setShowMoreMenu(false);
     setShowFormattingBar(false);
     setIsContentEmpty(!note?.content_text);
 
-    // Chỉ tự động focus nếu là tạo mới (nội dung trống)
     if (!note?.content_text) {
       const timer = setTimeout(() => {
         if (isWeb) {
-          // Xử lý Focus nâng cao cho div contentEditable trên Web
           const el = document.getElementById('web-content-editor');
           if (el) {
-            if (el.innerHTML === '<br>') el.innerHTML = ''; // ← thêm dòng này
+            if (el.innerHTML === '<br>') el.innerHTML = '';
             el.focus();
-
-            // Ép con trỏ chuột nhảy xuống vị trí cuối cùng trong div nhập liệu
             if (typeof window !== 'undefined' && window.getSelection) {
               const range = document.createRange();
               const sel = window.getSelection();
               range.selectNodeContents(el);
-              range.collapse(false); // false nghĩa là đưa về cuối dòng
+              range.collapse(false);
               sel?.removeAllRanges();
               sel?.addRange(range);
             }
@@ -229,7 +231,6 @@ export function NoteEditor({ visible, mode, note, inline, readOnly }: NoteEditor
     }
   };
 
-
   const handleToggleMode = () => {
     if (editorMode === 'text') {
       const plainText = isWeb && contentRef.current ? contentRef.current.innerText : content;
@@ -254,6 +255,7 @@ export function NoteEditor({ visible, mode, note, inline, readOnly }: NoteEditor
     setShowMoreMenu(false);
     setShowTagMenu(false);
     setShowExportMenu(false);
+    setShowReminderPicker(false);
   };
 
   const updateFormattingState = () => {
@@ -316,6 +318,47 @@ export function NoteEditor({ visible, mode, note, inline, readOnly }: NoteEditor
     }
   };
 
+  const handleSaveReminder = async () => {
+    if (!reminderDate || !reminderTime) {
+      alert('Vui lòng chọn đầy đủ ngày và giờ.');
+      return;
+    }
+
+    // Ghép ngày + giờ → ISO string
+    const remind_at = new Date(`${reminderDate}T${reminderTime}:00`).toISOString();
+
+    if (new Date(remind_at) < new Date()) {
+      alert('Không thể đặt nhắc nhở vào thời gian đã qua.');
+      return;
+    }
+
+    try {
+      await createReminderAction(
+        {
+          note: note?.id ?? '',
+          remind_at,
+          repeat_type: 'none',
+          note_title: title.trim() || undefined,
+          note_color: noteColor,
+        },
+        async (created) => {
+          // Đặt lịch thông báo local sau khi lưu API thành công
+          const titleFallback = `Ghi chú #${created.note.slice(0, 8)}`;
+          await scheduleReminderNotification(created, titleFallback);
+        }
+      );
+      setShowReminderPicker(false);
+    } catch {
+      alert('Không thể tạo nhắc nhở. Vui lòng thử lại.');
+    }
+  };
+
+  const handleClearReminder = () => {
+    setReminderDate('');
+    setReminderTime('');
+    setShowReminderPicker(false);
+  };
+
   const handleSaveAndClose = async () => {
     Keyboard.dismiss();
     let currentContent = content;
@@ -335,25 +378,21 @@ export function NoteEditor({ visible, mode, note, inline, readOnly }: NoteEditor
         subtasks: item.subtasks?.filter(sub => sub.title.trim().length > 0)
       }));
 
-    // CẢI TIẾN REGEX: Xóa tag HTML, xóa &nbsp;, xóa ký tự ẩn zero-width
     const strippedCheck = currentContent
       ? currentContent
-        .replace(/<[^>]*>?/gm, '')          // Xóa tags HTML
-        .replace(/&nbsp;/g, ' ')            // Biến mã khoảng trắng HTML thành khoảng trắng thường
-        .replace(/[\u200B-\u200D\uFEFF]/g, '') // Xóa triệt để các ký tự zero-width ẩn
+        .replace(/<[^>]*>?/gm, '')
+        .replace(/&nbsp;/g, ' ')
+        .replace(/[\u200B-\u200D\uFEFF]/g, '')
         .trim()
       : '';
 
     const hasContent = title.trim() || (editorMode === 'text' ? strippedCheck.length > 0 : cleanedTodoItems.length > 0);
 
-    // CAN THIỆP UI: Nếu text trống, ép DOM/Ref về rỗng hoàn toàn để tránh hiện tượng ghosting text
     if (editorMode === 'text' && !strippedCheck) {
       currentContent = '';
       if (isWeb && contentRef.current) {
-        contentRef.current.innerHTML = ''; // Xóa sạch HTML cứng trong DOM
+        contentRef.current.innerHTML = '';
       }
-      // LƯU Ý: Nếu bạn dùng thư viện Rich Editor (như pell-rich-editor), hãy gọi hàm clear của nó tại đây:
-      // richTextRef.current?.setContentHTML('');
     }
 
     const updatedNote: NoteCardData = {
@@ -390,25 +429,18 @@ export function NoteEditor({ visible, mode, note, inline, readOnly }: NoteEditor
 
   useEffect(() => {
     if (!visible) return;
-
     const onBackPress = () => {
       handleSaveAndCloseRef.current();
       return true;
     };
-
     const subscription = BackHandler.addEventListener('hardwareBackPress', onBackPress);
-
-    return () => {
-      subscription.remove();
-    };
+    return () => { subscription.remove(); };
   }, [visible]);
-
 
   if (!visible) return null;
 
   const bg = cardColorMap[noteColor] ?? cardColorMap.default;
-
-
+  const hasReminder = !!(reminderDate && reminderTime);
 
   return (
     <View style={styles.overlay}>
@@ -425,11 +457,7 @@ export function NoteEditor({ visible, mode, note, inline, readOnly }: NoteEditor
           {isCompact && (
             <Tooltip label="Quay lại và lưu" position="bottom">
               <TouchableOpacity onPress={handleSaveAndClose} style={styles.backBtn}>
-                <MaterialCommunityIcons
-                  name="arrow-left"
-                  size={24}
-                  color={colors.textSecondary}
-                />
+                <MaterialCommunityIcons name="arrow-left" size={24} color={colors.textSecondary} />
               </TouchableOpacity>
             </Tooltip>
           )}
@@ -478,7 +506,7 @@ export function NoteEditor({ visible, mode, note, inline, readOnly }: NoteEditor
                     dangerouslySetInnerHTML={htmlConfig}
                     onInput={(e: any) => {
                       const html = e.currentTarget.innerHTML;
-                      setContent(html); // BẮT BUỘC PHẢI CÓ DÒNG NÀY ĐỂ ĐỒNG BỘ STATE
+                      setContent(html);
                       setIsContentEmpty(!e.currentTarget.textContent?.trim());
                     }}
                     onKeyUp={updateFormattingState}
@@ -515,7 +543,6 @@ export function NoteEditor({ visible, mode, note, inline, readOnly }: NoteEditor
                     scrollEnabled={false}
                     autoCorrect={false}
                     spellCheck={false}
-                    //autoFocus={!note?.content_text}
                     onFocus={closePopups}
                   />
                 </View>
@@ -553,7 +580,6 @@ export function NoteEditor({ visible, mode, note, inline, readOnly }: NoteEditor
                       </TouchableOpacity>
                     </Tooltip>
                   </View>
-                  {/* Subtasks */}
                   {item.subtasks?.map(subItem => (
                     <View key={subItem.id} style={[styles.todoRow, { paddingLeft: 32 }]}>
                       <TouchableOpacity
@@ -612,9 +638,121 @@ export function NoteEditor({ visible, mode, note, inline, readOnly }: NoteEditor
         {/* Footer */}
         <View style={styles.footer}>
           <View style={styles.toolbarLeft}>
-            <ToolbarBtn icon="bell-plus-outline" onPress={() => { alert('Nhắc nhở sẽ được lưu qua API'); closePopups(); }} label="Nhắc nhở" />
+
+            {/* ===== NÚT NHẮC NHỞ + POPOVER ===== */}
+            <View style={{ position: 'relative', zIndex: 300 }}>
+              <ToolbarBtn
+                icon="bell-plus-outline"
+                onPress={() => {
+                  setShowReminderPicker(!showReminderPicker);
+                  setShowColorPicker(false);
+                  setShowMoreMenu(false);
+                  setShowTagMenu(false);
+                  setShowExportMenu(false);
+                }}
+                isActive={hasReminder}
+                label="Nhắc nhở"
+              />
+
+              {showReminderPicker && (
+                <View style={styles.reminderPopover}>
+                  {/* Header popover */}
+                  <View style={styles.reminderHeader}>
+                    <MaterialCommunityIcons name="bell-outline" size={16} color={colors.primary} />
+                    <Text style={styles.reminderTitle}>Đặt nhắc nhở</Text>
+                  </View>
+
+                  {/* Ngày */}
+                  <Text style={styles.reminderLabel}>Ngày</Text>
+                  {isWeb ? (
+                    <input
+                      type="date"
+                      value={reminderDate}
+                      onChange={(e: any) => setReminderDate(e.target.value)}
+                      style={{
+                        marginBottom: 10,
+                        padding: '6px 8px',
+                        borderRadius: 4,
+                        border: `1px solid ${colors.borderDefault}`,
+                        fontSize: 13,
+                        fontFamily: 'Inter-Regular',
+                        color: colors.textPrimary,
+                        width: '100%',
+                        boxSizing: 'border-box',
+                        outline: 'none',
+                      } as any}
+                    />
+                  ) : (
+                    <TextInput
+                      value={reminderDate}
+                      onChangeText={setReminderDate}
+                      placeholder="YYYY-MM-DD"
+                      placeholderTextColor={colors.textPlaceholder}
+                      style={styles.reminderInput}
+                    />
+                  )}
+
+                  {/* Giờ */}
+                  <Text style={styles.reminderLabel}>Giờ</Text>
+                  {isWeb ? (
+                    <input
+                      type="time"
+                      value={reminderTime}
+                      onChange={(e: any) => setReminderTime(e.target.value)}
+                      style={{
+                        marginBottom: 12,
+                        padding: '6px 8px',
+                        borderRadius: 4,
+                        border: `1px solid ${colors.borderDefault}`,
+                        fontSize: 13,
+                        fontFamily: 'Inter-Regular',
+                        color: colors.textPrimary,
+                        width: '100%',
+                        boxSizing: 'border-box',
+                        outline: 'none',
+                      } as any}
+                    />
+                  ) : (
+                    <TextInput
+                      value={reminderTime}
+                      onChangeText={setReminderTime}
+                      placeholder="HH:MM"
+                      placeholderTextColor={colors.textPlaceholder}
+                      style={styles.reminderInput}
+                    />
+                  )}
+
+                  {/* Preview reminder đã đặt */}
+                  {hasReminder && (
+                    <View style={styles.reminderPreview}>
+                      <MaterialCommunityIcons name="bell-ring-outline" size={13} color={colors.primary} />
+                      <Text style={styles.reminderPreviewText}>
+                        {reminderDate} lúc {reminderTime}
+                      </Text>
+                    </View>
+                  )}
+
+                  {/* Buttons */}
+                  <View style={styles.reminderBtnRow}>
+                    <TouchableOpacity style={styles.reminderSaveBtn} onPress={handleSaveReminder}>
+                      <Text style={styles.reminderSaveBtnText}>Lưu</Text>
+                    </TouchableOpacity>
+                    {hasReminder && (
+                      <TouchableOpacity style={styles.reminderClearBtn} onPress={handleClearReminder}>
+                        <Text style={styles.reminderClearBtnText}>Xóa</Text>
+                      </TouchableOpacity>
+                    )}
+                    <TouchableOpacity style={styles.reminderCancelBtn} onPress={() => setShowReminderPicker(false)}>
+                      <Text style={styles.reminderCancelBtnText}>Đóng</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              )}
+            </View>
+            {/* ===== KẾT THÚC NÚT NHẮC NHỞ ===== */}
+
             <ToolbarBtn icon="account-plus-outline" onPress={() => { alert('Cộng tác viên sẽ được gọi API'); closePopups(); }} label="Cộng tác viên" />
-            <ToolbarBtn icon="palette-outline" onPress={() => { setShowColorPicker(!showColorPicker); setShowMoreMenu(false); setShowTagMenu(false); }} label="Tùy chọn nền" />
+            <ToolbarBtn icon="palette-outline" onPress={() => { setShowColorPicker(!showColorPicker); setShowMoreMenu(false); setShowTagMenu(false); setShowReminderPicker(false); }} label="Tùy chọn nền" />
             <ToolbarBtn icon="image-outline" onPress={() => { alert('Thêm hình ảnh sẽ xử lý upload file'); closePopups(); }} label="Thêm hình ảnh" />
             <ToolbarBtn
               icon="archive-arrow-down-outline"
@@ -630,7 +768,7 @@ export function NoteEditor({ visible, mode, note, inline, readOnly }: NoteEditor
             />
 
             <View style={{ position: 'relative', zIndex: 300 }}>
-              <ToolbarBtn icon="dots-vertical" onPress={() => { setShowMoreMenu(!showMoreMenu); setShowColorPicker(false); setShowExportMenu(false); }} label="Thêm tùy chọn" />
+              <ToolbarBtn icon="dots-vertical" onPress={() => { setShowMoreMenu(!showMoreMenu); setShowColorPicker(false); setShowExportMenu(false); setShowReminderPicker(false); }} label="Thêm tùy chọn" />
               {showMoreMenu && (
                 <View style={styles.moreMenu}>
                   <MenuBtn
@@ -645,13 +783,8 @@ export function NoteEditor({ visible, mode, note, inline, readOnly }: NoteEditor
                     disabled={!note?.id || note.id.startsWith('temp-')}
                   />
 
-                  {/* PHẦN SỬA ĐỔI CHÍNH: Menu nhãn con */}
                   <View style={{ position: 'relative', zIndex: 310 }}>
-                    <MenuBtn
-                      onPress={() => setShowTagMenu(!showTagMenu)}
-                      label="Thêm nhãn"
-                    />
-
+                    <MenuBtn onPress={() => setShowTagMenu(!showTagMenu)} label="Thêm nhãn" />
                     {showTagMenu && (
                       <View style={styles.tagMenuPopover}>
                         <TagMenu
@@ -664,13 +797,8 @@ export function NoteEditor({ visible, mode, note, inline, readOnly }: NoteEditor
                     )}
                   </View>
 
-                  {/* PHẦN XUẤT FILE */}
                   <View style={{ position: 'relative', zIndex: 310 }}>
-                    <MenuBtn
-                      onPress={() => { setShowExportMenu(!showExportMenu); setShowTagMenu(false); }}
-                      label="Xuất file"
-                    />
-
+                    <MenuBtn onPress={() => { setShowExportMenu(!showExportMenu); setShowTagMenu(false); }} label="Xuất file" />
                     {showExportMenu && (
                       <View style={styles.exportMenuPopover}>
                         <MenuBtn onPress={() => handleExport('txt')} label="Xuất ra .TXT" />
@@ -685,10 +813,7 @@ export function NoteEditor({ visible, mode, note, inline, readOnly }: NoteEditor
                     label="Tạo bản sao"
                     disabled={!note?.id && !title.trim() && (editorMode === 'text' ? isContentEmpty : todoItems.filter(t => t.title.trim()).length === 0)}
                   />
-                  <MenuBtn
-                    onPress={handleToggleMode}
-                    label={editorMode === 'text' ? "Hiển thị hộp kiểm" : "Ẩn hộp kiểm"}
-                  />
+                  <MenuBtn onPress={handleToggleMode} label={editorMode === 'text' ? "Hiển thị hộp kiểm" : "Ẩn hộp kiểm"} />
                   <MenuBtn
                     onPress={() => { alert('Lịch sử phiên bản (Cần API)'); setShowMoreMenu(false); }}
                     label="Lịch sử phiên bản"
@@ -736,6 +861,112 @@ export function NoteEditor({ visible, mode, note, inline, readOnly }: NoteEditor
 
 
 const styles = StyleSheet.create({
+  // ===== REMINDER STYLES =====
+  reminderPopover: {
+    position: 'absolute',
+    bottom: 44,
+    left: 0,
+    backgroundColor: '#fff',
+    borderRadius: 8,
+    padding: 14,
+    minWidth: 220,
+    shadowColor: '#000',
+    shadowOpacity: 0.15,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 6,
+    borderWidth: 1,
+    borderColor: colors.borderDefault,
+    zIndex: 500,
+  },
+  reminderHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginBottom: 12,
+  },
+  reminderTitle: {
+    fontFamily: 'Inter-Medium',
+    fontSize: 13,
+    color: colors.textPrimary,
+  },
+  reminderLabel: {
+    fontFamily: 'Inter-Regular',
+    fontSize: 11,
+    color: colors.textSecondary,
+    marginBottom: 4,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  reminderInput: {
+    borderWidth: 1,
+    borderColor: colors.borderDefault,
+    borderRadius: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 6,
+    fontSize: 13,
+    marginBottom: 10,
+    fontFamily: 'Inter-Regular',
+    color: colors.textPrimary,
+    outlineStyle: 'none',
+  } as any,
+  reminderPreview: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    backgroundColor: colors.primarySubtle ?? '#e8f0fe',
+    borderRadius: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 5,
+    marginBottom: 10,
+  },
+  reminderPreviewText: {
+    fontFamily: 'Inter-Regular',
+    fontSize: 12,
+    color: colors.primary,
+  },
+  reminderBtnRow: {
+    flexDirection: 'row',
+    gap: 6,
+    alignItems: 'center',
+  },
+  reminderSaveBtn: {
+    backgroundColor: colors.primary,
+    paddingHorizontal: 14,
+    paddingVertical: 7,
+    borderRadius: 4,
+  },
+  reminderSaveBtnText: {
+    color: '#fff',
+    fontFamily: 'Inter-Medium',
+    fontSize: 13,
+  },
+  reminderClearBtn: {
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+    borderRadius: 4,
+    borderWidth: 1,
+    borderColor: '#e53935',
+  },
+  reminderClearBtnText: {
+    color: '#e53935',
+    fontFamily: 'Inter-Regular',
+    fontSize: 13,
+  },
+  reminderCancelBtn: {
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+    borderRadius: 4,
+    borderWidth: 1,
+    borderColor: colors.borderDefault,
+  },
+  reminderCancelBtnText: {
+    color: colors.textSecondary,
+    fontFamily: 'Inter-Regular',
+    fontSize: 13,
+  },
+  // ===== END REMINDER STYLES =====
+
   exportMenuPopover: {
     position: 'absolute',
     left: isWeb ? '100%' : 0,
@@ -752,22 +983,10 @@ const styles = StyleSheet.create({
     elevation: 5,
     minWidth: 150,
   },
-  inlineContainer: {
-    position: 'relative',
-    width: '100%',
-    maxHeight: 500, // Khống chế chiều cao tối đa khi gài trên feed tránh đẩy layout quá xa
-    borderWidth: 1,
-    borderColor: colors.borderDefault,
-    borderRadius: 8,
-    elevation: 0,         // Tắt bóng đổ nặng của Modal trên Android
-    shadowOpacity: 0,     // Tắt bóng đổ nặng trên iOS/Web
-    marginBottom: 16,
-  },
-  // Thêm vào styles của NoteEditor_2.tsx
   tagMenuPopover: {
     position: 'absolute',
-    left: isWeb ? '100%' : 0, // Trên Web đẩy sang phải, Mobile có thể đè lên
-    bottom: isWeb ? 0 : 40,   // Điều chỉnh để không bị khuất khỏi màn hình
+    left: isWeb ? '100%' : 0,
+    bottom: isWeb ? 0 : 40,
     marginLeft: 8,
     zIndex: 1000,
   },
@@ -844,32 +1063,6 @@ const styles = StyleSheet.create({
   todoList: {
     paddingBottom: 16,
   },
-  textH1: {
-    fontSize: 24,
-    fontFamily: 'Inter-Bold',
-  },
-  textH2: {
-    fontSize: 20,
-    fontFamily: 'Inter-SemiBold',
-  },
-  textBold: {
-    fontWeight: '700',
-  },
-  textItalic: {
-    fontStyle: 'italic',
-  },
-  textUnderline: {
-    textDecorationLine: 'underline',
-  },
-  imageRow: {
-    marginBottom: 16,
-  },
-  imageThumb: {
-    width: 100,
-    height: 70,
-    borderRadius: 14,
-    marginRight: 12,
-  },
   todoRow: {
     flexDirection: 'row',
     alignItems: 'flex-start',
@@ -931,77 +1124,6 @@ const styles = StyleSheet.create({
     height: 20,
     backgroundColor: colors.borderDefault,
     marginHorizontal: 8,
-  },
-  metaRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    flexWrap: 'wrap',
-    gap: 10,
-    marginBottom: 12,
-  },
-  labelList: {
-    flexDirection: 'row',
-    gap: 8,
-  },
-  labelChip: {
-    paddingVertical: 6,
-    paddingHorizontal: 10,
-    borderRadius: 999,
-    backgroundColor: colors.bgSurface,
-  },
-  labelChipText: {
-    color: colors.textPrimary,
-    fontFamily: 'Inter-Regular',
-    fontSize: 13,
-  },
-  metaText: {
-    color: colors.textSecondary,
-    fontFamily: 'Inter-Regular',
-    fontSize: 13,
-  },
-  toolbarRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'flex-start',
-    flexWrap: 'wrap',
-    gap: 8,
-    marginBottom: 12,
-  },
-  toolbarBtn: {
-    width: 40,
-    height: 40,
-    borderRadius: 12,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: colors.bgSurface,
-  },
-  optionPanel: {
-    backgroundColor: colors.bgSurface,
-    borderRadius: 16,
-    padding: 12,
-    marginBottom: 12,
-  },
-  optionItem: {
-    paddingVertical: 10,
-  },
-  optionText: {
-    color: colors.textPrimary,
-    fontFamily: 'Inter-Regular',
-    fontSize: 15,
-  },
-  colorOption: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    paddingVertical: 10,
-  },
-  colorDotSmall: {
-    width: 18,
-    height: 18,
-    borderRadius: 6,
-    borderWidth: 1,
-    borderColor: colors.borderDefault,
   },
   footer: {
     flexDirection: 'row',
@@ -1128,4 +1250,3 @@ const styles = StyleSheet.create({
     ...Platform.select({ web: { cursor: 'default' } as any }),
   },
 });
-

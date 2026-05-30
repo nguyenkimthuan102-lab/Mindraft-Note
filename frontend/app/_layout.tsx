@@ -1,3 +1,4 @@
+// app/_layout.tsx
 import { Slot, useRouter } from 'expo-router';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { useFonts, Inter_400Regular, Inter_500Medium, Inter_600SemiBold, Inter_700Bold } from '@expo-google-fonts/inter';
@@ -8,25 +9,23 @@ import * as WebBrowser from 'expo-web-browser';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { ActivityIndicator, View, Platform } from 'react-native';
 
-// 🔥 THƯ VIỆN & STORE ĐÃ ĐƯỢC TÍCH HỢP
 import * as Notifications from 'expo-notifications';
-import { useAuthStore } from '../src/store/useAuthStore'; 
+import { useAuthStore } from '../src/store/useAuthStore';
 import { useNotificationStore } from '../src/store/useNotificationStore';
+import { requestNotificationPermission } from '../src/utils/notificationScheduler';
+import { useLocalNotification } from '../src/hooks/useLocalNotification';
 
 WebBrowser.maybeCompleteAuthSession();
-
 const queryClient = new QueryClient();
-
 SplashScreen.preventAutoHideAsync();
 
-// 🔔 CẤU HÌNH THÔNG BÁO HIỂN THỊ KHI APP ĐANG MỞ (Đã sửa lỗi thiếu trường cho phiên bản mới)
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
     shouldShowAlert: true,
     shouldPlaySound: true,
     shouldSetBadge: true,
-    shouldShowBanner: true, // 👈 Bổ sung bắt buộc cho API mới
-    shouldShowList: true,   // 👈 Bổ sung bắt buộc cho API mới
+    shouldShowBanner: true,
+    shouldShowList: true,
   }),
 });
 
@@ -34,6 +33,7 @@ export default function RootLayout() {
   const router = useRouter();
   const { loadNotifications } = useNotificationStore();
   const { initialize } = useAuthStore();
+  const { handleNotificationReceived } = useLocalNotification(); // ← THÊM
 
   const [fontsLoaded] = useFonts({
     'Inter-Regular': Inter_400Regular,
@@ -42,46 +42,55 @@ export default function RootLayout() {
     'Inter-Bold': Inter_700Bold,
   });
 
-  // 🔥 KHIÊN BĂNG TỐI CAO: Khóa chặt toàn bộ router khi vừa F5 Web
   const [isRestoringAuth, setIsRestoringAuth] = useState(true);
 
   useEffect(() => {
-    // Luồng 1: Khôi phục phiên làm việc và ẩn SplashScreen
+    // Luồng 1: Khôi phục phiên
     async function checkPersistedAuth() {
       try {
-        // Ép app âm thầm đi gọi API /users/me để cứu phiên trước khi Router kịp nhảy bậy
-        await initialize(); 
+        await initialize();
       } catch (err) {
-        console.error('[Root Layout] Lỗi khôi phục phiên ngầm:', err);
+        console.error('[RootLayout] Lỗi khôi phục phiên:', err);
       } finally {
-        setIsRestoringAuth(false); // Xác minh xong xuôi mới nhả phanh ra
-        if (fontsLoaded) {
-          SplashScreen.hideAsync();
-        }
+        setIsRestoringAuth(false);
+        if (fontsLoaded) SplashScreen.hideAsync();
       }
     }
     checkPersistedAuth();
 
-    // Luồng 2: Tải dữ liệu thông báo từ server & Đăng ký bộ lắng nghe sự kiện Click Notification
+    // Luồng 2: Tải notifications từ server
     loadNotifications();
+
+    // Luồng 3: Xin quyền thông báo
+    if (Platform.OS !== 'web') {
+      requestNotificationPermission();
+    }
 
     if (Platform.OS === 'web') return;
 
-    const responseListener = Notifications.addNotificationResponseReceivedListener(response => {
-      const data = response.notification.request.content.data;
-      if (data && data.note_id) {
-        // Tự động nhảy sang trang chi tiết ghi chú 
-        router.push(`/note/${data.note_id}` as any);
+    // Luồng 4: Nhận thông báo khi app đang mở → tạo server notification
+    const receivedListener = Notifications.addNotificationReceivedListener(
+      notification => {
+        handleNotificationReceived(notification);
       }
-    });
+    );
+
+    // Luồng 5: Bấm vào thông báo → nhảy sang note
+    const responseListener = Notifications.addNotificationResponseReceivedListener(
+      response => {
+        const data = response.notification.request.content.data;
+        if (data?.note_id) {
+          router.push(`/note/${data.note_id}` as any);
+        }
+      }
+    );
 
     return () => {
-      // 👈 SỬA LỖI: Sử dụng phương thức .remove() trực tiếp trên subscription object thay cho hàm cũ
+      receivedListener.remove();
       responseListener.remove();
     };
   }, [fontsLoaded]);
 
-  // 🔥 CHẶN DÒNG: Nếu chưa load xong font HOẶC chưa cứu phiên xong -> ĐỨNG IM hiển thị xoay loading!
   if (!fontsLoaded || isRestoringAuth) {
     return (
       <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#ffffff' }}>
