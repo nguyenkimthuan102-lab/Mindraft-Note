@@ -148,9 +148,11 @@ from rest_framework import serializers
 from .models import Reminders
 
 class ReminderSerializer(serializers.ModelSerializer):
+    note_title = serializers.CharField(source='note.title', read_only=True)
+    note_color = serializers.CharField(source='note.color', read_only=True)
     class Meta:
         model = Reminders
-        fields = ['id', 'note', 'user', 'remind_at', 'repeat_type', 'is_notified', 'is_deleted', 'updated_at']
+        fields = ['id', 'note', 'user','note_title', 'note_color', 'remind_at', 'repeat_type', 'is_notified', 'is_deleted', 'updated_at']
 
 class CreateReminderSerializer(serializers.ModelSerializer):
     class Meta:

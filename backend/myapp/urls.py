@@ -7,8 +7,8 @@ from .views.Notes_task import *
 from .views.Reminders import *
 from .views.Notify import *
 from .views.Todoitems import *
-from .views.tag_views import *
-from .views.media_views import *
+#from .views.tag_views import *
+#from .views.media_views import *
 
 # Import cụ thể từ profile view (ở file 1)
 from .views.profile import (

@@ -206,6 +206,7 @@ export function Sidebar() {
 
         {/* Main nav */}
         <NavItem icon="file-text" label="All notes" href="/(main)" active={pathname === '/'} isDark={isDark} onPress={() => handleNavItemPress('/(main)')} />
+        {/* 🔥 CHỈ SỬA HREF Ở ĐÂY ĐỂ ĐIỀU HƯỚNG VÀO TRONG (MAIN) */}
         <NavItem icon="bell" label="Reminders" href="/(main)/reminders" active={pathname === '/reminders'} isDark={isDark} onPress={() => handleNavItemPress('/(main)/reminders')} />
 
         <View style={[styles.divider, { backgroundColor: dynamicColors.border }]} />
