@@ -152,13 +152,9 @@ export function Sidebar() {
           )}
         </View>
 
-<<<<<<< HEAD
         {/* Main nav */}
         <NavItem icon="file-text" label="All notes" href="/(main)" active={pathname === '/'} isDark={isDark} onPress={() => handleNavItemPress('/(main)')} />
         {/* 🔥 CHỈ SỬA HREF Ở ĐÂY ĐỂ ĐIỀU HƯỚNG VÀO TRONG (MAIN) */}
-=======
-        <NavItem icon="file-text" label="All notes" href="/(main)" active={pathname === '/'} isDark={isDark} onPress={() => handleNavItemPress('/(main)')} />
->>>>>>> 5486d1a (feat: cập nhật lại giao diện và logic xử lý thẻ tag trong Sidebar)
         <NavItem icon="bell" label="Reminders" href="/(main)/reminders" active={pathname === '/reminders'} isDark={isDark} onPress={() => handleNavItemPress('/(main)/reminders')} />
 
         <View style={[styles.divider, { backgroundColor: dc.border }]} />
