@@ -10,11 +10,7 @@ from django.conf import settings
 from django.utils import timezone
 
 from rest_framework import status
-<<<<<<< HEAD
 from ..models import Tags, Notes,NoteTags,Media
-=======
-from ..models import Tags, Notes, NoteTags
->>>>>>> 20e9488 (feat(backend): tích hợp API xử lý nhãn và cập nhật logic liên kết ghi chú)
 
 from ..serializers import TagSerializer, NoteSerializer, CreateNoteSerializer, UpdateNoteSerializer, MediaSerializer
 
@@ -141,15 +137,9 @@ def handle_create_note(request):
         id=str(uuid.uuid4()),
         user=request.user,
         title=serializer.validated_data.get("title", ""),
-<<<<<<< HEAD
         
         # Sử dụng validated_data của serializer để tránh dữ liệu rác vào database
         content=serializer.validated_data.get("content", []), 
-=======
-
-        content=serializer.validated_data.get("content", []),
-
->>>>>>> 20e9488 (feat(backend): tích hợp API xử lý nhãn và cập nhật logic liên kết ghi chú)
         content_text=serializer.validated_data.get("content_text", ""),
         type=note_type,
         color=serializer.validated_data.get("color", "default"),
@@ -176,7 +166,6 @@ def handle_create_note(request):
         status=status.HTTP_201_CREATED
     )
 
-<<<<<<< HEAD
 @api_view(["POST"])
 @permission_classes([IsAuthenticated])
 def create_tag(request):
@@ -404,8 +393,6 @@ def remove_tag_from_note(request, note_id, tag_id):
     return Response({
         "message": "Tag removed"
     })
-=======
->>>>>>> 20e9488 (feat(backend): tích hợp API xử lý nhãn và cập nhật logic liên kết ghi chú)
 
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
@@ -619,18 +606,12 @@ def trash_note(request, note_id):
     if note.is_trashed == 0:
         note.is_trashed = 1
 
-<<<<<<< HEAD
         note.is_pinned = 0 
     # OPTIONAL:
     # thường archive sẽ bị bỏ khi vào trash
         note.is_archived = 0
     else:
         note.is_trashed = 0
-=======
-    note.is_pinned = 0
-
-    note.is_archived = 0
->>>>>>> 20e9488 (feat(backend): tích hợp API xử lý nhãn và cập nhật logic liên kết ghi chú)
 
     note.trashed_at = timezone.now()
 
@@ -642,7 +623,6 @@ def trash_note(request, note_id):
 
     return Response({
         "data": serializer.data
-<<<<<<< HEAD
     })
 
 # @api_view(["PATCH"])
@@ -787,6 +767,3 @@ def permanent_delete_note(request, note_id):
     note.save(update_fields=['is_deleted', 'is_trashed', 'server_updated_at'])
 
     return Response(status=status.HTTP_204_NO_CONTENT)
-=======
-    })
->>>>>>> 20e9488 (feat(backend): tích hợp API xử lý nhãn và cập nhật logic liên kết ghi chú)

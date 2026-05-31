@@ -13,6 +13,10 @@ import { useNoteStore } from '../../src/store/useNoteStore';
 import { NoteList } from '../../src/components/notes/NoteList';
 import { useAppStore } from '@/src/store/useAppStore';
 
+import { fetchNotes, createNoteText, createNoteTodo, updateNote, trashNote, toggleArchiveNote, togglePinNote } from '../../src/api/noteApi';
+import { addTagToNote } from '../../src/api/tagApi';
+import type { Tag } from '../../src/api/tagApi';
+
 export default function HomeScreen() {
   // ── XÓA: router, isCreating, setIsCreating — không dùng ở màn Home ──────
   const { theme, viewMode } = useAppStore();
@@ -29,7 +33,11 @@ export default function HomeScreen() {
     openEditNote,
     trashNoteAction,
     archiveNoteAction,
-    saveNoteAction
+    saveNoteAction,
+    openEditNote: openEditNoteStore,
+    closeEditor: closeEditorStore,
+    tagIdByName,
+    allTagObjects,
   } = useNoteStore();
 
   const { selectedIds, toggleSelect, clearSelection } = useSelectionStore();

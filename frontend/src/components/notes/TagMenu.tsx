@@ -200,6 +200,8 @@ export function NoteTagMenu({ noteId, noteTags, onTagsChange, onClose }: NoteTag
       setLocalNoteTags(updatedNote);
       onTagsChange(updatedNote);
       setSearch('');
+      // ✅ Sync sang AppStore để Sidebar cập nhật ngay
+      useAppStore.getState().setTags(updatedAll);
     } catch (err: any) {
       const code = err?.response?.data?.error?.code;
       if (code === 'TAG_ALREADY_EXISTS') {

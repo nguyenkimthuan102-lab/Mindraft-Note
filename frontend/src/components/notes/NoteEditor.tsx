@@ -14,6 +14,8 @@ import api from '../../api/axiosClient';
 import { useReminderStore } from '@/src/store/useReminderStore';
 import { useLocalNotification } from '@/src/hooks/useLocalNotification';
 import { NoteImageUploader } from './NoteImageUploader';
+import { addTagToNote, removeTagFromNote, Tag } from '../../api/tagApi';
+import { useRouter } from 'expo-router';
 
 const isWeb = Platform.OS === 'web';
 const WebDiv = 'div' as any;
@@ -198,6 +200,15 @@ export function NoteEditor({ visible, mode, note, inline, readOnly }: NoteEditor
   const imagePickerTriggerRef = useRef<(() => void) | null>(null);
 
   const [noteTags, setNoteTags] = useState<string[]>(note?.labels ?? []);
+  const { allTags, addTagToSystem, allTagObjects, tagIdByName, loadTagsFromServer } = useNoteStore();
+  const router = useRouter();
+
+  // ✅ FIX Bugs 2 & 4: đọc từ note.tags (Tag[]) thay vì note.labels
+  const [noteTags, setNoteTags] = useState<string[]>(
+    note?.tags?.map(t => t.name) ?? note?.labels ?? []
+  );
+  // Lưu tags gốc lúc mở editor để tính diff khi save
+  const originalTagsRef = useRef<Tag[]>(note?.tags ?? []);
 
   // ── Refs khai báo đúng bên trong component ────────────────────────────────
   const contentRef = useRef<any>(null);
@@ -205,6 +216,10 @@ export function NoteEditor({ visible, mode, note, inline, readOnly }: NoteEditor
   // ──────────────────────────────────────────────────────────────────────────
   useEffect(() => {
     if (!visible) return;
+
+    // ✅ FIX: Load tags từ server mỗi khi editor mở để TagMenu có dữ liệu
+    loadTagsFromServer();
+
     setTitle(note?.title ?? '');
     setContent(note?.content_text ?? '');
     setHtmlConfig({ __html: (note?.content_text ?? '').replace(/\n/g, '<br>') });
@@ -215,6 +230,11 @@ export function NoteEditor({ visible, mode, note, inline, readOnly }: NoteEditor
     );
     setIsPinned(note?.is_pinned ?? 0);
     setNoteColor(note?.color ?? 'default');
+    // ✅ FIX Bug 2 & 4: reset tags từ note.tags (Tag[]) khi mở note khác
+    const currentTags = note?.tags ?? [];
+    setNoteTags(currentTags.map(t => t.name));
+    originalTagsRef.current = currentTags;
+
     setEditorMode(mode);
     setShowColorPicker(false);
     setShowMoreMenu(false);
@@ -631,22 +651,52 @@ export function NoteEditor({ visible, mode, note, inline, readOnly }: NoteEditor
 
     if (editorMode === 'text' && !strippedCheck) {
       currentContent = '';
-      if (isWeb && contentRef.current) contentRef.current.innerHTML = '';
+      if (isWeb && contentRef.current) {
+        contentRef.current.innerHTML = '';
+      }
     }
 
     const updatedNote: NoteCardData = {
       ...note,
-      id:             note?.id ?? `temp-${Date.now()}`,
-      type:           editorMode,
-      color:          noteColor,
-      title:          title.trim() || undefined,
-      content_text:   editorMode === 'text' ? (strippedCheck ? currentContent.trim() : '') : undefined,
-      todo_items:     editorMode === 'todo' ? cleanedTodoItems : undefined,
-      todo_total:     editorMode === 'todo' ? cleanedTodoItems.length : undefined,
-      todo_completed: editorMode === 'todo' ? cleanedTodoItems.filter(i => i.is_completed).length : undefined,
-      labels:         noteTags,
-      is_pinned:      isPinned,
+      id: note?.id ?? `${Date.now()}`,
+      type: editorMode,
+      color: noteColor,
+      title: title.trim() || undefined,
+      content_text: editorMode === 'text' ? (strippedCheck ? currentContent.trim() : '') : undefined,
+      todo_items: editorMode === 'todo' ? cleanedTodoItems : undefined,
+      todo_total: editorMode === 'todo' ? cleanedTodoItems.length : undefined,
+      todo_completed: editorMode === 'todo' ? cleanedTodoItems.filter((item) => item.is_completed).length : undefined,
+      labels: noteTags,       // desired tag names (dùng cho parent khi tạo note mới)
+      tags: note?.tags ?? [], // giữ tags gốc để parent biết trạng thái cũ
+      is_pinned: isPinned,
     };
+
+    // ✅ FIX Bug 2 & 4: Sync tag changes qua API ngay với note đã tồn tại
+    const isExistingNote = note?.id && !note.id.startsWith('temp-');
+    if (isExistingNote && note?.id) {
+      const originalTagNames = originalTagsRef.current.map(t => t.name);
+      const toAdd = noteTags.filter(name => !originalTagNames.includes(name));
+      const toRemove = originalTagNames.filter(name => !noteTags.includes(name));
+      try {
+        await Promise.all([
+          ...toAdd.map(name => {
+            const tagId = tagIdByName[name];
+            return tagId ? addTagToNote(note.id, tagId) : Promise.resolve();
+          }),
+          ...toRemove.map(name => {
+            const tag = originalTagsRef.current.find(t => t.name === name);
+            return tag ? removeTagFromNote(note.id, tag.id) : Promise.resolve();
+          }),
+        ]);
+        // Cập nhật updatedNote.tags với danh sách tags mới (để hiển thị đúng trên card)
+        const newTags = noteTags
+          .map(name => allTagObjects.find(t => t.name === name))
+          .filter(Boolean) as Tag[];
+        updatedNote.tags = newTags;
+      } catch {
+        // Nếu API lỗi vẫn tiếp tục save nội dung
+      }
+    }
 
     if (!hasContent) {
       if (note?.id && !note.id.startsWith('temp-')) await saveNoteAction(updatedNote);
@@ -940,6 +990,41 @@ export function NoteEditor({ visible, mode, note, inline, readOnly }: NoteEditor
             </View>
           )}
         </ScrollView>
+
+        {/* ── Tag chips: body tap → navigate, × → remove (Bug 3 fix) ─────── */}
+        {noteTags.length > 0 && (
+          <View style={styles.tagChipsRow}>
+            {noteTags.map(tag => {
+              const tagObj = allTagObjects.find(t => t.name === tag);
+              return (
+                <View key={tag} style={styles.tagChip}>
+                  {/* Tap chip body → lưu & navigate sang trang nhãn */}
+                  <TouchableOpacity
+                    style={styles.tagChipBody}
+                    onPress={() => {
+                      if (tagObj) {
+                        handleSaveAndClose();
+                        router.push(`/(main)/label/${tagObj.id}` as any);
+                      }
+                    }}
+                    activeOpacity={0.7}
+                  >
+                    <MaterialCommunityIcons name="label-outline" size={12} color={colors.textSecondary} />
+                    <Text style={styles.tagChipText}>{tag}</Text>
+                  </TouchableOpacity>
+                  {/* × → xóa nhãn khỏi note */}
+                  <TouchableOpacity
+                    onPress={() => handleToggleTag(tag)}
+                    hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+                  >
+                    <MaterialCommunityIcons name="close" size={12} color={colors.textTertiary} />
+                  </TouchableOpacity>
+                </View>
+              );
+            })}
+          </View>
+        )}
+        {/* ──────────────────────────────────────────────────────────────────── */}
 
         {/* Formatting Bar */}
         {showFormattingBar && isTextMode && (
@@ -1360,6 +1445,41 @@ const styles = StyleSheet.create({
     marginLeft: 8,
     zIndex: 1000,
   },
+  // ── Tag chips trong editor ────────────────────────────────────────────────
+  tagChipsRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+    paddingHorizontal: 20,
+    paddingVertical: 8,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: colors.borderDefault,
+  },
+  tagChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderRadius: 999,
+    backgroundColor: colors.bgSurface,
+    borderWidth: 1,
+    borderColor: colors.borderDefault,
+    paddingRight: 8,
+    overflow: 'hidden',
+  },
+  tagChipBody: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingVertical: 4,
+    paddingLeft: 10,
+    paddingRight: 4,
+    ...Platform.select({ web: { cursor: 'pointer' } as any }),
+  },
+  tagChipText: {
+    fontFamily: 'Inter-Regular',
+    fontSize: 12,
+    color: colors.textSecondary,
+  },
+  // ──────────────────────────────────────────────────────────────────────────
   overlay: {
     position: 'absolute',
     inset: 0,

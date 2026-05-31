@@ -1,9 +1,5 @@
 from rest_framework import serializers
-<<<<<<< HEAD
-from .models import Notes, TodoItems,UserSettings,Tags,Media,Users
-=======
-from .models import Notes, TodoItems, UserSettings, Tags, NoteTags, Reminders
->>>>>>> 20e9488 (feat(backend): tích hợp API xử lý nhãn và cập nhật logic liên kết ghi chú)
+from .models import Notes, TodoItems, UserSettings, Tags, NoteTags, Reminders, Media, Users, Notifications
 
 class TagSerializer(serializers.ModelSerializer):
     class Meta:
@@ -22,7 +18,6 @@ class NoteSerializer(serializers.ModelSerializer):
     class Meta:
         model = Notes
         fields = [
-<<<<<<< HEAD
             "id",
             "title",
             "content",
@@ -37,11 +32,7 @@ class NoteSerializer(serializers.ModelSerializer):
             "created_at",
             "server_updated_at",
             "client_updated_at",
-=======
-            "id", "title", "content", "content_text", "type", "color",
-            "is_pinned", "is_archived", "is_trashed", "position",
-            "created_at", "server_updated_at", "client_updated_at", "tags"
->>>>>>> 20e9488 (feat(backend): tích hợp API xử lý nhãn và cập nhật logic liên kết ghi chú)
+            "tags"
         ]
 
     def get_tags(self, obj):
@@ -77,8 +68,6 @@ class CreateNoteSerializer(serializers.ModelSerializer):
             "position": {"required": False},
             "client_updated_at": {"required": False},
         }
-<<<<<<< HEAD
-=======
 
 
 class UserSettingsSerializer(serializers.ModelSerializer):
@@ -93,7 +82,6 @@ class UserSettingsSerializer(serializers.ModelSerializer):
             "sort_by",
         ]
 
->>>>>>> 20e9488 (feat(backend): tích hợp API xử lý nhãn và cập nhật logic liên kết ghi chú)
 
 class UpdateNoteSerializer(serializers.ModelSerializer):
     class Meta:
@@ -137,7 +125,6 @@ class UpdateNoteSerializer(serializers.ModelSerializer):
         if len(value) > 255:
             raise serializers.ValidationError("Invalid position")
         return value
-<<<<<<< HEAD
     
 class UserSettingsSerializer(serializers.ModelSerializer):
 
@@ -165,13 +152,6 @@ class TagSerializer(serializers.ModelSerializer):
             "updated_at",
         ]
 
-# serializers.py
-from rest_framework import serializers
-from .models import Reminders
-=======
-
->>>>>>> 20e9488 (feat(backend): tích hợp API xử lý nhãn và cập nhật logic liên kết ghi chú)
-
 class ReminderSerializer(serializers.ModelSerializer):
     note_title = serializers.CharField(source='note.title', read_only=True)
     note_color = serializers.CharField(source='note.color', read_only=True)
@@ -189,12 +169,7 @@ class CreateReminderSerializer(serializers.ModelSerializer):
 class UpdateReminderSerializer(serializers.ModelSerializer):
     class Meta:
         model = Reminders
-<<<<<<< HEAD
         fields = ['remind_at', 'repeat_type', 'is_notified','is_deleted']
-
-# serializers.py
-from rest_framework import serializers
-from .models import Notifications
 
 class NotificationSerializer(serializers.ModelSerializer):
     class Meta:
@@ -272,6 +247,3 @@ class UserProfileSerializer(serializers.ModelSerializer):
         if Users.objects.exclude(id=user.id).filter(name=value).exists():
             raise serializers.ValidationError("NAME_ALREADY_EXISTS")
         return value
-=======
-        fields = ['remind_at', 'repeat_type', 'is_notified']
->>>>>>> 20e9488 (feat(backend): tích hợp API xử lý nhãn và cập nhật logic liên kết ghi chú)
