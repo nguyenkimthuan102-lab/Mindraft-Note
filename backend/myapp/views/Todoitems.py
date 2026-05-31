@@ -114,11 +114,20 @@ def todo_detail(request, note_id, todo_id):
     except Notes.DoesNotExist:
         return Response({'error': 'Note không tồn tại'}, status=status.HTTP_404_NOT_FOUND)
 
-    # Kiểm tra todo
+    # FIX: Subtasks only have a parent FK, not a direct note FK in all cases.
+    # Look up the todo by ID first, then verify it belongs to this note by
+    # traversing the parent chain — or by checking the note field directly
+    # if it is set (root items). This handles both root todos and subtasks.
     try:
-        todo = TodoItems.objects.get(id=todo_id, note=note)
+        todo = TodoItems.objects.get(id=todo_id)
     except TodoItems.DoesNotExist:
         return Response({'error': 'Todo không tồn tại'}, status=status.HTTP_404_NOT_FOUND)
+
+    # Security: confirm the todo actually belongs to the requested note.
+    # Subtasks store note on the model too (they inherit it on creation),
+    # so checking todo.note == note is sufficient and correct.
+    if todo.note_id != note.id:
+        return Response({'error': 'Todo không thuộc note này'}, status=status.HTTP_403_FORBIDDEN)
 
     if request.method == 'GET':
         return Response(TodoItemSerializer(todo).data)
@@ -158,9 +167,16 @@ def todo_detail(request, note_id, todo_id):
 def todo_toggle(request, note_id, todo_id):
     try:
         note = Notes.objects.get(id=note_id, user=request.user, is_deleted=False)
-        todo = TodoItems.objects.get(id=todo_id, note=note)
-    except (Notes.DoesNotExist, TodoItems.DoesNotExist):
+    except Notes.DoesNotExist:
         return Response({'error': 'Không tìm thấy'}, status=status.HTTP_404_NOT_FOUND)
+
+    try:
+        todo = TodoItems.objects.get(id=todo_id)
+    except TodoItems.DoesNotExist:
+        return Response({'error': 'Không tìm thấy'}, status=status.HTTP_404_NOT_FOUND)
+
+    if todo.note_id != note.id:
+        return Response({'error': 'Todo không thuộc note này'}, status=status.HTTP_403_FORBIDDEN)
 
     # Toggle: 0 → 1, 1 → 0
     todo.is_completed = 1 if todo.is_completed == 0 else 0
@@ -174,3 +190,41 @@ def todo_toggle(request, note_id, todo_id):
     )
 
     return Response(TodoItemSerializer(todo).data)
+
+
+# ─────────────────────────────────────────
+# DELETE /notes/<note_id>/todos/clear-completed/
+# Xóa toàn bộ todo đã hoàn thành (cả root lẫn subtask) trong một note.
+# Frontend gọi endpoint này thay vì bắn nhiều DELETE đơn lẻ.
+# ─────────────────────────────────────────
+@api_view(['DELETE'])
+@permission_classes([IsAuthenticated])
+def todo_clear_completed(request, note_id):
+    try:
+        note = Notes.objects.get(id=note_id, user=request.user, is_deleted=False)
+    except Notes.DoesNotExist:
+        return Response({'error': 'Note không tồn tại'}, status=status.HTTP_404_NOT_FOUND)
+
+    # Step 1: Collect all completed root todos for this note.
+    completed_roots = TodoItems.objects.filter(note=note, parent=None, is_completed=1)
+
+    # Step 2: Delete their children first (cascading safety — avoids FK constraint
+    # issues on databases that don't cascade automatically).
+    TodoItems.objects.filter(parent__in=completed_roots).delete()
+
+    # Step 3: Delete the completed root todos themselves.
+    deleted_root_count, _ = completed_roots.delete()
+
+    # Step 4: Delete any completed subtasks whose parent is NOT completed
+    # (i.e. orphaned completed children under still-active parents).
+    completed_subtasks = TodoItems.objects.filter(
+        note=note,
+        parent__isnull=False,
+        is_completed=1
+    )
+    deleted_sub_count, _ = completed_subtasks.delete()
+
+    return Response({
+        'deleted_roots': deleted_root_count,
+        'deleted_subtasks': deleted_sub_count,
+    }, status=status.HTTP_200_OK)

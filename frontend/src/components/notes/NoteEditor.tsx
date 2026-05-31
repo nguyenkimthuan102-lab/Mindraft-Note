@@ -1,18 +1,19 @@
-import { View, Text, StyleSheet, TouchableOpacity, TextInput, ScrollView, useWindowDimensions, Platform, Keyboard, BackHandler } from 'react-native';
+import {
+  View, Text, StyleSheet, TouchableOpacity, TextInput,
+  ScrollView, useWindowDimensions, Platform, Keyboard, BackHandler
+} from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { colors } from '../../constants/colors';
 import { NoteCardData, TodoItemData } from './NoteCard';
 import { useEffect, useState, useRef } from 'react';
-import { useNoteStore } from '@/src/store/useNoteStore';
+import { useNoteStore, mapApiTodoItems } from '../../store/useNoteStore';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { TagMenu } from './TagMenu';
 import { exportToTxt, exportToPdf, exportToDocx } from '../../utils/exportNote';
+import api from '../../api/axiosClient';
 
 const isWeb = Platform.OS === 'web';
 const WebDiv = 'div' as any;
-
-const contentRef = useRef<any>(null);
-const mobileContentRef = useRef<any>(null);
 
 const cardColorMap: Record<string, string> = {
   default: '#FFFFFF', red: '#FADADD', orange: '#FEEFC3', yellow: '#FEF7CD',
@@ -21,26 +22,12 @@ const cardColorMap: Record<string, string> = {
 };
 
 const NOTE_COLORS = [
-  { key: 'default', bg: '#FFFFFF' }, { key: 'red', bg: '#FADADD' },
-  { key: 'orange', bg: '#FEEFC3' }, { key: 'yellow', bg: '#FEF7CD' },
-  { key: 'green', bg: '#E2F3E8' }, { key: 'teal', bg: '#D0F4EE' },
-  { key: 'blue', bg: '#D3E3FD' }, { key: 'purple', bg: '#E8DEFC' },
-  { key: 'pink', bg: '#FDCFE8' }, { key: 'brown', bg: '#F0E6DA' },
+  { key: 'default', bg: '#FFFFFF' }, { key: 'red',    bg: '#FADADD' },
+  { key: 'orange',  bg: '#FEEFC3' }, { key: 'yellow', bg: '#FEF7CD' },
+  { key: 'green',   bg: '#E2F3E8' }, { key: 'teal',   bg: '#D0F4EE' },
+  { key: 'blue',    bg: '#D3E3FD' }, { key: 'purple', bg: '#E8DEFC' },
+  { key: 'pink',    bg: '#FDCFE8' }, { key: 'brown',  bg: '#F0E6DA' },
 ];
-
-type TextFormat = 'normal' | 'h1' | 'h2' | 'bold' | 'italic' | 'underline';
-
-type EditorSnapshot = {
-  title: string;
-  content: string;
-  todoItems: TodoItemData[];
-  selectedFormat: TextFormat;
-  editorBgColor: string;
-  reminder: string;
-  collaborators: string[];
-  labels: string[];
-  images: string[];
-};
 
 interface NoteEditorProps {
   visible: boolean;
@@ -48,6 +35,14 @@ interface NoteEditorProps {
   note?: NoteCardData;
   inline?: boolean;
   readOnly?: boolean;
+}
+
+function isServerTodoId(id: string): boolean {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
+}
+
+function isRealNoteId(noteId?: string): boolean {
+  return !!noteId && !noteId.startsWith('temp-');
 }
 
 function Tooltip({ label, children, position = 'top' }: { label: string; children: React.ReactNode; position?: 'top' | 'bottom' }) {
@@ -84,7 +79,14 @@ function ToolbarBtn({ icon, onPress, label, isActive, isFormatActive }: { icon: 
 
 function MenuBtn({ label, onPress, disabled }: { label: string, onPress: () => void, disabled?: boolean }) {
   return (
-    <TouchableOpacity onPress={disabled ? undefined : onPress} style={[styles.menuItem, disabled && { opacity: 0.5 }]} disabled={disabled}>
+    <TouchableOpacity
+      onPress={(e) => {
+        e.stopPropagation();
+        if (!disabled) onPress();
+      }}
+      style={[styles.menuItem, disabled && { opacity: 0.5 }]}
+      disabled={disabled}
+    >
       <Text style={styles.menuItemText}>{label}</Text>
     </TouchableOpacity>
   );
@@ -95,78 +97,122 @@ export function NoteEditor({ visible, mode, note, inline, readOnly }: NoteEditor
   const [content, setContent] = useState(note?.content_text ?? '');
 
   const {
-    allTags,
-    addTagToSystem,
-    saveNoteAction,
-    closeEditor,
-    archiveNoteAction,
-    trashNoteAction
+    allTags, addTagToSystem, saveNoteAction,
+    closeEditor, archiveNoteAction, trashNoteAction,
+    clearCompletedTodosAction,
+    notes, // FIX: subscribe to notes so we can sync local state after store updates
   } = useNoteStore();
 
   const [htmlConfig, setHtmlConfig] = useState({ __html: (note?.content_text ?? '').replace(/\n/g, '<br>') });
 
-  const [todoItems, setTodoItems] = useState<TodoItemData[]>(note?.todo_items?.length ? note.todo_items : [
-    { id: `${Date.now()}-1`, title: '', is_completed: false },
-  ]);
+  const [todoItems, setTodoItems] = useState<TodoItemData[]>(
+    note?.todo_items?.length
+      ? note.todo_items
+      : [{ id: `temp-${Date.now()}-1`, title: '', is_completed: false, subtasks: [] }],
+  );
+
+  const [todoContents, setTodoContents] = useState<Record<string, string>>({});
+  const [openTodoMenuId, setOpenTodoMenuId] = useState<string | null>(null);
+
   const [isPinned, setIsPinned] = useState<0 | 1>(note?.is_pinned ?? 0);
   const [noteColor, setNoteColor] = useState(note?.color ?? 'default');
   const insets = useSafeAreaInsets();
 
-  // UI states
-  const [showColorPicker, setShowColorPicker] = useState(false);
-  const [showMoreMenu, setShowMoreMenu] = useState(false);
+  const [showColorPicker,   setShowColorPicker]   = useState(false);
+  const [showMoreMenu,      setShowMoreMenu]      = useState(false);
   const [showFormattingBar, setShowFormattingBar] = useState(false);
-  const [editorMode, setEditorMode] = useState(mode);
-  const [isContentEmpty, setIsContentEmpty] = useState(!note?.content_text);
+  const [editorMode,        setEditorMode]        = useState(mode);
+  const [isContentEmpty,    setIsContentEmpty]    = useState(!note?.content_text);
   const [activeFormats, setActiveFormats] = useState({
-    bold: false,
-    italic: false,
-    underline: false,
-    strikeThrough: false,
-    block: 'div',
+    bold: false, italic: false, underline: false, strikeThrough: false, block: 'div',
   });
-
-  const [showTagMenu, setShowTagMenu] = useState(false);
+  const [showTagMenu,    setShowTagMenu]    = useState(false);
   const [showExportMenu, setShowExportMenu] = useState(false);
-  const [noteTags, setNoteTags] = useState<string[]>(note?.labels ?? []); // Trong code của bạn dùng 'labels'[cite: 7]
+  const [noteTags, setNoteTags] = useState<string[]>(note?.labels ?? []);
 
-  const contentRef = useRef<any>(null);
+  const contentRef     = useRef<any>(null);
+  const mobileContentRef = useRef<any>(null);
+  const debounceTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
+  const todoIdMapRef   = useRef<Record<string, string>>({});
+
+  // FIX: When the store's version of this note changes (e.g. after
+  // clearCompletedTodosAction updates it), sync the local todoItems so the
+  // editor immediately reflects the deletion without needing a re-open.
+  useEffect(() => {
+    if (!note?.id || !visible) return;
+    const storeNote = notes.find(n => n.id === note.id);
+    if (!storeNote?.todo_items) return;
+    setTodoItems(
+      storeNote.todo_items.length > 0
+        ? storeNote.todo_items
+        : [{ id: `temp-${Date.now()}-1`, title: '', is_completed: false, subtasks: [] }]
+    );
+  }, [notes, note?.id, visible]);
+
+  useEffect(() => {
+    if (!visible) return;
+
+    const isTodoMode = mode === 'todo' || note?.type === 'todo';
+    const hasRealId  = isRealNoteId(note?.id);
+
+    if (isTodoMode && hasRealId) {
+      api.get(`/notes/${note!.id}/todos/`)
+        .then(({ data }) => {
+          const freshItems = mapApiTodoItems(data.results);
+
+          const contentMap: Record<string, string> = {};
+          (data.results || []).forEach((root: any) => {
+            if (root.content) contentMap[root.id] = root.content;
+            (root.children || []).forEach((child: any) => {
+              if (child.content) contentMap[child.id] = child.content;
+            });
+          });
+          setTodoContents(contentMap);
+
+          setTodoItems(
+            freshItems.length > 0
+              ? freshItems
+              : [{ id: `temp-${Date.now()}-1`, title: '', is_completed: false, subtasks: [] }],
+          );
+        })
+        .catch((err) => {
+          console.warn('[NoteEditor] Không tải được danh sách todo:', err);
+        });
+    }
+  }, [visible, note?.id, mode]);
 
   useEffect(() => {
     if (!visible) return;
     setTitle(note?.title ?? '');
     setContent(note?.content_text ?? '');
-
     setHtmlConfig({ __html: (note?.content_text ?? '').replace(/\n/g, '<br>') });
-
-    setTodoItems(note?.todo_items?.length ? note.todo_items : [
-      { id: `${Date.now()}-1`, title: '', is_completed: false },
-    ]);
+    setTodoItems(
+      note?.todo_items?.length
+        ? note.todo_items
+        : [{ id: `temp-${Date.now()}-1`, title: '', is_completed: false, subtasks: [] }],
+    );
     setIsPinned(note?.is_pinned ?? 0);
     setNoteColor(note?.color ?? 'default');
-
     setEditorMode(mode);
     setShowColorPicker(false);
     setShowMoreMenu(false);
     setShowFormattingBar(false);
     setIsContentEmpty(!note?.content_text);
+    setOpenTodoMenuId(null);
+    todoIdMapRef.current = {};
 
-    // Chỉ tự động focus nếu là tạo mới (nội dung trống)
     if (!note?.content_text) {
       const timer = setTimeout(() => {
         if (isWeb) {
-          // Xử lý Focus nâng cao cho div contentEditable trên Web
           const el = document.getElementById('web-content-editor');
           if (el) {
-            if (el.innerHTML === '<br>') el.innerHTML = ''; // ← thêm dòng này
+            if (el.innerHTML === '<br>') el.innerHTML = '';
             el.focus();
-
-            // Ép con trỏ chuột nhảy xuống vị trí cuối cùng trong div nhập liệu
             if (typeof window !== 'undefined' && window.getSelection) {
               const range = document.createRange();
               const sel = window.getSelection();
               range.selectNodeContents(el);
-              range.collapse(false); // false nghĩa là đưa về cuối dòng
+              range.collapse(false);
               sel?.removeAllRanges();
               sel?.addRange(range);
             }
@@ -184,67 +230,243 @@ export function NoteEditor({ visible, mode, note, inline, readOnly }: NoteEditor
 
   const handleToggleTodo = (id: string, parentId?: string) => {
     if (parentId) {
-      setTodoItems((prev) => prev.map((item) => item.id === parentId ? {
-        ...item,
-        subtasks: item.subtasks?.map(sub => sub.id === id ? { ...sub, is_completed: !sub.is_completed } : sub)
-      } : item));
+      setTodoItems((prev) => prev.map((item) =>
+        item.id === parentId
+          ? { ...item, subtasks: (item.subtasks || []).map(sub => sub.id === id ? { ...sub, is_completed: !sub.is_completed } : sub) }
+          : item
+      ));
     } else {
-      setTodoItems((prev) => prev.map((item) => item.id === id ? { ...item, is_completed: !item.is_completed } : item));
+      setTodoItems((prev) => prev.map((item) =>
+        item.id === id ? { ...item, is_completed: !item.is_completed } : item
+      ));
+    }
+
+    if (isRealNoteId(note?.id) && isServerTodoId(id)) {
+      api.put(`/notes/${note!.id}/todos/${id}/toggle/`)
+        .catch((err) => {
+          console.warn('[NoteEditor] toggle API lỗi:', err);
+          if (parentId) {
+            setTodoItems((prev) => prev.map((item) =>
+              item.id === parentId
+                ? { ...item, subtasks: (item.subtasks || []).map(sub => sub.id === id ? { ...sub, is_completed: !sub.is_completed } : sub) }
+                : item
+            ));
+          } else {
+            setTodoItems((prev) => prev.map((item) =>
+              item.id === id ? { ...item, is_completed: !item.is_completed } : item
+            ));
+          }
+        });
     }
   };
 
-  const handleChangeTodo = (id: string, value: string, parentId?: string) => {
-    if (parentId) {
-      setTodoItems((prev) => prev.map((item) => item.id === parentId ? {
-        ...item,
-        subtasks: item.subtasks?.map(sub => sub.id === id ? { ...sub, title: value } : sub)
-      } : item));
+  const handleChangeTodo = (
+    id: string,
+    value: string,
+    field: 'title' | 'content' = 'title',
+    parentId?: string,
+  ) => {
+    if (field === 'title') {
+      if (parentId) {
+        setTodoItems((prev) => prev.map((item) =>
+          item.id === parentId
+            ? { ...item, subtasks: (item.subtasks || []).map(sub => sub.id === id ? { ...sub, title: value } : sub) }
+            : item
+        ));
+      } else {
+        setTodoItems((prev) => prev.map((item) =>
+          item.id === id ? { ...item, title: value } : item
+        ));
+      }
     } else {
-      setTodoItems((prev) => prev.map((item) => item.id === id ? { ...item, title: value } : item));
+      setTodoContents((prev) => {
+        const next = { ...prev, [id]: value };
+        const resolvedId = todoIdMapRef.current[id];
+        if (resolvedId && resolvedId !== id) {
+          next[resolvedId] = value;
+        }
+        const tempId = Object.keys(todoIdMapRef.current).find(key => todoIdMapRef.current[key] === id);
+        if (tempId) {
+          next[tempId] = value;
+        }
+        return next;
+      });
+    }
+
+    const currentNoteId = note?.id && !note.id.startsWith('temp-')
+      ? note.id
+      : useNoteStore.getState().notes.find(n => n.title === title)?.id;
+
+    if (currentNoteId) {
+      const timerKey = `${id}-${field}`;
+      if (debounceTimers.current[timerKey]) clearTimeout(debounceTimers.current[timerKey]);
+      debounceTimers.current[timerKey] = setTimeout(() => {
+        const resolvedId = todoIdMapRef.current[id] ?? id;
+
+        if (isServerTodoId(resolvedId)) {
+          const payload = field === 'title' ? { title: value } : { content: value };
+          api.put(`/notes/${currentNoteId}/todos/${resolvedId}/`, payload)
+            .catch((err) => console.warn(`[NoteEditor] update ${field} API lỗi:`, err));
+        }
+        delete debounceTimers.current[timerKey];
+      }, 800);
     }
   };
 
   const handleAddTodo = (parentId?: string) => {
+    const tempId = `temp-${Date.now()}-${Math.random()}`;
+    const currentSubCount = todoItems.reduce((acc, item) => acc + (item.subtasks?.length || 0), 0);
+    const computedPosition = parentId
+      ? `b${String(currentSubCount).padStart(4, '0')}`
+      : `a${String(todoItems.length).padStart(4, '0')}`;
+
     if (parentId) {
-      setTodoItems((prev) => prev.map((item) => item.id === parentId ? {
-        ...item,
-        subtasks: [...(item.subtasks || []), { id: `${Date.now()}-${(item.subtasks?.length || 0) + 1}`, title: '', is_completed: false }]
-      } : item));
+      setTodoItems((prev) => prev.map((item) =>
+        item.id === parentId
+          ? { ...item, subtasks: [...(item.subtasks || []), { id: tempId, title: '', is_completed: false, content: '' }] }
+          : item
+      ));
     } else {
-      setTodoItems((prev) => [
-        ...prev,
-        { id: `${Date.now()}-${prev.length + 1}`, title: '', is_completed: false },
-      ]);
+      setTodoItems((prev) => [...prev, { id: tempId, title: '', is_completed: false, content: '', subtasks: [] }]);
+    }
+
+    const currentNoteId = note?.id && !note.id.startsWith('temp-') ? note.id : useNoteStore.getState().notes.find(n => n.title === title)?.id;
+
+    if (currentNoteId) {
+      const payload: Record<string, any> = { title: '', position: computedPosition, repeat_type: 'none' };
+      if (parentId && isServerTodoId(parentId)) payload.parent = parentId;
+
+      api.post(`/notes/${currentNoteId}/todos/`, payload)
+        .then(({ data: created }) => {
+          const oldTempId = tempId;
+          todoIdMapRef.current[oldTempId] = created.id;
+
+          setTodoContents((prev) => {
+            const next = { ...prev };
+            if (next[oldTempId] !== undefined) {
+              next[created.id] = next[oldTempId];
+            }
+            return next;
+          });
+
+          if (parentId) {
+            setTodoItems((prev) => prev.map((item) =>
+              item.id === parentId
+                ? {
+                    ...item,
+                    subtasks: (item.subtasks || []).map(sub =>
+                      sub.id === oldTempId
+                        ? { ...sub, id: created.id, content: '' }
+                        : sub
+                    )
+                  }
+                : item
+            ));
+          } else {
+            setTodoItems((prev) => prev.map((item) => item.id === oldTempId ? { ...item, id: created.id, content: '', subtasks: [] } : item));
+          }
+        })
+        .catch((err) => {
+          console.warn('[NoteEditor] create todo API lỗi:', err);
+          if (parentId) {
+            setTodoItems((prev) => prev.map((item) =>
+              item.id === parentId
+                ? { ...item, subtasks: (item.subtasks || []).filter(sub => sub.id !== tempId) }
+                : item
+            ));
+          } else {
+            setTodoItems((prev) => prev.filter((item) => item.id !== tempId));
+          }
+        });
     }
   };
 
   const handleRemoveTodo = (id: string, parentId?: string) => {
-    if (parentId) {
-      setTodoItems((prev) => prev.map((item) => item.id === parentId ? {
-        ...item,
-        subtasks: item.subtasks?.filter(sub => sub.id !== id)
-      } : item));
-    } else {
-      setTodoItems((prev) => prev.filter((item) => item.id !== id));
+    const snapshot = JSON.parse(JSON.stringify(todoItems));
+
+    setTodoItems((prev) => {
+      if (parentId) {
+        return prev.map(item =>
+          item.id === parentId
+            ? { ...item, subtasks: (item.subtasks || []).filter(s => s.id !== id) }
+            : item
+        );
+      }
+      return prev.filter(item => item.id !== id);
+    });
+
+    ['title', 'content'].forEach(f => {
+      const key = `${id}-${f}`;
+      if (debounceTimers.current[key]) {
+        clearTimeout(debounceTimers.current[key]);
+        delete debounceTimers.current[key];
+      }
+    });
+    setTodoContents(prev => { const next = { ...prev }; delete next[id]; return next; });
+    setOpenTodoMenuId(null);
+
+    const currentNoteId = note?.id && !note.id.startsWith('temp-') ? note.id : useNoteStore.getState().notes.find(n => n.title === title)?.id;
+    if (currentNoteId && isServerTodoId(id)) {
+      api.delete(`/notes/${currentNoteId}/todos/${id}/`)
+        .catch(err => {
+          console.warn('[NoteEditor] delete todo API lỗi:', err);
+          setTodoItems(snapshot);
+        });
     }
   };
 
-
-  const handleToggleMode = () => {
+  const handleToggleMode = async () => {
+    let newType: 'text' | 'todo';
     if (editorMode === 'text') {
       const plainText = isWeb && contentRef.current ? contentRef.current.innerText : content;
       const lines = (plainText || '').split('\n').filter((l: string) => l.trim() !== '');
-      if (lines.length > 0) {
-        setTodoItems(lines.map((l: string, i: number) => ({ id: `${Date.now()}-${i}`, title: l, is_completed: false })));
-      } else {
-        setTodoItems([{ id: `${Date.now()}-1`, title: '', is_completed: false }]);
-      }
+
+      const newItems = lines.length > 0
+        ? lines.map((l: string, i: number) => ({ id: `temp-${Date.now()}-${i}`, title: l, is_completed: false, subtasks: [] }))
+        : [{ id: `temp-${Date.now()}-1`, title: '', is_completed: false, subtasks: [] }];
+
+      setTodoItems(newItems);
       setEditorMode('todo');
+      newType = 'todo';
+
+      if (isRealNoteId(note?.id)) {
+        const syncNote: NoteCardData = {
+          ...note,
+          id: note!.id,
+          type: 'todo',
+          todo_items: newItems,
+          title: title.trim() || undefined,
+          color: noteColor,
+          labels: noteTags,
+        };
+        const result = await saveNoteAction(syncNote, todoContents);
+        if (result && result.note?.todo_items) {
+          setTodoItems(result.note.todo_items);
+        }
+        if (result && result.contentsMap) {
+          setTodoContents(result.contentsMap);
+        }
+      }
     } else {
       const text = todoItems.filter(t => t.title.trim()).map(t => t.title).join('\n');
       setContent(text);
       setIsContentEmpty(!text.trim());
       setEditorMode('text');
+      newType = 'text';
+
+      if (isRealNoteId(note?.id)) {
+        const syncNote: NoteCardData = {
+          ...note,
+          id: note!.id,
+          type: 'text',
+          content_text: text,
+          title: title.trim() || undefined,
+          color: noteColor,
+          labels: noteTags,
+        };
+        saveNoteAction(syncNote, todoContents)
+          .catch((err: any) => console.warn('[NoteEditor] sync type text API lỗi:', err));
+      }
     }
     setShowMoreMenu(false);
   };
@@ -254,16 +476,17 @@ export function NoteEditor({ visible, mode, note, inline, readOnly }: NoteEditor
     setShowMoreMenu(false);
     setShowTagMenu(false);
     setShowExportMenu(false);
+    setOpenTodoMenuId(null);
   };
 
   const updateFormattingState = () => {
     if (!isWeb) return;
     setActiveFormats({
-      bold: document.queryCommandState('bold'),
-      italic: document.queryCommandState('italic'),
-      underline: document.queryCommandState('underline'),
+      bold:          document.queryCommandState('bold'),
+      italic:        document.queryCommandState('italic'),
+      underline:     document.queryCommandState('underline'),
       strikeThrough: document.queryCommandState('strikeThrough'),
-      block: document.queryCommandValue('formatBlock') || 'div',
+      block:         document.queryCommandValue('formatBlock') || 'div',
     });
   };
 
@@ -297,118 +520,97 @@ export function NoteEditor({ visible, mode, note, inline, readOnly }: NoteEditor
     const exportNoteData: NoteCardData = {
       ...note,
       color: noteColor,
-      id: note?.id ?? `${Date.now()}`,
-      title: title.trim() || undefined,
+      id:            note?.id ?? `${Date.now()}`,
+      title:         title.trim() || undefined,
       content_text: editorMode === 'text' ? currentContent?.trim() || undefined : undefined,
-      todo_items: editorMode === 'todo' ? todoItems : undefined,
-      type: editorMode,
+      todo_items:    editorMode === 'todo' ? todoItems : undefined,
+      type:          editorMode,
     };
-
     setShowExportMenu(false);
     setShowMoreMenu(false);
-
-    if (format === 'txt') {
-      await exportToTxt(exportNoteData);
-    } else if (format === 'pdf') {
-      await exportToPdf(exportNoteData);
-    } else if (format === 'docx') {
-      await exportToDocx(exportNoteData);
-    }
+    if (format === 'txt')       await exportToTxt(exportNoteData);
+    else if (format === 'pdf')  await exportToPdf(exportNoteData);
+    else if (format === 'docx') await exportToDocx(exportNoteData);
   };
 
   const handleSaveAndClose = async () => {
     Keyboard.dismiss();
-    let currentContent = content;
 
-    if (readOnly) {
-      closeEditor();
-      return;
-    }
+    Object.keys(debounceTimers.current).forEach((key) => {
+      if (debounceTimers.current[key]) {
+        clearTimeout(debounceTimers.current[key]);
+      }
+    });
+    debounceTimers.current = {};
+
+    let currentContent = content;
+    if (readOnly) { closeEditor(); return; }
     if (editorMode === 'text') {
       currentContent = isWeb && contentRef.current ? contentRef.current.innerHTML : content;
     }
 
     const cleanedTodoItems = todoItems
-      .filter((item) => item.title.trim().length > 0)
+      .filter(item => item.title.trim() !== '' || (item.subtasks && item.subtasks.length > 0))
       .map((item) => ({
         ...item,
-        subtasks: item.subtasks?.filter(sub => sub.title.trim().length > 0)
+        subtasks: (item.subtasks || []).filter(sub => sub.title.trim() !== ''),
       }));
 
-    // CẢI TIẾN REGEX: Xóa tag HTML, xóa &nbsp;, xóa ký tự ẩn zero-width
     const strippedCheck = currentContent
       ? currentContent
-        .replace(/<[^>]*>?/gm, '')          // Xóa tags HTML
-        .replace(/&nbsp;/g, ' ')            // Biến mã khoảng trắng HTML thành khoảng trắng thường
-        .replace(/[\u200B-\u200D\uFEFF]/g, '') // Xóa triệt để các ký tự zero-width ẩn
-        .trim()
+          .replace(/<[^>]*>?/gm, '')
+          .replace(/&nbsp;/g, ' ')
+          .replace(/[\u200B-\u200D\uFEFF]/g, '')
+          .trim()
       : '';
 
-    const hasContent = title.trim() || (editorMode === 'text' ? strippedCheck.length > 0 : cleanedTodoItems.length > 0);
+    const hasContent = title.trim() ||
+      (editorMode === 'text' ? strippedCheck.length > 0 : cleanedTodoItems.length > 0);
 
-    // CAN THIỆP UI: Nếu text trống, ép DOM/Ref về rỗng hoàn toàn để tránh hiện tượng ghosting text
     if (editorMode === 'text' && !strippedCheck) {
       currentContent = '';
-      if (isWeb && contentRef.current) {
-        contentRef.current.innerHTML = ''; // Xóa sạch HTML cứng trong DOM
-      }
-      // LƯU Ý: Nếu bạn dùng thư viện Rich Editor (như pell-rich-editor), hãy gọi hàm clear của nó tại đây:
-      // richTextRef.current?.setContentHTML('');
+      if (isWeb && contentRef.current) contentRef.current.innerHTML = '';
     }
 
     const updatedNote: NoteCardData = {
       ...note,
-      id: note?.id ?? `temp-${Date.now()}`,
-      type: editorMode,
-      color: noteColor,
-      title: title.trim() || undefined,
-      content_text: editorMode === 'text' ? (strippedCheck ? currentContent.trim() : '') : undefined,
-      todo_items: editorMode === 'todo' ? cleanedTodoItems : undefined,
-      todo_total: editorMode === 'todo' ? cleanedTodoItems.length : undefined,
-      todo_completed: editorMode === 'todo' ? cleanedTodoItems.filter((item) => item.is_completed).length : undefined,
-      labels: noteTags,
-      is_pinned: isPinned,
+      id:             note?.id ?? `temp-${Date.now()}`,
+      type:           editorMode,
+      color:          noteColor,
+      title:          title.trim() || undefined,
+      content_text:   editorMode === 'text' ? (strippedCheck ? currentContent.trim() : '') : undefined,
+      todo_items:     editorMode === 'todo' ? cleanedTodoItems : undefined,
+      todo_total:     editorMode === 'todo' ? cleanedTodoItems.length : undefined,
+      todo_completed: editorMode === 'todo' ? cleanedTodoItems.filter(i => i.is_completed).length : undefined,
+      labels:         noteTags,
+      is_pinned:      isPinned,
     };
 
     if (!hasContent) {
-      const isExistingNote = note?.id && !note.id.startsWith('temp-');
-      if (isExistingNote) {
-        await saveNoteAction(updatedNote);
-      }
+      if (note?.id && !note.id.startsWith('temp-')) await saveNoteAction(updatedNote);
       closeEditor();
       return;
     }
 
-    await saveNoteAction(updatedNote);
+    const result = await saveNoteAction(updatedNote, todoContents);
+    if (result && result.contentsMap) {
+      setTodoContents(result.contentsMap);
+    }
     closeEditor();
   };
 
   const handleSaveAndCloseRef = useRef(handleSaveAndClose);
-  useEffect(() => {
-    handleSaveAndCloseRef.current = handleSaveAndClose;
-  }, [handleSaveAndClose]);
+  useEffect(() => { handleSaveAndCloseRef.current = handleSaveAndClose; }, [handleSaveAndClose]);
 
   useEffect(() => {
     if (!visible) return;
-
-    const onBackPress = () => {
-      handleSaveAndCloseRef.current();
-      return true;
-    };
-
+    const onBackPress = () => { handleSaveAndCloseRef.current(); return true; };
     const subscription = BackHandler.addEventListener('hardwareBackPress', onBackPress);
-
-    return () => {
-      subscription.remove();
-    };
+    return () => subscription.remove();
   }, [visible]);
 
-
   if (!visible) return null;
-
   const bg = cardColorMap[noteColor] ?? cardColorMap.default;
-
-
 
   return (
     <View style={styles.overlay}>
@@ -417,19 +619,15 @@ export function NoteEditor({ visible, mode, note, inline, readOnly }: NoteEditor
         styles.panel,
         isCompact ? styles.panelFull : styles.panelPopup,
         isCompact && { paddingTop: insets.top, paddingBottom: insets.bottom },
-        { backgroundColor: bg }
+        { backgroundColor: bg },
       ]}>
 
-        {/* Header */}
+        {/* ── Header ── */}
         <View style={[styles.headerRow, { paddingLeft: isCompact ? 12 : 20 }]}>
           {isCompact && (
             <Tooltip label="Quay lại và lưu" position="bottom">
               <TouchableOpacity onPress={handleSaveAndClose} style={styles.backBtn}>
-                <MaterialCommunityIcons
-                  name="arrow-left"
-                  size={24}
-                  color={colors.textSecondary}
-                />
+                <MaterialCommunityIcons name="arrow-left" size={24} color={colors.textSecondary} />
               </TouchableOpacity>
             </Tooltip>
           )}
@@ -442,10 +640,10 @@ export function NoteEditor({ visible, mode, note, inline, readOnly }: NoteEditor
             returnKeyType="done"
             onFocus={closePopups}
           />
-          <Tooltip label={isPinned ? "Bỏ ghim ghi chú" : "Ghim ghi chú"} position="bottom">
+          <Tooltip label={isPinned ? 'Bỏ ghim ghi chú' : 'Ghim ghi chú'} position="bottom">
             <TouchableOpacity onPress={() => setIsPinned(isPinned === 1 ? 0 : 1)} style={styles.iconBtn}>
               <MaterialCommunityIcons
-                name={isPinned ? "pin" : "pin-outline"}
+                name={isPinned ? 'pin' : 'pin-outline'}
                 size={24}
                 color={isPinned ? colors.primary : colors.textSecondary}
               />
@@ -453,7 +651,7 @@ export function NoteEditor({ visible, mode, note, inline, readOnly }: NoteEditor
           </Tooltip>
         </View>
 
-        {/* Body */}
+        {/* ── Body ── */}
         <ScrollView
           style={styles.body}
           showsVerticalScrollIndicator={false}
@@ -477,24 +675,17 @@ export function NoteEditor({ visible, mode, note, inline, readOnly }: NoteEditor
                     suppressContentEditableWarning={true}
                     dangerouslySetInnerHTML={htmlConfig}
                     onInput={(e: any) => {
-                      const html = e.currentTarget.innerHTML;
-                      setContent(html); // BẮT BUỘC PHẢI CÓ DÒNG NÀY ĐỂ ĐỒNG BỘ STATE
+                      setContent(e.currentTarget.innerHTML);
                       setIsContentEmpty(!e.currentTarget.textContent?.trim());
                     }}
                     onKeyUp={updateFormattingState}
                     onMouseUp={updateFormattingState}
-                    onFocus={(e: any) => { updateFormattingState(); closePopups(); }}
+                    onFocus={() => { updateFormattingState(); closePopups(); }}
                     style={{
-                      outline: 'none',
-                      minHeight: 120,
-                      paddingBottom: 20,
-                      fontFamily: 'Inter-Regular',
-                      fontSize: 16,
-                      color: colors.textSecondary,
-                      lineHeight: 1.5,
-                      cursor: 'text',
-                      whiteSpace: 'pre-wrap',
-                      wordBreak: 'break-word',
+                      outline: 'none', minHeight: 120, paddingBottom: 20,
+                      fontFamily: 'Inter-Regular', fontSize: 16,
+                      color: colors.textSecondary, lineHeight: 1.5,
+                      cursor: 'text', whiteSpace: 'pre-wrap', wordBreak: 'break-word',
                     }}
                   />
                 </>
@@ -510,12 +701,8 @@ export function NoteEditor({ visible, mode, note, inline, readOnly }: NoteEditor
                     placeholder="Tạo ghi chú..."
                     placeholderTextColor={colors.textPlaceholder}
                     style={[styles.contentInput, styles.textarea, { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }]}
-                    multiline
-                    textAlignVertical="top"
-                    scrollEnabled={false}
-                    autoCorrect={false}
-                    spellCheck={false}
-                    //autoFocus={!note?.content_text}
+                    multiline textAlignVertical="top"
+                    scrollEnabled={false} autoCorrect={false} spellCheck={false}
                     onFocus={closePopups}
                   />
                 </View>
@@ -523,99 +710,171 @@ export function NoteEditor({ visible, mode, note, inline, readOnly }: NoteEditor
             </View>
           ) : (
             <View style={styles.todoList}>
-              {todoItems.map((item) => (
-                <View key={item.id}>
-                  <View style={styles.todoRow}>
-                    <TouchableOpacity
-                      style={[styles.todoCheckbox, item.is_completed && styles.todoCheckboxChecked]}
-                      onPress={() => handleToggleTodo(item.id)}
-                      activeOpacity={0.7}
-                    >
-                      {item.is_completed && <MaterialCommunityIcons name="check" size={16} color={colors.textPrimary} />}
-                    </TouchableOpacity>
-                    <TextInput
-                      value={item.title}
-                      onChangeText={(value) => handleChangeTodo(item.id, value)}
-                      placeholder="Mục danh sách"
-                      placeholderTextColor={colors.textPlaceholder}
-                      style={[styles.todoInput, item.is_completed && styles.todoInputChecked]}
-                      multiline
-                      onFocus={closePopups}
-                    />
-                    <Tooltip label="Thêm mục con" position="bottom">
-                      <TouchableOpacity onPress={() => handleAddTodo(item.id)} style={styles.removeBtn}>
-                        <MaterialCommunityIcons name="subdirectory-arrow-right" size={20} color={colors.textSecondary} />
-                      </TouchableOpacity>
-                    </Tooltip>
-                    <Tooltip label="Xóa mục" position="bottom">
-                      <TouchableOpacity onPress={() => handleRemoveTodo(item.id)} style={styles.removeBtn}>
-                        <MaterialCommunityIcons name="close" size={20} color={colors.textSecondary} />
-                      </TouchableOpacity>
-                    </Tooltip>
-                  </View>
-                  {/* Subtasks */}
-                  {item.subtasks?.map(subItem => (
-                    <View key={subItem.id} style={[styles.todoRow, { paddingLeft: 32 }]}>
+              {todoItems.map((item) => {
+                const isMenuOpen = openTodoMenuId === item.id;
+
+                return (
+                  <View
+                    key={item.id}
+                    style={{
+                      position: 'relative',
+                      zIndex: isMenuOpen ? 999999 : 1
+                    }}
+                  >
+                    {/* ── Khối Todo Cha Lớn ── */}
+                    <View style={styles.todoItemWrapper}>
                       <TouchableOpacity
-                        style={[styles.todoCheckbox, subItem.is_completed && styles.todoCheckboxChecked]}
-                        onPress={() => handleToggleTodo(subItem.id, item.id)}
+                        style={[styles.todoCircle, item.is_completed && styles.todoCircleChecked]}
+                        onPress={() => handleToggleTodo(item.id)}
                         activeOpacity={0.7}
                       >
-                        {subItem.is_completed && <MaterialCommunityIcons name="check" size={16} color={colors.textPrimary} />}
+                        {item.is_completed && (
+                          <MaterialCommunityIcons name="check" size={14} color="#fff" />
+                        )}
                       </TouchableOpacity>
-                      <TextInput
-                        value={subItem.title}
-                        onChangeText={(value) => handleChangeTodo(subItem.id, value, item.id)}
-                        placeholder="Mục con"
-                        placeholderTextColor={colors.textPlaceholder}
-                        style={[styles.todoInput, subItem.is_completed && styles.todoInputChecked]}
-                        multiline
-                        onFocus={closePopups}
-                      />
-                      <Tooltip label="Xóa mục con" position="bottom">
-                        <TouchableOpacity onPress={() => handleRemoveTodo(subItem.id, item.id)} style={styles.removeBtn}>
-                          <MaterialCommunityIcons name="close" size={20} color={colors.textSecondary} />
+
+                      <View style={styles.todoTextBlock}>
+                        <TextInput
+                          value={item.title}
+                          onChangeText={(v) => handleChangeTodo(item.id, v, 'title')}
+                          placeholder="Thêm việc cần làm"
+                          placeholderTextColor={colors.textPlaceholder}
+                          style={[
+                            styles.todoTitleInput,
+                            item.is_completed && styles.todoTitleInputChecked,
+                          ]}
+                          multiline
+                          onFocus={closePopups}
+                        />
+                        <TextInput
+                          value={todoContents[item.id] ?? ''}
+                          onChangeText={(v) => handleChangeTodo(item.id, v, 'content')}
+                          placeholder="Chi tiết"
+                          placeholderTextColor={colors.textPlaceholder}
+                          style={styles.todoContentInput}
+                          multiline
+                          onFocus={closePopups}
+                        />
+                      </View>
+
+                      <View style={{ position: 'static' }}>
+                        <TouchableOpacity
+                          onPress={(e: any) => {
+                            e.stopPropagation();
+                            setOpenTodoMenuId(isMenuOpen ? null : item.id);
+                          }}
+                          style={[styles.todoMoreBtn, { zIndex: isMenuOpen ? 9999999 : 2 }]}
+                          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                        >
+                          <MaterialCommunityIcons name="dots-vertical" size={18} color={colors.textTertiary} />
                         </TouchableOpacity>
-                      </Tooltip>
+
+                        {isMenuOpen && (
+                          <View style={[styles.todoItemMenu, { position: 'absolute', right: 12, top: 32, zIndex: 1000000 }]}>
+                            <MenuBtn
+                              label="Thêm mục con"
+                              onPress={() => { handleAddTodo(item.id); setOpenTodoMenuId(null); }}
+                            />
+                            <MenuBtn
+                              label="Xóa mục này"
+                              onPress={() => { handleRemoveTodo(item.id); setOpenTodoMenuId(null); }}
+                            />
+                          </View>
+                        )}
+                      </View>
                     </View>
-                  ))}
-                </View>
-              ))}
-              <View style={[styles.todoRow, styles.addTodoRow]}>
-                <TouchableOpacity style={styles.addTodoBtn} onPress={() => handleAddTodo()}>
-                  <MaterialCommunityIcons name="plus" size={20} color={colors.textSecondary} />
-                </TouchableOpacity>
-                <TouchableOpacity style={{ flex: 1, justifyContent: 'center', minHeight: 24, paddingVertical: 0 }} onPress={() => handleAddTodo()} activeOpacity={0.7}>
-                  <Text style={{ fontFamily: 'Inter-Regular', fontSize: 15, color: colors.textPlaceholder }}>Mục danh sách</Text>
-                </TouchableOpacity>
-              </View>
+
+                    {/* ── Khối Render Các Mục Con (Subtasks) Thụt Lề ── */}
+                    {item.subtasks?.map((subItem) => (
+                      <View
+                        key={subItem.id}
+                        pointerEvents={isMenuOpen ? 'none' : 'auto'}
+                        style={[
+                          styles.todoItemWrapper,
+                          styles.subtaskIndent,
+                          { zIndex: isMenuOpen ? 1 : 2, opacity: isMenuOpen ? 0.4 : 1 }
+                        ]}
+                      >
+                        <View style={styles.subtaskLine} />
+                        <TouchableOpacity
+                          style={[styles.todoCircle, styles.todoCircleSub, subItem.is_completed && styles.todoCircleChecked]}
+                          onPress={() => handleToggleTodo(subItem.id, item.id)}
+                          activeOpacity={0.7}
+                        >
+                          {subItem.is_completed && (
+                            <MaterialCommunityIcons name="check" size={12} color="#fff" />
+                          )}
+                        </TouchableOpacity>
+
+                        <View style={styles.todoTextBlock}>
+                          <TextInput
+                            value={subItem.title}
+                            onChangeText={(v) => handleChangeTodo(subItem.id, v, 'title', item.id)}
+                            placeholder="Mục con"
+                            placeholderTextColor={colors.textPlaceholder}
+                            style={[
+                              styles.todoTitleInput,
+                              styles.todoTitleInputSub,
+                              subItem.is_completed && styles.todoTitleInputChecked,
+                            ]}
+                            multiline
+                            onFocus={closePopups}
+                          />
+                          <TextInput
+                            value={todoContents[subItem.id] ?? ''}
+                            onChangeText={(v) => handleChangeTodo(subItem.id, v, 'content', item.id)}
+                            placeholder="Chi tiết"
+                            placeholderTextColor={colors.textPlaceholder}
+                            style={[styles.todoContentInput, { fontSize: 12 }]}
+                            multiline
+                            onFocus={closePopups}
+                          />
+                        </View>
+
+                        <TouchableOpacity
+                          onPress={() => handleRemoveTodo(subItem.id, item.id)}
+                          style={styles.todoMoreBtn}
+                          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                        >
+                          <MaterialCommunityIcons name="close" size={16} color={colors.textTertiary} />
+                        </TouchableOpacity>
+                      </View>
+                    ))}
+                  </View>
+                );
+              })}
+
+              <TouchableOpacity style={styles.addTodoBtn} onPress={() => handleAddTodo()} activeOpacity={0.7}>
+                <MaterialCommunityIcons name="plus" size={20} color={colors.textSecondary} />
+                <Text style={styles.addTodoBtnText}>Thêm việc cần làm</Text>
+              </TouchableOpacity>
             </View>
           )}
         </ScrollView>
 
-        {/* Formatting Bar */}
+        {/* ── Formatting Bar ── */}
         {showFormattingBar && editorMode === 'text' && (
           <View style={styles.formattingBar}>
-            <ToolbarBtn icon="format-header-1" onPress={() => handleFormat('formatBlock', 'H1')} label="Tiêu đề 1" isFormatActive={activeFormats.block.toLowerCase() === 'h1'} />
-            <ToolbarBtn icon="format-header-2" onPress={() => handleFormat('formatBlock', 'H2')} label="Tiêu đề 2" isFormatActive={activeFormats.block.toLowerCase() === 'h2'} />
-            <ToolbarBtn icon="format-paragraph" onPress={() => handleFormat('formatBlock', 'DIV')} label="Văn bản thường" isFormatActive={activeFormats.block.toLowerCase() === 'div' || activeFormats.block.toLowerCase() === 'p'} />
+            <ToolbarBtn icon="format-header-1"               onPress={() => handleFormat('formatBlock', 'H1')}  label="Tiêu đề 1"    isFormatActive={activeFormats.block.toLowerCase() === 'h1'} />
+            <ToolbarBtn icon="format-header-2"               onPress={() => handleFormat('formatBlock', 'H2')}  label="Tiêu đề 2"    isFormatActive={activeFormats.block.toLowerCase() === 'h2'} />
+            <ToolbarBtn icon="format-paragraph"              onPress={() => handleFormat('formatBlock', 'DIV')} label="Văn bản thường" isFormatActive={activeFormats.block.toLowerCase() === 'div' || activeFormats.block.toLowerCase() === 'p'} />
             <View style={styles.divider} />
-            <ToolbarBtn icon="format-bold" onPress={() => handleFormat('bold')} label="In đậm" isFormatActive={activeFormats.bold} />
-            <ToolbarBtn icon="format-italic" onPress={() => handleFormat('italic')} label="In nghiêng" isFormatActive={activeFormats.italic} />
-            <ToolbarBtn icon="format-underline" onPress={() => handleFormat('underline')} label="Gạch chân" isFormatActive={activeFormats.underline} />
-            <ToolbarBtn icon="format-strikethrough-variant" onPress={() => handleFormat('strikeThrough')} label="Gạch ngang" isFormatActive={activeFormats.strikeThrough} />
+            <ToolbarBtn icon="format-bold"                   onPress={() => handleFormat('bold')}               label="In đậm"       isFormatActive={activeFormats.bold} />
+            <ToolbarBtn icon="format-italic"                 onPress={() => handleFormat('italic')}             label="In nghiêng"   isFormatActive={activeFormats.italic} />
+            <ToolbarBtn icon="format-underline"              onPress={() => handleFormat('underline')}          label="Gạch chân"    isFormatActive={activeFormats.underline} />
+            <ToolbarBtn icon="format-strikethrough-variant"  onPress={() => handleFormat('strikeThrough')}      label="Gạch ngang"   isFormatActive={activeFormats.strikeThrough} />
             <View style={styles.divider} />
             <ToolbarBtn icon="format-clear" onPress={() => handleFormat('removeFormat')} label="Xóa định dạng" />
           </View>
         )}
 
-        {/* Footer */}
+        {/* ── Footer ── */}
         <View style={styles.footer}>
           <View style={styles.toolbarLeft}>
-            <ToolbarBtn icon="bell-plus-outline" onPress={() => { alert('Nhắc nhở sẽ được lưu qua API'); closePopups(); }} label="Nhắc nhở" />
-            <ToolbarBtn icon="account-plus-outline" onPress={() => { alert('Cộng tác viên sẽ được gọi API'); closePopups(); }} label="Cộng tác viên" />
-            <ToolbarBtn icon="palette-outline" onPress={() => { setShowColorPicker(!showColorPicker); setShowMoreMenu(false); setShowTagMenu(false); }} label="Tùy chọn nền" />
-            <ToolbarBtn icon="image-outline" onPress={() => { alert('Thêm hình ảnh sẽ xử lý upload file'); closePopups(); }} label="Thêm hình ảnh" />
+            <ToolbarBtn icon="bell-plus-outline"        onPress={() => { alert('Nhắc nhở sẽ được lưu qua API'); closePopups(); }}          label="Nhắc nhở" />
+            <ToolbarBtn icon="account-plus-outline"     onPress={() => { alert('Cộng tác viên sẽ được gọi API'); closePopups(); }}          label="Cộng tác viên" />
+            <ToolbarBtn icon="palette-outline"          onPress={() => { setShowColorPicker(!showColorPicker); setShowMoreMenu(false); setShowTagMenu(false); }} label="Tùy chọn nền" />
+            <ToolbarBtn icon="image-outline"            onPress={() => { alert('Thêm hình ảnh sẽ xử lý upload file'); closePopups(); }}    label="Thêm hình ảnh" />
             <ToolbarBtn
               icon="archive-arrow-down-outline"
               onPress={async () => {
@@ -630,7 +889,11 @@ export function NoteEditor({ visible, mode, note, inline, readOnly }: NoteEditor
             />
 
             <View style={{ position: 'relative', zIndex: 300 }}>
-              <ToolbarBtn icon="dots-vertical" onPress={() => { setShowMoreMenu(!showMoreMenu); setShowColorPicker(false); setShowExportMenu(false); }} label="Thêm tùy chọn" />
+              <ToolbarBtn
+                icon="dots-vertical"
+                onPress={() => { setShowMoreMenu(!showMoreMenu); setShowColorPicker(false); setShowExportMenu(false); }}
+                label="Thêm tùy chọn"
+              />
               {showMoreMenu && (
                 <View style={styles.moreMenu}>
                   <MenuBtn
@@ -645,13 +908,8 @@ export function NoteEditor({ visible, mode, note, inline, readOnly }: NoteEditor
                     disabled={!note?.id || note.id.startsWith('temp-')}
                   />
 
-                  {/* PHẦN SỬA ĐỔI CHÍNH: Menu nhãn con */}
                   <View style={{ position: 'relative', zIndex: 310 }}>
-                    <MenuBtn
-                      onPress={() => setShowTagMenu(!showTagMenu)}
-                      label="Thêm nhãn"
-                    />
-
+                    <MenuBtn onPress={() => setShowTagMenu(!showTagMenu)} label="Thêm nhãn" />
                     {showTagMenu && (
                       <View style={styles.tagMenuPopover}>
                         <TagMenu
@@ -664,17 +922,12 @@ export function NoteEditor({ visible, mode, note, inline, readOnly }: NoteEditor
                     )}
                   </View>
 
-                  {/* PHẦN XUẤT FILE */}
                   <View style={{ position: 'relative', zIndex: 310 }}>
-                    <MenuBtn
-                      onPress={() => { setShowExportMenu(!showExportMenu); setShowTagMenu(false); }}
-                      label="Xuất file"
-                    />
-
+                    <MenuBtn onPress={() => { setShowExportMenu(!showExportMenu); setShowTagMenu(false); }} label="Xuất file" />
                     {showExportMenu && (
                       <View style={styles.exportMenuPopover}>
-                        <MenuBtn onPress={() => handleExport('txt')} label="Xuất ra .TXT" />
-                        <MenuBtn onPress={() => handleExport('pdf')} label="Xuất ra .PDF" />
+                        <MenuBtn onPress={() => handleExport('txt')}  label="Xuất ra .TXT" />
+                        <MenuBtn onPress={() => handleExport('pdf')}  label="Xuất ra .PDF" />
                         <MenuBtn onPress={() => handleExport('docx')} label="Xuất ra .DOCX" />
                       </View>
                     )}
@@ -685,10 +938,21 @@ export function NoteEditor({ visible, mode, note, inline, readOnly }: NoteEditor
                     label="Tạo bản sao"
                     disabled={!note?.id && !title.trim() && (editorMode === 'text' ? isContentEmpty : todoItems.filter(t => t.title.trim()).length === 0)}
                   />
-                  <MenuBtn
-                    onPress={handleToggleMode}
-                    label={editorMode === 'text' ? "Hiển thị hộp kiểm" : "Ẩn hộp kiểm"}
-                  />
+                  <MenuBtn onPress={handleToggleMode} label={editorMode === 'text' ? 'Hiển thị hộp kiểm' : 'Ẩn hộp kiểm'} />
+
+                  {/* FIX: clearCompletedTodosAction now uses a single bulk API call.
+                      After it resolves, the store update triggers the useEffect above
+                      which syncs local todoItems — no manual setTodoItems needed here. */}
+                  {editorMode === 'todo' && isRealNoteId(note?.id) && (
+                    <MenuBtn
+                      onPress={async () => {
+                        setShowMoreMenu(false);
+                        await clearCompletedTodosAction(note!.id);
+                      }}
+                      label="Xóa các mục đã hoàn thành"
+                    />
+                  )}
+
                   <MenuBtn
                     onPress={() => { alert('Lịch sử phiên bản (Cần API)'); setShowMoreMenu(false); }}
                     label="Lịch sử phiên bản"
@@ -699,14 +963,19 @@ export function NoteEditor({ visible, mode, note, inline, readOnly }: NoteEditor
             </View>
 
             {editorMode === 'text' && (
-              <ToolbarBtn icon="format-text" onPress={() => { setShowFormattingBar(!showFormattingBar); closePopups(); }} isActive={showFormattingBar} label="Tùy chọn định dạng" />
+              <ToolbarBtn
+                icon="format-text"
+                onPress={() => { setShowFormattingBar(!showFormattingBar); closePopups(); }}
+                isActive={showFormattingBar}
+                label="Tùy chọn định dạng"
+              />
             )}
           </View>
 
           <View style={styles.toolbarRight}>
-            <Tooltip label={note?.date ? `Đã tạo ${note.date}` : "Đã tạo lúc nãy"}>
+            <Tooltip label={note?.date ? `Đã tạo ${note.date}` : 'Đã tạo lúc nãy'}>
               <Text style={styles.editedTimeText}>
-                {note?.date ? `Đã chỉnh sửa ${note.date}` : "Đã chỉnh sửa lúc nãy"}
+                {note?.date ? `Đã chỉnh sửa ${note.date}` : 'Đã chỉnh sửa lúc nãy'}
               </Text>
             </Tooltip>
             <ToolbarBtn icon="undo" onPress={handleUndo} label="Hoàn tác" />
@@ -717,7 +986,7 @@ export function NoteEditor({ visible, mode, note, inline, readOnly }: NoteEditor
           </View>
         </View>
 
-        {/* Color Picker Popover */}
+        {/* Color Picker */}
         {showColorPicker && (
           <View style={styles.colorPicker}>
             {NOTE_COLORS.map((c) => (
@@ -733,7 +1002,6 @@ export function NoteEditor({ visible, mode, note, inline, readOnly }: NoteEditor
     </View>
   );
 }
-
 
 const styles = StyleSheet.create({
   exportMenuPopover: {
@@ -755,19 +1023,18 @@ const styles = StyleSheet.create({
   inlineContainer: {
     position: 'relative',
     width: '100%',
-    maxHeight: 500, // Khống chế chiều cao tối đa khi gài trên feed tránh đẩy layout quá xa
+    maxHeight: 500,
     borderWidth: 1,
     borderColor: colors.borderDefault,
     borderRadius: 8,
-    elevation: 0,         // Tắt bóng đổ nặng của Modal trên Android
-    shadowOpacity: 0,     // Tắt bóng đổ nặng trên iOS/Web
+    elevation: 0,
+    shadowOpacity: 0,
     marginBottom: 16,
   },
-  // Thêm vào styles của NoteEditor_2.tsx
   tagMenuPopover: {
     position: 'absolute',
-    left: isWeb ? '100%' : 0, // Trên Web đẩy sang phải, Mobile có thể đè lên
-    bottom: isWeb ? 0 : 40,   // Điều chỉnh để không bị khuất khỏi màn hình
+    left: isWeb ? '100%' : 0,
+    bottom: isWeb ? 0 : 40,
     marginLeft: 8,
     zIndex: 1000,
   },
@@ -844,79 +1111,123 @@ const styles = StyleSheet.create({
   todoList: {
     paddingBottom: 16,
   },
-  textH1: {
-    fontSize: 24,
-    fontFamily: 'Inter-Bold',
-  },
-  textH2: {
-    fontSize: 20,
-    fontFamily: 'Inter-SemiBold',
-  },
-  textBold: {
-    fontWeight: '700',
-  },
-  textItalic: {
-    fontStyle: 'italic',
-  },
-  textUnderline: {
-    textDecorationLine: 'underline',
-  },
-  imageRow: {
-    marginBottom: 16,
-  },
-  imageThumb: {
-    width: 100,
-    height: 70,
-    borderRadius: 14,
-    marginRight: 12,
-  },
-  todoRow: {
+  todoItemWrapper: {
     flexDirection: 'row',
     alignItems: 'flex-start',
-    paddingVertical: 4,
+    paddingVertical: 8,
     borderBottomWidth: 1,
-    borderBottomColor: 'transparent',
+    borderBottomColor: colors.borderDefault,
+    position: 'relative',
   },
-  addTodoRow: {
-    marginTop: 8,
-    borderTopWidth: 1,
-    borderTopColor: colors.borderDefault,
-    paddingTop: 12,
-  },
-  todoCheckbox: {
-    width: 20,
-    height: 20,
+  todoCircle: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
     borderWidth: 2,
     borderColor: colors.textTertiary,
-    borderRadius: 2,
     marginTop: 2,
-    marginRight: 12,
+    marginRight: 14,
+    flexShrink: 0,
     justifyContent: 'center',
     alignItems: 'center',
   },
-  todoCheckboxChecked: {
+  todoCircleChecked: {
+    backgroundColor: colors.textTertiary,
     borderColor: colors.textTertiary,
   },
-  todoInput: {
+  todoCircleSub: {
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+    marginRight: 10,
+  },
+  todoTextBlock: {
     flex: 1,
+    flexDirection: 'column',
+  },
+  todoTitleInput: {
     fontFamily: 'Inter-Regular',
     fontSize: 15,
     color: colors.textPrimary,
     paddingVertical: 0,
-    minHeight: 24,
+    minHeight: 22,
     outlineStyle: 'none',
   } as any,
-  todoInputChecked: {
+  todoTitleInputChecked: {
     textDecorationLine: 'line-through',
     color: colors.textTertiary,
+  },
+  todoTitleInputSub: {
+    fontSize: 14,
+  },
+  todoContentInput: {
+    fontFamily: 'Inter-Regular',
+    fontSize: 13,
+    color: colors.textTertiary,
+    paddingVertical: 0,
+    minHeight: 18,
+    marginTop: 2,
+    outlineStyle: 'none',
+  } as any,
+  todoMoreBtn: {
+    padding: 4,
+    marginLeft: 6,
+    marginTop: 2,
+    borderRadius: 12,
+    zIndex: 10,
+    ...Platform.select({ web: { cursor: 'pointer' } as any }),
+  },
+  todoItemMenu: {
+    position: 'absolute',
+    right: 0,
+    top: 28,
+    backgroundColor: '#fff',
+    borderRadius: 8,
+    paddingVertical: 4,
+    minWidth: 160,
+    shadowColor: '#000',
+    shadowOpacity: 0.15,
+    shadowRadius: 8,
+    elevation: 5,
+    borderWidth: 1,
+    borderColor: colors.borderDefault,
+    zIndex: 999999,
+  },
+  menuItem: {
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    zIndex: 999999,
+    ...Platform.select({ web: { cursor: 'pointer' } as any }),
+  },
+  subtaskIndent: {
+    paddingLeft: 36,
+    borderBottomColor: 'transparent',
+  },
+  subtaskLine: {
+    position: 'absolute',
+    left: 46,
+    top: 0,
+    bottom: 0,
+    width: 1,
+    backgroundColor: colors.borderDefault,
+  },
+  addTodoBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    marginTop: 12,
+    paddingVertical: 8,
+    paddingHorizontal: 4,
+    ...Platform.select({ web: { cursor: 'pointer' } as any }),
+  },
+  addTodoBtnText: {
+    fontFamily: 'Inter-Regular',
+    fontSize: 14,
+    color: colors.textSecondary,
   },
   removeBtn: {
     padding: 4,
     marginLeft: 8,
-  },
-  addTodoBtn: {
-    marginRight: 12,
-    marginTop: 2,
   },
   formattingBar: {
     flexDirection: 'row',
@@ -940,69 +1251,19 @@ const styles = StyleSheet.create({
     gap: 10,
     marginBottom: 12,
   },
-  labelList: {
-    flexDirection: 'row',
-    gap: 8,
-  },
-  labelChip: {
-    paddingVertical: 6,
-    paddingHorizontal: 10,
-    borderRadius: 999,
-    backgroundColor: colors.bgSurface,
-  },
-  labelChipText: {
-    color: colors.textPrimary,
-    fontFamily: 'Inter-Regular',
-    fontSize: 13,
-  },
-  metaText: {
-    color: colors.textSecondary,
-    fontFamily: 'Inter-Regular',
-    fontSize: 13,
-  },
-  toolbarRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'flex-start',
-    flexWrap: 'wrap',
-    gap: 8,
-    marginBottom: 12,
-  },
-  toolbarBtn: {
-    width: 40,
-    height: 40,
-    borderRadius: 12,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: colors.bgSurface,
-  },
-  optionPanel: {
-    backgroundColor: colors.bgSurface,
-    borderRadius: 16,
-    padding: 12,
-    marginBottom: 12,
-  },
-  optionItem: {
-    paddingVertical: 10,
-  },
-  optionText: {
-    color: colors.textPrimary,
-    fontFamily: 'Inter-Regular',
-    fontSize: 15,
-  },
-  colorOption: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    paddingVertical: 10,
-  },
-  colorDotSmall: {
-    width: 18,
-    height: 18,
-    borderRadius: 6,
-    borderWidth: 1,
-    borderColor: colors.borderDefault,
-  },
+  labelList:      { flexDirection: 'row', gap: 8 },
+  labelChip:      { paddingVertical: 6, paddingHorizontal: 10, borderRadius: 999, backgroundColor: colors.bgSurface },
+  labelChipText:  { color: colors.textPrimary, fontFamily: 'Inter-Regular', fontSize: 13 },
+  metaText:       { color: colors.textSecondary, fontFamily: 'Inter-Regular', fontSize: 13 },
+  toolbarRow:     { flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-start', flexWrap: 'wrap', gap: 8, marginBottom: 12 },
+  toolbarBtn:     { width: 40, height: 40, borderRadius: 12, justifyContent: 'center', alignItems: 'center', backgroundColor: colors.bgSurface },
+  optionPanel:    { backgroundColor: colors.bgSurface, borderRadius: 16, padding: 12, marginBottom: 12 },
+  optionItem:     { paddingVertical: 10 },
+  optionText:     { color: colors.textPrimary, fontFamily: 'Inter-Regular', fontSize: 15 },
+  colorOption:    { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 10 },
+  colorDotSmall:  { width: 18, height: 18, borderRadius: 6, borderWidth: 1, borderColor: colors.borderDefault },
+  imageRow:       { marginBottom: 16 },
+  imageThumb:     { width: 100, height: 70, borderRadius: 14, marginRight: 12 },
   footer: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -1010,23 +1271,10 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 12,
   },
-  toolbarLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-  },
-  toolbarRight: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-  },
-  toolbarIcon: {
-    padding: 8,
-    borderRadius: 20,
-  },
-  toolbarIconActive: {
-    backgroundColor: colors.primarySubtle,
-  },
+  toolbarLeft:  { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  toolbarRight: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  toolbarIcon:  { padding: 8, borderRadius: 20 },
+  toolbarIconActive: { backgroundColor: colors.primarySubtle },
   moreMenu: {
     position: 'absolute',
     bottom: 40,
@@ -1042,16 +1290,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.borderDefault,
   },
-  menuItem: {
-    paddingVertical: 10,
-    paddingHorizontal: 16,
-    ...Platform.select({ web: { cursor: 'pointer' } as any }),
-  },
-  menuItemText: {
-    fontFamily: 'Inter-Regular',
-    fontSize: 14,
-    color: colors.textSecondary,
-  },
+  menuItemText: { fontFamily: 'Inter-Regular', fontSize: 14, color: colors.textSecondary },
   closeBtn: {
     paddingHorizontal: 16,
     paddingVertical: 8,
@@ -1059,11 +1298,7 @@ const styles = StyleSheet.create({
     marginLeft: 8,
     ...Platform.select({ web: { cursor: 'pointer' } as any }),
   },
-  closeText: {
-    fontFamily: 'Inter-Medium',
-    fontSize: 14,
-    color: colors.textPrimary,
-  },
+  closeText: { fontFamily: 'Inter-Medium', fontSize: 14, color: colors.textPrimary },
   colorPicker: {
     position: 'absolute',
     bottom: 60,
@@ -1084,17 +1319,11 @@ const styles = StyleSheet.create({
     zIndex: 200,
   },
   colorDot: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: colors.borderDefault,
+    width: 32, height: 32, borderRadius: 16,
+    borderWidth: 1, borderColor: colors.borderDefault,
     ...Platform.select({ web: { cursor: 'pointer' } as any }),
   },
-  colorDotSelected: {
-    borderColor: colors.primary,
-    borderWidth: 2,
-  },
+  colorDotSelected: { borderColor: colors.primary, borderWidth: 2 },
   tooltip: {
     position: 'absolute',
     bottom: '100%',
@@ -1108,24 +1337,15 @@ const styles = StyleSheet.create({
     whiteSpace: 'nowrap',
     ...Platform.select({ web: { transform: 'translateX(-50%)' } as any }),
   } as any,
-  tooltipBottom: {
-    bottom: 'auto',
-    top: '100%',
-    marginBottom: 0,
-    marginTop: 4,
-  } as any,
+  tooltipBottom: { bottom: 'auto', top: '100%', marginBottom: 0, marginTop: 4 } as any,
   tooltipText: {
-    fontFamily: 'Inter-Regular',
-    fontSize: 12,
-    color: '#fff',
+    fontFamily: 'Inter-Regular', fontSize: 12, color: '#fff',
     ...Platform.select({ web: { whiteSpace: 'nowrap' } as any }),
   },
   editedTimeText: {
-    fontFamily: 'Inter-Regular',
-    fontSize: 12,
+    fontFamily: 'Inter-Regular', fontSize: 12,
     color: colors.textTertiary || '#80868b',
     marginRight: 8,
     ...Platform.select({ web: { cursor: 'default' } as any }),
   },
 });
-

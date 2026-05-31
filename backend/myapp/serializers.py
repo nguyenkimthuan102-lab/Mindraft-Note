@@ -205,7 +205,17 @@ class TodoItemSerializer(serializers.ModelSerializer):
 class CreateTodoItemSerializer(serializers.ModelSerializer):
     class Meta:
         model = TodoItems
-        fields = ['note', 'parent', 'title', 'content', 'position', 'remind_at', 'repeat_type']
+        # ĐÃ XÓA 'note' khỏi fields: view tự lấy note từ URL (note_id),
+        # không gửi trong body → DRF validate thấy 'note' missing → 400.
+        fields = ['parent', 'title', 'content', 'position', 'remind_at', 'repeat_type']
+        extra_kwargs = {
+            'parent':      {'required': False, 'allow_null': True},
+            'title':       {'required': False, 'allow_blank': True, 'allow_null': True},
+            'content':     {'required': False, 'allow_blank': True, 'allow_null': True},
+            'position':    {'required': False, 'default': '0'},
+            'remind_at':   {'required': False, 'allow_null': True},
+            'repeat_type': {'required': False, 'default': 'none'},
+        }
 
 class UpdateTodoItemSerializer(serializers.ModelSerializer):
     class Meta:
