@@ -14,6 +14,8 @@ import { NoteList } from '../../src/components/notes/NoteList';
 import { useAppStore } from '@/src/store/useAppStore';
 
 import { fetchNotes, createNoteText, createNoteTodo, updateNote, trashNote, toggleArchiveNote, togglePinNote } from '../../src/api/noteApi';
+import { addTagToNote } from '../../src/api/tagApi';
+import type { Tag } from '../../src/api/tagApi';
 
 export default function HomeScreen() {
   // ── XÓA: router, isCreating, setIsCreating — không dùng ở màn Home ──────
@@ -24,9 +26,10 @@ export default function HomeScreen() {
     editorVisible,
     editorMode,
     editingNote,
-    // ── XÓA: openCreateTextStore, openCreateTodoStore — không dùng trực tiếp
     openEditNote: openEditNoteStore,
     closeEditor: closeEditorStore,
+    tagIdByName,
+    allTagObjects,
   } = useNoteStore();
 
   const { selectedIds, toggleSelect, clearSelection } = useSelectionStore();
@@ -206,20 +209,40 @@ export default function HomeScreen() {
         const createdNote = cleanNote.type === 'text'
           ? await createNoteText(cleanNote)
           : await createNoteTodo(cleanNote);
-        setNotes(prev => [createdNote, ...prev.filter(n => n.id !== note.id)]);
-      } {
-        const oldNote = notes.find(n => n.id === note.id);
 
+        // ✅ FIX Bug 4: gắn tags vào note mới vừa tạo
+        const desiredTagNames: string[] = cleanNote.labels ?? [];
+        if (desiredTagNames.length > 0) {
+          await Promise.all(
+            desiredTagNames.map(name => {
+              const tagId = tagIdByName[name];
+              return tagId ? addTagToNote(createdNote.id, tagId) : Promise.resolve();
+            })
+          );
+          // Gắn tags vào createdNote để hiển thị ngay trên card
+          const addedTags = desiredTagNames
+            .map(name => allTagObjects.find((t: Tag) => t.name === name))
+            .filter(Boolean) as Tag[];
+          setNotes(prev => [{ ...createdNote, tags: addedTags }, ...prev.filter(n => n.id !== note.id)]);
+        } else {
+          setNotes(prev => [createdNote, ...prev.filter(n => n.id !== note.id)]);
+        }
+      } else {
+        const oldNote = notes.find(n => n.id === note.id);
         if (oldNote && oldNote.is_pinned !== cleanNote.is_pinned) {
           await togglePinNote(cleanNote.id);
         }
-
         const updatedNote = await updateNote(cleanNote.id, cleanNote);
-        setNotes(prev => prev.map(n => n.id === cleanNote.id ? updatedNote : n));
+        // Giữ tags đã được sync bởi NoteEditor
+        const tagsFromEditor = cleanNote.tags && cleanNote.tags.length > 0
+          ? cleanNote.tags
+          : updatedNote.tags;
+        setNotes(prev => prev.map(n =>
+          n.id === cleanNote.id ? { ...updatedNote, tags: tagsFromEditor } : n
+        ));
       }
       closeEditorStore();
     } catch {
-      // ── FIX: xóa tham số 'error' không dùng ─────────────────────────────
       Alert.alert("Lỗi", "Không thể lưu ghi chú. Vui lòng thử lại.");
     }
   };

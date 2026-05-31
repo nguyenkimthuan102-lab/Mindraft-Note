@@ -1,6 +1,7 @@
 import { View, Text, StyleSheet, TouchableOpacity, Platform, Modal, Dimensions, useWindowDimensions } from 'react-native';
 import { Icon } from 'react-native-paper';
 import { useState, useRef, useEffect } from 'react';
+import { useRouter } from 'expo-router';
 import { TagChip } from '../ui/TagChip';
 import { colors } from '../../constants/colors';
 import { HoverBtn } from '../ui/HoverBtn';
@@ -252,10 +253,11 @@ const stripHtml = (html: string): string =>
     .trim();
 
 export function NoteCard({ note, isSelected, onSelect, isGridView, onPress, onUpdate, onDelete, onArchive, archiveLabel = 'Lưu trữ', archiveIcon = 'archive-arrow-down-outline', onTogglePin, onRestoreNote }: NoteCardProps) {
-  const { theme } = useAppStore(); // Lấy theme hệ thống
+  const { theme } = useAppStore();
   const isDark = theme === 'dark';
   const { width } = useWindowDimensions();
   const isMobile = width < 720;
+  const router = useRouter(); // ✅ FIX Bug 3: navigate khi click chip nhãn
 
   const { selectedIds } = useSelectionStore();
   const isSelectionMode = selectedIds.length > 0;
@@ -410,7 +412,19 @@ export function NoteCard({ note, isSelected, onSelect, isGridView, onPress, onUp
 
           {localNote.tags && localNote.tags.length > 0 && (
             <View style={styles.tagsRow}>
-              {localNote.tags.map((tag) => <TagChip key={tag.id} label={tag.name} />)}
+              {localNote.tags.map((tag) => (
+                // ✅ FIX Bug 3: click chip → navigate sang trang nhãn
+                <TouchableOpacity
+                  key={tag.id}
+                  onPress={(e) => {
+                    e.stopPropagation?.();
+                    router.push(`/(main)/label/${tag.id}` as any);
+                  }}
+                  activeOpacity={0.7}
+                >
+                  <TagChip label={tag.name} />
+                </TouchableOpacity>
+              ))}
             </View>
           )}
 

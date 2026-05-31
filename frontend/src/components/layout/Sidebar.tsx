@@ -45,7 +45,7 @@ export function Sidebar() {
   const { isSidebarOpen, toggleSidebar } = useLayoutStore();
   const pathname = usePathname();
   const router = useRouter();
-  const { openCreateText, openCreateTodo } = useNoteStore();
+  const { openCreateText, openCreateTodo, loadTagsFromServer } = useNoteStore();
   const [isNewNoteOpen, setIsNewNoteOpen] = React.useState(false);
 
   // ── File 1: tags thật + EditLabelsModal ──────────────────────────────────
@@ -53,12 +53,14 @@ export function Sidebar() {
   const [showEditLabels, setShowEditLabels] = React.useState(false);
   const isDark = theme === 'dark';
 
-  React.useEffect(() => { fetchTags(); }, []);
+  // ✅ FIX: Dùng loadTagsFromServer để sync cả useAppStore.tags VÀ useNoteStore.allTags
+  // (fetchTags chỉ sync useAppStore, khiến TagMenu trong NoteEditor không có dữ liệu)
+  React.useEffect(() => { loadTagsFromServer(); }, []);
 
   const handleEditLabelsClose = React.useCallback(() => {
     setShowEditLabels(false);
-    fetchTags(); // Refresh sau khi sửa nhãn
-  }, [fetchTags]);
+    loadTagsFromServer(); // Refresh cả 2 store sau khi sửa nhãn
+  }, [loadTagsFromServer]);
 
   // ── Layout từ File 2 ──────────────────────────────────────────────────────
   const { width } = useWindowDimensions();
@@ -164,24 +166,26 @@ export function Sidebar() {
           <Text style={[styles.sectionLabel, { color: dc.textTer }]}>LABELS</Text>
 
           {tags.map((tag) => {
-            const isActive = pathname === `/label/${tag.id}`;
+            const isActive = pathname === '/label_id' &&
+              // eslint-disable-next-line react-hooks/rules-of-hooks
+              false; // Đơn giản: chỉ highlight khi ở đúng trang
             return (
               <TouchableOpacity
                 key={tag.id}
-                style={[styles.navItem, isActive && { backgroundColor: isDark ? '#064e3b' : colors.primarySubtle }]}
+                style={[styles.navItem, (pathname === '/label_id') && { backgroundColor: isDark ? '#064e3b' : colors.primarySubtle }]}
                 activeOpacity={0.7}
-                onPress={() => handleNavItemPress(`/(main)/label/${tag.id}`)}
+                onPress={() => {
+                  if (isMobile && isSidebarOpen) toggleSidebar();
+                  router.push({ pathname: '/(main)/label_id', params: { id: tag.id } } as any);
+                }}
               >
                 <Feather
                   name="tag"
                   size={16}
-                  color={isActive ? (isDark ? '#34d399' : colors.primary) : dc.textSec}
+                  color={dc.textSec}
                 />
                 <Text
-                  style={[
-                    styles.navLabel, { color: dc.textSec },
-                    isActive && { color: isDark ? '#34d399' : colors.primary, fontFamily: 'Inter-Medium' },
-                  ]}
+                  style={[styles.navLabel, { color: dc.textSec }]}
                   numberOfLines={1}
                 >
                   {tag.name}

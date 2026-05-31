@@ -23,9 +23,12 @@ interface AppState {
   setTheme: (theme: ThemeType) => void; // Thêm action đổi theme
   setSort: (s: SortOption) => void;         
   toggleSidebar: () => void;
-  tags: Tag[]; // THÊM MỚI
-  fetchTags: () => Promise<void>; // THÊM MỚI
-  setTags: (tags: Tag[]) => void; // THÊM MỚI
+  tags: Tag[];
+  fetchTags: () => Promise<void>;
+  setTags: (tags: Tag[]) => void;
+  // ── Lọc note theo tag (sidebar click) ────────────────────────────────────
+  selectedTagId: string | null;
+  setSelectedTagId: (id: string | null) => void;
 }
 
 export const useAppStore = create<AppState>((set) => ({
@@ -57,7 +60,8 @@ export const useAppStore = create<AppState>((set) => ({
   },
 
   tags: [],
-  
+  selectedTagId: null,
+
   fetchTags: async () => {
     try {
       const data = await getTags();
@@ -68,6 +72,9 @@ export const useAppStore = create<AppState>((set) => ({
   },
 
   setTags: (tags) => set({ tags }),
+
+  // ── Khi click tag trên sidebar → cập nhật filter ─────────────────────────
+  setSelectedTagId: (id) => set({ selectedTagId: id }),
 
   setViewMode: (mode) => {
     set({ viewMode: mode });

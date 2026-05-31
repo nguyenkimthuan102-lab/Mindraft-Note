@@ -22,6 +22,8 @@ import {
   fetchNotes, createNoteText, createNoteTodo,
   updateNote, trashNote, toggleArchiveNote, togglePinNote,
 } from '../../src/api/noteApi';
+import { addTagToNote } from '../../src/api/tagApi';
+import type { Tag } from '../../src/api/tagApi';
 
 export default function LabelScreen() {
   // ── Lấy tag id từ route params ──────────────────────────────────────────────
@@ -34,6 +36,7 @@ export default function LabelScreen() {
   const {
     editorVisible, editorMode, editingNote,
     openEditNote: openEditNoteStore, closeEditor: closeEditorStore,
+    tagIdByName, allTagObjects,
   } = useNoteStore();
 
   const [notes, setNotes] = useState<NoteCardData[]>([]);
@@ -176,14 +179,35 @@ export default function LabelScreen() {
         const createdNote = cleanNote.type === 'text'
           ? await createNoteText(cleanNote)
           : await createNoteTodo(cleanNote);
-        setNotes(prev => [createdNote, ...prev.filter(n => n.id !== note.id)]);
+
+        // ✅ FIX: Gắn tags vào note mới vừa tạo
+        const desiredTagNames: string[] = cleanNote.labels ?? [];
+        if (desiredTagNames.length > 0) {
+          await Promise.all(
+            desiredTagNames.map(name => {
+              const tagId = tagIdByName[name];
+              return tagId ? addTagToNote(createdNote.id, tagId) : Promise.resolve();
+            })
+          );
+          const addedTags = desiredTagNames
+            .map(name => allTagObjects.find((t: Tag) => t.name === name))
+            .filter(Boolean) as Tag[];
+          setNotes(prev => [{ ...createdNote, tags: addedTags }, ...prev.filter(n => n.id !== note.id)]);
+        } else {
+          setNotes(prev => [createdNote, ...prev.filter(n => n.id !== note.id)]);
+        }
       } else {
         const oldNote = notes.find(n => n.id === note.id);
         if (oldNote && oldNote.is_pinned !== cleanNote.is_pinned) {
           await togglePinNote(cleanNote.id);
         }
         const updatedNote = await updateNote(cleanNote.id, cleanNote);
-        setNotes(prev => prev.map(n => n.id === cleanNote.id ? updatedNote : n));
+        const tagsFromEditor = cleanNote.tags && cleanNote.tags.length > 0
+          ? cleanNote.tags
+          : updatedNote.tags;
+        setNotes(prev => prev.map(n =>
+          n.id === cleanNote.id ? { ...updatedNote, tags: tagsFromEditor } : n
+        ));
       }
       closeEditorStore();
     } catch {
@@ -192,7 +216,7 @@ export default function LabelScreen() {
   };
 
   const pinned = notes.filter(n => n.is_pinned === 1);
-  const others  = notes.filter(n => n.is_pinned !== 1);
+  const others = notes.filter(n => n.is_pinned !== 1);
 
   const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
