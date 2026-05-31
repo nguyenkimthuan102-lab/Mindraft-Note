@@ -9,6 +9,7 @@ import { TagMenu } from './TagMenu';
 import { exportToTxt, exportToPdf, exportToDocx } from '../../utils/exportNote';
 import { useReminderStore } from '@/src/store/useReminderStore';
 import { useLocalNotification } from '@/src/hooks/useLocalNotification';
+import { NoteImageUploader } from './NoteImageUploader';
 
 const isWeb = Platform.OS === 'web';
 const WebDiv = 'div' as any;
@@ -140,6 +141,9 @@ export function NoteEditor({ visible, mode, note, inline, readOnly }: NoteEditor
   const [reminderTime, setReminderTime] = useState('');
 
   const contentRef = useRef<any>(null);
+
+  // Callback ref để trigger file picker của NoteImageUploader từ toolbar
+  const imagePickerTriggerRef = useRef<(() => void) | null>(null);
 
   useEffect(() => {
     if (!visible) return;
@@ -324,7 +328,6 @@ export function NoteEditor({ visible, mode, note, inline, readOnly }: NoteEditor
       return;
     }
 
-    // Ghép ngày + giờ → ISO string
     const remind_at = new Date(`${reminderDate}T${reminderTime}:00`).toISOString();
 
     if (new Date(remind_at) < new Date()) {
@@ -342,7 +345,6 @@ export function NoteEditor({ visible, mode, note, inline, readOnly }: NoteEditor
           note_color: noteColor,
         },
         async (created) => {
-          // Đặt lịch thông báo local sau khi lưu API thành công
           const titleFallback = `Ghi chú #${created.note.slice(0, 8)}`;
           await scheduleReminderNotification(created, titleFallback);
         }
@@ -441,6 +443,7 @@ export function NoteEditor({ visible, mode, note, inline, readOnly }: NoteEditor
 
   const bg = cardColorMap[noteColor] ?? cardColorMap.default;
   const hasReminder = !!(reminderDate && reminderTime);
+  const isSavedNote = !!(note?.id && !note.id.startsWith('temp-'));
 
   return (
     <View style={styles.overlay}>
@@ -480,6 +483,15 @@ export function NoteEditor({ visible, mode, note, inline, readOnly }: NoteEditor
             </TouchableOpacity>
           </Tooltip>
         </View>
+
+        {/* Image Uploader — chỉ hiện khi note đã được lưu */}
+        {isSavedNote && (
+          <NoteImageUploader
+            noteId={note!.id}
+            isDark={false}
+            triggerRef={imagePickerTriggerRef}
+          />
+        )}
 
         {/* Body */}
         <ScrollView
@@ -753,7 +765,22 @@ export function NoteEditor({ visible, mode, note, inline, readOnly }: NoteEditor
 
             <ToolbarBtn icon="account-plus-outline" onPress={() => { alert('Cộng tác viên sẽ được gọi API'); closePopups(); }} label="Cộng tác viên" />
             <ToolbarBtn icon="palette-outline" onPress={() => { setShowColorPicker(!showColorPicker); setShowMoreMenu(false); setShowTagMenu(false); setShowReminderPicker(false); }} label="Tùy chọn nền" />
-            <ToolbarBtn icon="image-outline" onPress={() => { alert('Thêm hình ảnh sẽ xử lý upload file'); closePopups(); }} label="Thêm hình ảnh" />
+
+            {/* ===== NÚT THÊM HÌNH ẢNH ===== */}
+            <ToolbarBtn
+              icon="image-outline"
+              onPress={() => {
+                closePopups();
+                if (!isSavedNote) {
+                  alert('Hãy lưu ghi chú trước khi thêm ảnh.');
+                  return;
+                }
+                imagePickerTriggerRef.current?.();
+              }}
+              label="Thêm hình ảnh"
+            />
+            {/* ===== KẾT THÚC NÚT THÊM HÌNH ẢNH ===== */}
+
             <ToolbarBtn
               icon="archive-arrow-down-outline"
               onPress={async () => {
