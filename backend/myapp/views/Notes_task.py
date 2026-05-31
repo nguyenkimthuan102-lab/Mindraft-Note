@@ -7,9 +7,10 @@ import uuid
 from django.utils import timezone
 
 from rest_framework import status
-from ..models import Tags, Notes
+from ..models import Tags, Notes, NoteTags
 
 from ..serializers import TagSerializer, NoteSerializer, CreateNoteSerializer, UpdateNoteSerializer
+
 
 def handle_get_notes(request):
     view_type = request.GET.get("view", "active")
@@ -62,6 +63,29 @@ def handle_get_notes(request):
         )
 
     # =========================
+    # THÊM MỚI: LỌC THEO TAG
+    # =========================
+    tag_id = request.GET.get("tag_id")
+
+    if tag_id:
+        # Xác nhận tag tồn tại và thuộc user hiện tại
+        if not Tags.objects.filter(id=tag_id, owner=request.user, is_deleted=0).exists():
+            return Response({
+                "error": {
+                    "code": "TAG_NOT_FOUND",
+                    "message": "Không tìm thấy nhãn."
+                }
+            }, status=status.HTTP_404_NOT_FOUND)
+
+        # Lọc note có gắn tag này (chỉ lấy liên kết chưa bị xóa)
+        note_ids_with_tag = NoteTags.objects.filter(
+            tag_id=tag_id,
+            is_deleted=0
+        ).values_list("note_id", flat=True)
+
+        notes = notes.filter(id__in=note_ids_with_tag)
+
+    # =========================
     # SORT
     # =========================
 
@@ -89,6 +113,7 @@ def handle_get_notes(request):
         "data": serializer.data
     })
 
+
 def handle_create_note(request):
     serializer = CreateNoteSerializer(data=request.data)
     if not serializer.is_valid():
@@ -113,8 +138,7 @@ def handle_create_note(request):
 
         title=serializer.validated_data.get("title", ""),
 
-        content=serializer.validated_data.get("content", []), # Sử dụng validated_data của serializer để validate, 
-        #tránh cho phép dữ liệu rác vào database
+        content=serializer.validated_data.get("content", []),
 
         content_text=serializer.validated_data.get("content_text", ""),
 
@@ -148,6 +172,7 @@ def handle_create_note(request):
         status=status.HTTP_201_CREATED
     )
 
+
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def get_tags(request):
@@ -171,7 +196,6 @@ def notes_collection_view(request):
         return handle_get_notes(request)
     elif request.method == "POST":
         return handle_create_note(request)
-
 
 
 @api_view(["PATCH"])
@@ -213,6 +237,7 @@ def toggle_pin_note(request, note_id):
     return Response({
         "data": serializer.data
     })
+
 
 @api_view(["PATCH"])
 @permission_classes([IsAuthenticated])
@@ -296,6 +321,7 @@ def update_note_quick(request, note_id):
         "data": response_serializer.data
     })
 
+
 @api_view(["PATCH"])
 @permission_classes([IsAuthenticated])
 def trash_note(request, note_id):
@@ -320,9 +346,8 @@ def trash_note(request, note_id):
     # MOVE TO TRASH
     note.is_trashed = 1
 
-    note.is_pinned = 0 
-    # OPTIONAL:
-    # thường archive sẽ bị bỏ khi vào trash
+    note.is_pinned = 0
+
     note.is_archived = 0
 
     note.trashed_at = timezone.now()
@@ -336,20 +361,3 @@ def trash_note(request, note_id):
     return Response({
         "data": serializer.data
     })
-
-# @api_view(["PATCH"])
-# @permission_classes([IsAuthenticated])
-# def note_detail(request, pk):
-#     try:
-#         # Ngăn không cho sửa note đã vào thùng rác
-#         note = Notes.objects.get(id=pk, user=request.user, is_trashed=0, is_deleted=0)
-#     except Notes.DoesNotExist:
-#         return Response({"error": "Không tìm thấy ghi chú hoặc ghi chú đã bị xóa/vào thùng rác"}, status=404)
-
-#     serializer = CreateNoteSerializer(note, data=request.data, partial=True)
-#     if serializer.is_valid():
-#         # Cập nhật thời gian tại đây
-#         serializer.save(server_updated_at=timezone.now())
-#         return Response({"data": NoteSerializer(note).data})
-    
-#     return Response(serializer.errors, status=422)
