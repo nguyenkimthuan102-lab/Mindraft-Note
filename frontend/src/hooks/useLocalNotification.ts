@@ -8,10 +8,9 @@ import {
   scheduleWebNotification,
   cancelWebNotification,
   requestWebNotificationPermission,
-} from './webNotification'; // ← THÊM
+} from './webNotification';
 
 export const useLocalNotification = () => {
-
   const { loadNotifications } = useNotificationStore.getState();
 
   const registerForPushNotifications = async () => {
@@ -53,6 +52,8 @@ export const useLocalNotification = () => {
         body: titleFallback,
         remindAt: triggerDate,
         noteId: reminder.note,
+        repeatType: reminder.repeat_type,           // Sửa lỗi TS: Thêm repeatType bắt buộc
+        noteTitle: reminder.note_title || undefined, // Thêm noteTitle nếu có
       });
       return success ? reminder.id : null;
     }
@@ -132,16 +133,15 @@ export const useLocalNotification = () => {
     if (!data?.reminder_id) return;
 
     try {
-      // ĐÚNG — ép về string
-        await createNotification({
+      await createNotification({
         type: 'reminder',
         note: typeof data.note_id === 'string' ? data.note_id : null,
         payload: {
-        message: String(notification.request.content.body ?? 'Nhắc nhở'),
-        note_title: String(data.note_title ?? ''),
-        reminder_id: String(data.reminder_id ?? ''),
-          },
-        });
+          message: String(notification.request.content.body ?? 'Nhắc nhở'),
+          note_title: String(data.note_title ?? ''),
+          reminder_id: String(data.reminder_id ?? ''),
+        },
+      });
       await loadNotifications();
     } catch (err) {
       console.error('Lỗi tạo server notification:', err);

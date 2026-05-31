@@ -3,6 +3,7 @@ import { Platform } from 'react-native';
 import {
   scheduleWebNotification,
   cancelWebNotification,
+  resolveNextTriggerDate,
 } from '../hooks/webNotification';
 
 export interface ReminderData {
@@ -17,34 +18,57 @@ export interface ReminderData {
   updated_at: string;
 }
 
-// ── Helper nội bộ: lên lịch thông báo tùy platform ───────────────────────
+// ── Helper: lên lịch thông báo tùy platform ──────────────────────────────
 async function scheduleNotification(reminder: ReminderData, noteTitle: string) {
-  const triggerDate = new Date(reminder.remind_at);
-  if (triggerDate <= new Date()) return; // Đã qua → bỏ qua
-
   if (Platform.OS === 'web') {
-    // Web: dùng Web Notification API (setTimeout)
+    // Web: dùng Web Notification API với logic tính ngày kế tiếp an toàn, chống spam
     await scheduleWebNotification({
       id: reminder.id,
       title: '🔔 Nhắc nhở ghi chú',
       body: noteTitle,
-      remindAt: triggerDate,
+      remindAt: new Date(reminder.remind_at),
+      repeatType: reminder.repeat_type,
       noteId: reminder.note,
+      noteTitle: noteTitle,
     });
   } else {
-    // Mobile: dùng expo-notifications (lazy import tránh lỗi trên web)
+    // Mobile: expo-notifications
     const Notifications = await import('expo-notifications');
     try {
       await Notifications.cancelScheduledNotificationAsync(reminder.id);
     } catch (_) {}
 
+    const triggerDate = resolveNextTriggerDate(
+      new Date(reminder.remind_at),
+      reminder.repeat_type
+    );
+
+    // Nếu thời gian đã qua và không lặp thì không lên lịch trên Mobile nữa
+    if (reminder.repeat_type === 'none' && triggerDate <= new Date()) {
+      return;
+    }
+
     let trigger: any;
     if (reminder.repeat_type === 'daily') {
-      trigger = { hour: triggerDate.getHours(), minute: triggerDate.getMinutes(), repeats: true };
+      trigger = {
+        hour: triggerDate.getHours(),
+        minute: triggerDate.getMinutes(),
+        repeats: true,
+      };
     } else if (reminder.repeat_type === 'weekly') {
-      trigger = { weekday: triggerDate.getDay() + 1, hour: triggerDate.getHours(), minute: triggerDate.getMinutes(), repeats: true };
+      trigger = {
+        weekday: triggerDate.getDay() + 1,
+        hour: triggerDate.getHours(),
+        minute: triggerDate.getMinutes(),
+        repeats: true,
+      };
     } else if (reminder.repeat_type === 'monthly') {
-      trigger = { day: triggerDate.getDate(), hour: triggerDate.getHours(), minute: triggerDate.getMinutes(), repeats: true };
+      trigger = {
+        day: triggerDate.getDate(),
+        hour: triggerDate.getHours(),
+        minute: triggerDate.getMinutes(),
+        repeats: true,
+      };
     } else {
       trigger = { date: triggerDate };
     }
@@ -66,7 +90,7 @@ async function scheduleNotification(reminder: ReminderData, noteTitle: string) {
   }
 }
 
-// ── Helper nội bộ: hủy thông báo tùy platform ────────────────────────────
+// ── Helper: hủy thông báo tùy platform ───────────────────────────────────
 async function cancelNotification(reminderId: string) {
   if (Platform.OS === 'web') {
     cancelWebNotification(reminderId);
@@ -82,11 +106,11 @@ async function cancelNotification(reminderId: string) {
 export const fetchReminders = (): Promise<ReminderData[]> =>
   axiosClient.get('/reminders/').then(res => res.data);
 
-// ── POST /reminders/ — tạo mới + lên lịch thông báo ─────────────────────
+// ── POST /reminders/ ─────────────────────────────────────────────────────
 export const createReminder = async (data: {
   note: string;
   remind_at: string;
-  repeat_type: string;
+  repeat_type: 'none' | 'daily' | 'weekly' | 'monthly'; // Đã chuẩn hóa kiểu dữ liệu rõ ràng thay vì string chung chung
   note_title?: string;
 }): Promise<ReminderData> => {
   const reminder: ReminderData = await axiosClient
@@ -99,7 +123,7 @@ export const createReminder = async (data: {
   return reminder;
 };
 
-// ── PUT /reminders/<id>/ — cập nhật + reschedule nếu đổi giờ ─────────────
+// ── PUT /reminders/<id>/ ──────────────────────────────────────────────────
 export const updateReminder = async (
   id: string,
   data: Partial<Pick<ReminderData, 'remind_at' | 'repeat_type' | 'is_notified'>>,
@@ -109,7 +133,7 @@ export const updateReminder = async (
     .put(`/reminders/${id}/`, data)
     .then(res => res.data);
 
-  if (data.remind_at) {
+  if (data.remind_at || data.repeat_type) {
     const title = noteTitle ?? reminder.note_title ?? 'Ghi chú';
     await scheduleNotification(reminder, title);
   }
@@ -117,8 +141,8 @@ export const updateReminder = async (
   return reminder;
 };
 
-// ── DELETE /reminders/<id>/ — xóa mềm + hủy thông báo ───────────────────
+// ── DELETE /reminders/<id>/ ───────────────────────────────────────────────
 export const deleteReminder = async (id: string): Promise<void> => {
   await axiosClient.delete(`/reminders/${id}/`);
-  await cancelNotification(id); // Hủy lịch thông báo local
+  await cancelNotification(id);
 };

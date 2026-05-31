@@ -6,6 +6,7 @@ import {
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { ReminderData } from '../../api/reminderApi';
 import { useLocalNotification } from '../../hooks/useLocalNotification';
+import { resolveNextTriggerDate } from '../../hooks/webNotification';
 
 const isWeb = Platform.OS === 'web';
 
@@ -22,7 +23,7 @@ const NOTE_COLOR_MAP: Record<string, string> = {
   blue: '#D3E3FD', purple: '#E8DEFC', pink: '#FDCFE8', brown: '#F0E6DA',
 };
 
-// Chuyển Date → chuỗi "YYYY-MM-DDTHH:MM" cho input datetime-local
+// Chuyển Date → chuỗi "YYYY-MM-DDTHH:MM" cho input datetime-local trên Web
 const toDatetimeLocal = (d: Date): string => {
   const pad = (n: number) => String(n).padStart(2, '0');
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
@@ -45,13 +46,12 @@ interface Props {
 export const ReminderCard = ({ reminder, isDark, onUpdate, onDelete }: Props) => {
   const [expanded, setExpanded] = useState(false);
   const [editDate, setEditDate] = useState(new Date(reminder.remind_at));
-  // State riêng cho Web input (chuỗi datetime-local)
   const [webDatetimeValue, setWebDatetimeValue] = useState(
     toDatetimeLocal(new Date(reminder.remind_at))
   );
   const [editRepeat, setEditRepeat] = useState<ReminderData['repeat_type']>(reminder.repeat_type);
   const [saving, setSaving] = useState(false);
-  const [errorMsg, setErrorMsg] = useState('');
+  const [infoMsg, setInfoMsg] = useState(''); // Lưu thông báo trạng thái/lỗi thân thiện cho user
 
   const { scheduleReminderNotification, cancelReminderNotification } = useLocalNotification();
 
@@ -77,64 +77,57 @@ export const ReminderCard = ({ reminder, isDark, onUpdate, onDelete }: Props) =>
       year: 'numeric', hour: '2-digit', minute: '2-digit',
     });
 
-  // Mobile only: chỉnh từng field bằng nút +/−
+  // Mobile only: Điều chỉnh thời gian qua nút nhấn
   const adjustDate = (field: 'day' | 'hour' | 'minute', delta: number) => {
     const d = new Date(editDate);
     if (field === 'day')    d.setDate(d.getDate() + delta);
     if (field === 'hour')   d.setHours(d.getHours() + delta);
     if (field === 'minute') d.setMinutes(d.getMinutes() + delta);
     setEditDate(d);
+    setInfoMsg('');
   };
 
-  // Web only: xử lý khi input datetime-local thay đổi
+  // Web only: Xử lý thay đổi input datetime-local
   const handleWebDatetimeChange = (e: any) => {
-    const val = e.target.value; // "YYYY-MM-DDTHH:MM"
+    const val = e.target.value;
     setWebDatetimeValue(val);
     if (val) {
       setEditDate(new Date(val));
-      setErrorMsg('');
-    }
-  };
-
-  const showAlert = (title: string, message: string) => {
-    if (isWeb) {
-      setErrorMsg(message);
-    } else {
-      Alert.alert(title, message);
+      setInfoMsg('');
     }
   };
 
   const handleSave = async () => {
     if (saving) return;
-    setErrorMsg('');
+    setInfoMsg('');
 
-    const targetDate = isWeb ? new Date(webDatetimeValue) : editDate;
+    const rawDate = isWeb ? new Date(webDatetimeValue) : editDate;
 
-    if (!targetDate || isNaN(targetDate.getTime())) {
-      showAlert('Lỗi', 'Thời gian không hợp lệ.');
+    if (!rawDate || isNaN(rawDate.getTime())) {
+      setInfoMsg('Thời gian không hợp lệ.');
       return;
     }
 
-    if (targetDate < new Date()) {
-      showAlert('Thời gian không hợp lệ', 'Không thể đặt nhắc nhở vào thời gian đã qua.');
-      return;
-    }
+    // Tự động tính chu kỳ/ngày kế tiếp nếu mốc thời gian lựa chọn đã trôi qua
+    const finalDate = resolveNextTriggerDate(rawDate, editRepeat);
 
     setSaving(true);
     try {
+      // Thiết lập callback lên lịch thông báo đẩy sau khi API cập nhật DB thành công
       const handleNotificationSetup = async (updatedData: ReminderData) => {
         const titleFallback = `Nội dung ghi chú #${updatedData.note.slice(0, 8)}`;
         await scheduleReminderNotification(updatedData, titleFallback);
       };
 
       await onUpdate(reminder.id, {
-        remind_at: targetDate.toISOString(),
+        remind_at: finalDate.toISOString(),
         repeat_type: editRepeat,
       }, handleNotificationSetup);
 
       setExpanded(false);
+      setInfoMsg('');
     } catch (err) {
-      showAlert('Lỗi', 'Không thể lưu lịch nhắc. Vui lòng thử lại.');
+      setInfoMsg('Không thể lưu lịch nhắc. Vui lòng thử lại.');
     } finally {
       setSaving(false);
     }
@@ -143,17 +136,21 @@ export const ReminderCard = ({ reminder, isDark, onUpdate, onDelete }: Props) =>
   const handleDelete = () => {
     const doDelete = async () => {
       try {
+        // Thiết lập hủy lịch thông báo ở client-side sau khi xóa thành công ở backend
         const handleNotificationCancel = async () => {
           await cancelReminderNotification(reminder.id);
         };
         await onDelete(reminder.id, handleNotificationCancel);
       } catch {
-        showAlert('Lỗi', 'Không thể xóa nhắc nhở.');
+        if (isWeb) {
+          setInfoMsg('Không thể xóa nhắc nhở.');
+        } else {
+          Alert.alert('Lỗi', 'Không thể xóa nhắc nhở.');
+        }
       }
     };
 
     if (isWeb) {
-      // Web: confirm đơn giản bằng window.confirm
       if (typeof window !== 'undefined' && window.confirm(`Xóa nhắc nhở cho "${displayTitle}"?`)) {
         doDelete();
       }
@@ -171,12 +168,21 @@ export const ReminderCard = ({ reminder, isDark, onUpdate, onDelete }: Props) =>
 
   const handleCancel = () => {
     setExpanded(false);
-    setErrorMsg('');
+    setInfoMsg('');
     const original = new Date(reminder.remind_at);
     setEditDate(original);
     setWebDatetimeValue(toDatetimeLocal(original));
     setEditRepeat(reminder.repeat_type);
   };
+
+  // Lắng nghe sự thay đổi thời gian để cập nhật dòng thông báo tự động (Preview UX)
+  const targetDate = isWeb ? new Date(webDatetimeValue) : editDate;
+  const computedNextDate = (!targetDate || isNaN(targetDate.getTime())) ? null : resolveNextTriggerDate(targetDate, editRepeat);
+  const previewMsg = (computedNextDate && targetDate && computedNextDate.getTime() !== targetDate.getTime())
+    ? (editRepeat === 'none'
+        ? `Giờ đã qua → sẽ nhắc vào ngày mai: ${formatDate(computedNextDate)}`
+        : `Giờ đã qua → lần nhắc tiếp: ${formatDate(computedNextDate)}`)
+    : '';
 
   return (
     <View style={[styles.card, { backgroundColor: c.card, borderColor: c.border }]}>
@@ -188,7 +194,7 @@ export const ReminderCard = ({ reminder, isDark, onUpdate, onDelete }: Props) =>
       <View style={{ flex: 1 }}>
         <TouchableOpacity
           style={styles.mainRow}
-          onPress={() => { setExpanded(v => !v); setErrorMsg(''); }}
+          onPress={() => { setExpanded(v => !v); setInfoMsg(''); }}
           activeOpacity={0.75}
         >
           <View style={[
@@ -241,7 +247,6 @@ export const ReminderCard = ({ reminder, isDark, onUpdate, onDelete }: Props) =>
 
             <Text style={[styles.editLabel, { color: c.sub }]}>Thời gian nhắc</Text>
 
-            {/* ===== WEB: input datetime-local ===== */}
             {isWeb ? (
               <input
                 type="datetime-local"
@@ -262,7 +267,6 @@ export const ReminderCard = ({ reminder, isDark, onUpdate, onDelete }: Props) =>
                 } as any}
               />
             ) : (
-              /* ===== MOBILE: hiển thị + nút +/− ===== */
               <>
                 <View style={[styles.dateBox, { borderColor: c.border, backgroundColor: c.card }]}>
                   <Text style={[styles.dateText, { color: c.text }]}>
@@ -295,11 +299,17 @@ export const ReminderCard = ({ reminder, isDark, onUpdate, onDelete }: Props) =>
               </>
             )}
 
-            {/* Error message inline (Web) */}
-            {!!errorMsg && (
-              <View style={styles.errorBox}>
-                <MaterialCommunityIcons name="alert-circle-outline" size={14} color="#ef4444" />
-                <Text style={styles.errorText}>{errorMsg}</Text>
+            {/* Hiển thị câu thông báo điều chỉnh thời gian thực (Real-time Preview) hoặc thông báo lỗi hệ thống */}
+            {(!!previewMsg || !!infoMsg) && (
+              <View style={[styles.infoBox, !!infoMsg && infoMsg.includes('Không thể') && styles.errorBox]}>
+                <MaterialCommunityIcons 
+                  name={!!infoMsg && infoMsg.includes('Không thể') ? "alert-circle-outline" : "information-outline"} 
+                  size={14} 
+                  color={!!infoMsg && infoMsg.includes('Không thể') ? "#ef4444" : "#3b82f6"} 
+                />
+                <Text style={[styles.infoText, !!infoMsg && infoMsg.includes('Không thể') && styles.errorText]}>
+                  {infoMsg || previewMsg}
+                </Text>
               </View>
             )}
 
@@ -310,7 +320,7 @@ export const ReminderCard = ({ reminder, isDark, onUpdate, onDelete }: Props) =>
                 return (
                   <TouchableOpacity
                     key={opt.value}
-                    onPress={() => setEditRepeat(opt.value)}
+                    onPress={() => { setEditRepeat(opt.value); setInfoMsg(''); }}
                     style={[styles.chip, { backgroundColor: active ? c.chipActive : c.chip }]}
                   >
                     <Text style={[styles.chipText, { color: active ? '#fff' : c.sub }]}>
@@ -352,147 +362,35 @@ export const ReminderCard = ({ reminder, isDark, onUpdate, onDelete }: Props) =>
 };
 
 const styles = StyleSheet.create({
-  card: {
-    flexDirection: 'row',
-    borderRadius: 12,
-    borderWidth: 1,
-    overflow: 'hidden',
-    marginBottom: 10,
-  },
+  card: { flexDirection: 'row', borderRadius: 12, borderWidth: 1, overflow: 'hidden', marginBottom: 10 },
   colorStrip: { width: 4, flexShrink: 0 },
-  mainRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: 14,
-    gap: 12,
-  },
-  iconWrap: {
-    width: 38, height: 38,
-    borderRadius: 19,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  noteTitle: {
-    fontFamily: 'Inter-Medium',
-    fontSize: 15,
-    marginBottom: 3,
-  },
-  metaRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    marginTop: 2,
-  },
-  metaText: {
-    fontFamily: 'Inter-Regular',
-    fontSize: 12,
-  },
-  expandPanel: {
-    padding: 14,
-    borderTopWidth: 1,
-  },
-  editLabel: {
-    fontFamily: 'Inter-SemiBold',
-    fontSize: 11,
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-    marginBottom: 8,
-  },
-  dateBox: {
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    borderRadius: 8,
-    borderWidth: 1,
-    marginBottom: 10,
-  },
-  dateText: {
-    fontFamily: 'Inter-Regular',
-    fontSize: 14,
-  },
-  adjustRow: {
-    flexDirection: 'row',
-    gap: 16,
-    marginBottom: 12,
-  },
+  mainRow: { flexDirection: 'row', alignItems: 'center', padding: 14, gap: 12 },
+  iconWrap: { width: 38, height: 38, borderRadius: 19, alignItems: 'center', justifyContent: 'center' },
+  noteTitle: { fontFamily: 'Inter-Medium', fontSize: 15, marginBottom: 3 },
+  metaRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 2 },
+  metaText: { fontFamily: 'Inter-Regular', fontSize: 12 },
+  expandPanel: { padding: 14, borderTopWidth: 1 },
+  editLabel: { fontFamily: 'Inter-SemiBold', fontSize: 11, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 8 },
+  dateBox: { paddingHorizontal: 12, paddingVertical: 10, borderRadius: 8, borderWidth: 1, marginBottom: 10 },
+  dateText: { fontFamily: 'Inter-Regular', fontSize: 14 },
+  adjustRow: { flexDirection: 'row', gap: 16, marginBottom: 12 },
   adjustGroup: { alignItems: 'center', gap: 6 },
-  adjustLabel: {
-    fontFamily: 'Inter-Regular',
-    fontSize: 11,
-  },
+  adjustLabel: { fontFamily: 'Inter-Regular', fontSize: 11 },
   adjustBtns: { flexDirection: 'row', gap: 6 },
-  adjBtn: {
-    width: 32, height: 32,
-    borderRadius: 8,
-    borderWidth: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  errorBox: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    backgroundColor: '#fef2f2',
-    borderRadius: 6,
-    paddingHorizontal: 10,
-    paddingVertical: 7,
-    marginBottom: 8,
-  },
-  errorText: {
-    fontFamily: 'Inter-Regular',
-    fontSize: 13,
-    color: '#ef4444',
-    flex: 1,
-  },
-  chips: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-  },
-  chip: {
-    paddingHorizontal: 12,
-    paddingVertical: 7,
-    borderRadius: 999,
-  },
-  chipText: {
-    fontFamily: 'Inter-Medium',
-    fontSize: 13,
-  },
-  editActions: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginTop: 16,
-  },
-  deleteBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-  },
-  deleteBtnText: {
-    color: '#ef4444',
-    fontFamily: 'Inter-Medium',
-    fontSize: 13,
-  },
+  adjBtn: { width: 32, height: 32, borderRadius: 8, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
+  infoBox: { flexDirection: 'row', alignItems: 'flex-start', gap: 6, backgroundColor: '#eff6ff', borderRadius: 6, paddingHorizontal: 10, paddingVertical: 7, marginBottom: 8 },
+  infoText: { fontFamily: 'Inter-Regular', fontSize: 12, color: '#1d4ed8', flex: 1, lineHeight: 18 },
+  errorBox: { backgroundColor: '#fef2f2' },
+  errorText: { color: '#ef4444' },
+  chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  chip: { paddingHorizontal: 12, paddingVertical: 7, borderRadius: 999 },
+  chipText: { fontFamily: 'Inter-Medium', fontSize: 13 },
+  editActions: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 16 },
+  deleteBtn: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  deleteBtnText: { color: '#ef4444', fontFamily: 'Inter-Medium', fontSize: 13 },
   saveCancelRow: { flexDirection: 'row', gap: 8 },
-  cancelBtn: {
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: 8,
-    borderWidth: 1,
-  },
-  cancelBtnText: {
-    fontFamily: 'Inter-Medium',
-    fontSize: 14,
-  },
-  saveBtn: {
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 8,
-    backgroundColor: '#3b82f6',
-  },
-  saveBtnText: {
-    fontFamily: 'Inter-SemiBold',
-    fontSize: 14,
-    color: '#fff',
-  },
+  cancelBtn: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 8, borderWidth: 1 },
+  cancelBtnText: { fontFamily: 'Inter-Medium', fontSize: 14 },
+  saveBtn: { paddingHorizontal: 16, paddingVertical: 8, borderRadius: 8, backgroundColor: '#3b82f6' },
+  saveBtnText: { fontFamily: 'Inter-SemiBold', fontSize: 14, color: '#fff' },
 });

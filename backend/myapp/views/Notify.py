@@ -14,21 +14,19 @@ VALID_TYPES = ['reminder', 'shared_note', 'note_updated', 'system']
 # ─────────────────────────────────────────
 # Helper: tạo notification (dùng nội bộ)
 # ─────────────────────────────────────────
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
 def create_notification(user, notif_type, note=None, payload=None):
-    """
-    Dùng nội bộ để tạo notification từ các service khác
-    Ví dụ: gọi từ reminder job, share note, ...
-    """
     return Notifications.objects.create(
         id=str(uuid.uuid4()),
         user=user,
         type=notif_type,
         note=note,
         payload=payload or {},
-        is_read=False,
+        is_read=0,       # ← đổi False → 0 (IntegerField)
+        is_deleted=0,    # ← THÊM dòng này
         created_at=timezone.now()
     )
-
 
 # ─────────────────────────────────────────
 # GET  /notifications/       - Lấy danh sách
