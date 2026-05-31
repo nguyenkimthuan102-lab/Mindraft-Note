@@ -52,10 +52,6 @@ urlpatterns = [
     # ==========================================
     # MEDIA (Hình ảnh & File)
     # ==========================================
-<<<<<<< HEAD
-    path("media/presigned-url", presigned_url_view, name="presigned-url"),
-=======
->>>>>>> df26e1e (Update reminder and notifications)
     path('notes/<str:note_id>/media', upload_note_image, name='upload_note_image'),
     path('notes/<str:note_id>/media/list/', get_note_media, name='get_note_media'),    
     path('notes/media/<str:media_id>/delete/', delete_media, name='delete_media'),

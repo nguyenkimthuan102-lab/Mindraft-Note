@@ -4,9 +4,7 @@ import {
   fetchNotes, updateNote, trashNote, toggleArchiveNote, togglePinNote,
   createNoteText, createNoteTodo, restoreNote, deleteNotePermanently,
 } from '../api/noteApi';
-<<<<<<< HEAD
 import api from '@/src/api/axiosClient';
-=======
 import { deleteReminder, fetchReminders } from '../api/reminderApi';
 
 // Helper: tìm và xóa tất cả reminder của một note (silent, không throw)
@@ -21,7 +19,6 @@ const deleteRemindersForNote = async (noteId: string) => {
     console.warn('Không thể xóa reminder của note:', noteId, err);
   }
 };
->>>>>>> df26e1e (Update reminder and notifications)
 
 type ViewMode = 'grid' | 'list';
 type EditorMode = 'text' | 'todo';
@@ -142,9 +139,6 @@ export const useNoteStore = create<NoteStoreState>((set, get) => ({
   trashNoteAction: async (id) => {
     const oldNotes = get().notes;
     set({ notes: oldNotes.filter(n => n.id !== id) });
-<<<<<<< HEAD
-    try { await trashNote(id); } catch { set({ notes: oldNotes }); }
-=======
     try {
       await trashNote(id);
       // Xóa luôn các reminder liên quan (không chặn UI, lỗi chỉ log)
@@ -152,7 +146,6 @@ export const useNoteStore = create<NoteStoreState>((set, get) => ({
     } catch {
       set({ notes: oldNotes });
     }
->>>>>>> df26e1e (Update reminder and notifications)
   },
 
   restoreNoteAction: async (id) => {
@@ -164,25 +157,18 @@ export const useNoteStore = create<NoteStoreState>((set, get) => ({
   deleteNotePermanentlyAction: async (id) => {
     const oldNotes = get().notes;
     set({ notes: oldNotes.filter(n => n.id !== id) });
-<<<<<<< HEAD
-    try { await deleteNotePermanently(id); } catch { set({ notes: oldNotes }); }
-=======
     try {
       await deleteNotePermanently(id);
       deleteRemindersForNote(id);
     } catch {
       set({ notes: oldNotes });
     }
->>>>>>> df26e1e (Update reminder and notifications)
   },
 
   emptyTrashAction: async () => {
     const oldNotes = get().notes;
     if (oldNotes.length === 0) return;
     set({ notes: [] });
-<<<<<<< HEAD
-    try { await Promise.all(oldNotes.map(n => deleteNotePermanently(n.id))); } catch { set({ notes: oldNotes }); }
-=======
     try {
       await Promise.all(oldNotes.map(n => deleteNotePermanently(n.id)));
       // Xóa reminder của tất cả note trong trash
@@ -190,7 +176,6 @@ export const useNoteStore = create<NoteStoreState>((set, get) => ({
     } catch {
       set({ notes: oldNotes });
     }
->>>>>>> df26e1e (Update reminder and notifications)
   },
 
   saveNoteAction: async (cleanNote, localContents = {}) => {
@@ -417,16 +402,12 @@ export const useNoteStore = create<NoteStoreState>((set, get) => ({
     if (ids.length === 0) return;
     const oldNotes = get().notes;
     set({ notes: oldNotes.filter(n => !ids.includes(n.id)) });
-<<<<<<< HEAD
-    try { await Promise.all(ids.map(id => trashNote(id))); } catch { set({ notes: oldNotes }); }
-=======
     try {
       await Promise.all(ids.map(id => trashNote(id)));
       ids.forEach(id => deleteRemindersForNote(id));
     } catch {
       set({ notes: oldNotes });
     }
->>>>>>> df26e1e (Update reminder and notifications)
   },
 
   batchColorAction: async (ids, color) => {
