@@ -6,11 +6,8 @@ import { colors } from '../../constants/colors';
 import { HoverBtn } from '../ui/HoverBtn';
 import { useAppStore } from '../../store/useAppStore';
 import { useSelectionStore } from '../../store/useSelectionStore';
-<<<<<<< HEAD
 import { useNoteStore, mapApiTodoItems } from '../../store/useNoteStore';
-=======
 import { getNoteMedia, MediaData } from '../../api/mediaApi';
->>>>>>> cfc5de2 (Update image upload)
 
 const cardColorMap: Record<string, string> = {
   default: '#FFFFFF', red: '#FADADD', orange: '#FEEFC3', yellow: '#FEF7CD',

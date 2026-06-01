@@ -707,9 +707,6 @@ export function NoteEditor({ visible, mode, note, inline, readOnly }: NoteEditor
           </Tooltip>
         </View>
 
-<<<<<<< HEAD
-        {/* ── Body ── */}
-=======
         {/* Image Uploader — chỉ hiện khi note đã được lưu */}
         {isSavedNote && (
           <NoteImageUploader
@@ -720,7 +717,6 @@ export function NoteEditor({ visible, mode, note, inline, readOnly }: NoteEditor
         )}
 
         {/* Body */}
->>>>>>> cfc5de2 (Update image upload)
         <ScrollView
           style={styles.body}
           showsVerticalScrollIndicator={false}
