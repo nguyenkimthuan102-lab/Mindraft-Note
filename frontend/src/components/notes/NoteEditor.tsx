@@ -11,6 +11,9 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { TagMenu } from './TagMenu';
 import { exportToTxt, exportToPdf, exportToDocx } from '../../utils/exportNote';
 import api from '../../api/axiosClient';
+import { useReminderStore } from '@/src/store/useReminderStore';
+import { useLocalNotification } from '@/src/hooks/useLocalNotification';
+import { NoteImageUploader } from './NoteImageUploader';
 
 const isWeb = Platform.OS === 'web';
 const WebDiv = 'div' as any;
@@ -103,6 +106,9 @@ export function NoteEditor({ visible, mode, note, inline, readOnly }: NoteEditor
     notes, // FIX: subscribe to notes so we can sync local state after store updates
   } = useNoteStore();
 
+  const { createReminderAction } = useReminderStore();
+  const { scheduleReminderNotification } = useLocalNotification();
+
   const [htmlConfig, setHtmlConfig] = useState({ __html: (note?.content_text ?? '').replace(/\n/g, '<br>') });
 
   const [todoItems, setTodoItems] = useState<TodoItemData[]>(
@@ -129,6 +135,11 @@ export function NoteEditor({ visible, mode, note, inline, readOnly }: NoteEditor
   const [showTagMenu,    setShowTagMenu]    = useState(false);
   const [showExportMenu, setShowExportMenu] = useState(false);
   const [noteTags, setNoteTags] = useState<string[]>(note?.labels ?? []);
+
+  // Reminder states
+  const [showReminderPicker, setShowReminderPicker] = useState(false);
+  const [reminderDate, setReminderDate] = useState('');
+  const [reminderTime, setReminderTime] = useState('');
 
   const contentRef     = useRef<any>(null);
   const mobileContentRef = useRef<any>(null);
@@ -180,6 +191,9 @@ export function NoteEditor({ visible, mode, note, inline, readOnly }: NoteEditor
         });
     }
   }, [visible, note?.id, mode]);
+
+  // Callback ref để trigger file picker của NoteImageUploader từ toolbar
+  const imagePickerTriggerRef = useRef<(() => void) | null>(null);
 
   useEffect(() => {
     if (!visible) return;
@@ -477,6 +491,7 @@ export function NoteEditor({ visible, mode, note, inline, readOnly }: NoteEditor
     setShowTagMenu(false);
     setShowExportMenu(false);
     setOpenTodoMenuId(null);
+    setShowReminderPicker(false);
   };
 
   const updateFormattingState = () => {
@@ -531,6 +546,45 @@ export function NoteEditor({ visible, mode, note, inline, readOnly }: NoteEditor
     if (format === 'txt')       await exportToTxt(exportNoteData);
     else if (format === 'pdf')  await exportToPdf(exportNoteData);
     else if (format === 'docx') await exportToDocx(exportNoteData);
+  };
+
+  const handleSaveReminder = async () => {
+    if (!reminderDate || !reminderTime) {
+      alert('Vui lòng chọn đầy đủ ngày và giờ.');
+      return;
+    }
+
+    const remind_at = new Date(`${reminderDate}T${reminderTime}:00`).toISOString();
+
+    if (new Date(remind_at) < new Date()) {
+      alert('Không thể đặt nhắc nhở vào thời gian đã qua.');
+      return;
+    }
+
+    try {
+      await createReminderAction(
+        {
+          note: note?.id ?? '',
+          remind_at,
+          repeat_type: 'none',
+          note_title: title.trim() || undefined,
+          note_color: noteColor,
+        },
+        async (created) => {
+          const titleFallback = `Ghi chú #${created.note.slice(0, 8)}`;
+          await scheduleReminderNotification(created, titleFallback);
+        }
+      );
+      setShowReminderPicker(false);
+    } catch {
+      alert('Không thể tạo nhắc nhở. Vui lòng thử lại.');
+    }
+  };
+
+  const handleClearReminder = () => {
+    setReminderDate('');
+    setReminderTime('');
+    setShowReminderPicker(false);
   };
 
   const handleSaveAndClose = async () => {
@@ -611,6 +665,8 @@ export function NoteEditor({ visible, mode, note, inline, readOnly }: NoteEditor
 
   if (!visible) return null;
   const bg = cardColorMap[noteColor] ?? cardColorMap.default;
+  const hasReminder = !!(reminderDate && reminderTime);
+  const isSavedNote = !!(note?.id && !note.id.startsWith('temp-'));
 
   return (
     <View style={styles.overlay}>
@@ -651,7 +707,20 @@ export function NoteEditor({ visible, mode, note, inline, readOnly }: NoteEditor
           </Tooltip>
         </View>
 
+<<<<<<< HEAD
         {/* ── Body ── */}
+=======
+        {/* Image Uploader — chỉ hiện khi note đã được lưu */}
+        {isSavedNote && (
+          <NoteImageUploader
+            noteId={note!.id}
+            isDark={false}
+            triggerRef={imagePickerTriggerRef}
+          />
+        )}
+
+        {/* Body */}
+>>>>>>> cfc5de2 (Update image upload)
         <ScrollView
           style={styles.body}
           showsVerticalScrollIndicator={false}
@@ -871,10 +940,137 @@ export function NoteEditor({ visible, mode, note, inline, readOnly }: NoteEditor
         {/* ── Footer ── */}
         <View style={styles.footer}>
           <View style={styles.toolbarLeft}>
-            <ToolbarBtn icon="bell-plus-outline"        onPress={() => { alert('Nhắc nhở sẽ được lưu qua API'); closePopups(); }}          label="Nhắc nhở" />
-            <ToolbarBtn icon="account-plus-outline"     onPress={() => { alert('Cộng tác viên sẽ được gọi API'); closePopups(); }}          label="Cộng tác viên" />
-            <ToolbarBtn icon="palette-outline"          onPress={() => { setShowColorPicker(!showColorPicker); setShowMoreMenu(false); setShowTagMenu(false); }} label="Tùy chọn nền" />
-            <ToolbarBtn icon="image-outline"            onPress={() => { alert('Thêm hình ảnh sẽ xử lý upload file'); closePopups(); }}    label="Thêm hình ảnh" />
+
+            {/* ===== NÚT NHẮC NHỞ + POPOVER ===== */}
+            <View style={{ position: 'relative', zIndex: 300 }}>
+              <ToolbarBtn
+                icon="bell-plus-outline"
+                onPress={() => {
+                  setShowReminderPicker(!showReminderPicker);
+                  setShowColorPicker(false);
+                  setShowMoreMenu(false);
+                  setShowTagMenu(false);
+                  setShowExportMenu(false);
+                }}
+                isActive={hasReminder}
+                label="Nhắc nhở"
+              />
+
+              {showReminderPicker && (
+                <View style={styles.reminderPopover}>
+                  {/* Header popover */}
+                  <View style={styles.reminderHeader}>
+                    <MaterialCommunityIcons name="bell-outline" size={16} color={colors.primary} />
+                    <Text style={styles.reminderTitle}>Đặt nhắc nhở</Text>
+                  </View>
+
+                  {/* Ngày */}
+                  <Text style={styles.reminderLabel}>Ngày</Text>
+                  {isWeb ? (
+                    <input
+                      type="date"
+                      value={reminderDate}
+                      onChange={(e: any) => setReminderDate(e.target.value)}
+                      style={{
+                        marginBottom: 10,
+                        padding: '6px 8px',
+                        borderRadius: 4,
+                        border: `1px solid ${colors.borderDefault}`,
+                        fontSize: 13,
+                        fontFamily: 'Inter-Regular',
+                        color: colors.textPrimary,
+                        width: '100%',
+                        boxSizing: 'border-box',
+                        outline: 'none',
+                      } as any}
+                    />
+                  ) : (
+                    <TextInput
+                      value={reminderDate}
+                      onChangeText={setReminderDate}
+                      placeholder="YYYY-MM-DD"
+                      placeholderTextColor={colors.textPlaceholder}
+                      style={styles.reminderInput}
+                    />
+                  )}
+
+                  {/* Giờ */}
+                  <Text style={styles.reminderLabel}>Giờ</Text>
+                  {isWeb ? (
+                    <input
+                      type="time"
+                      value={reminderTime}
+                      onChange={(e: any) => setReminderTime(e.target.value)}
+                      style={{
+                        marginBottom: 12,
+                        padding: '6px 8px',
+                        borderRadius: 4,
+                        border: `1px solid ${colors.borderDefault}`,
+                        fontSize: 13,
+                        fontFamily: 'Inter-Regular',
+                        color: colors.textPrimary,
+                        width: '100%',
+                        boxSizing: 'border-box',
+                        outline: 'none',
+                      } as any}
+                    />
+                  ) : (
+                    <TextInput
+                      value={reminderTime}
+                      onChangeText={setReminderTime}
+                      placeholder="HH:MM"
+                      placeholderTextColor={colors.textPlaceholder}
+                      style={styles.reminderInput}
+                    />
+                  )}
+
+                  {/* Preview reminder đã đặt */}
+                  {hasReminder && (
+                    <View style={styles.reminderPreview}>
+                      <MaterialCommunityIcons name="bell-ring-outline" size={13} color={colors.primary} />
+                      <Text style={styles.reminderPreviewText}>
+                        {reminderDate} lúc {reminderTime}
+                      </Text>
+                    </View>
+                  )}
+
+                  {/* Buttons */}
+                  <View style={styles.reminderBtnRow}>
+                    <TouchableOpacity style={styles.reminderSaveBtn} onPress={handleSaveReminder}>
+                      <Text style={styles.reminderSaveBtnText}>Lưu</Text>
+                    </TouchableOpacity>
+                    {hasReminder && (
+                      <TouchableOpacity style={styles.reminderClearBtn} onPress={handleClearReminder}>
+                        <Text style={styles.reminderClearBtnText}>Xóa</Text>
+                      </TouchableOpacity>
+                    )}
+                    <TouchableOpacity style={styles.reminderCancelBtn} onPress={() => setShowReminderPicker(false)}>
+                      <Text style={styles.reminderCancelBtnText}>Đóng</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              )}
+            </View>
+            {/* ===== KẾT THÚC NÚT NHẮC NHỞ ===== */}
+
+            <ToolbarBtn icon="account-plus-outline" onPress={() => { alert('Cộng tác viên sẽ được gọi API'); closePopups(); }} label="Cộng tác viên" />
+            <ToolbarBtn icon="palette-outline" onPress={() => { setShowColorPicker(!showColorPicker); setShowMoreMenu(false); setShowTagMenu(false); setShowReminderPicker(false); }} label="Tùy chọn nền" />
+
+            {/* ===== NÚT THÊM HÌNH ẢNH ===== */}
+            <ToolbarBtn
+              icon="image-outline"
+              onPress={() => {
+                closePopups();
+                if (!isSavedNote) {
+                  alert('Hãy lưu ghi chú trước khi thêm ảnh.');
+                  return;
+                }
+                imagePickerTriggerRef.current?.();
+              }}
+              label="Thêm hình ảnh"
+            />
+            {/* ===== KẾT THÚC NÚT THÊM HÌNH ẢNH ===== */}
+
             <ToolbarBtn
               icon="archive-arrow-down-outline"
               onPress={async () => {
@@ -1004,6 +1200,112 @@ export function NoteEditor({ visible, mode, note, inline, readOnly }: NoteEditor
 }
 
 const styles = StyleSheet.create({
+  // ===== REMINDER STYLES =====
+  reminderPopover: {
+    position: 'absolute',
+    bottom: 44,
+    left: 0,
+    backgroundColor: '#fff',
+    borderRadius: 8,
+    padding: 14,
+    minWidth: 220,
+    shadowColor: '#000',
+    shadowOpacity: 0.15,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 6,
+    borderWidth: 1,
+    borderColor: colors.borderDefault,
+    zIndex: 500,
+  },
+  reminderHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginBottom: 12,
+  },
+  reminderTitle: {
+    fontFamily: 'Inter-Medium',
+    fontSize: 13,
+    color: colors.textPrimary,
+  },
+  reminderLabel: {
+    fontFamily: 'Inter-Regular',
+    fontSize: 11,
+    color: colors.textSecondary,
+    marginBottom: 4,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  reminderInput: {
+    borderWidth: 1,
+    borderColor: colors.borderDefault,
+    borderRadius: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 6,
+    fontSize: 13,
+    marginBottom: 10,
+    fontFamily: 'Inter-Regular',
+    color: colors.textPrimary,
+    outlineStyle: 'none',
+  } as any,
+  reminderPreview: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    backgroundColor: colors.primarySubtle ?? '#e8f0fe',
+    borderRadius: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 5,
+    marginBottom: 10,
+  },
+  reminderPreviewText: {
+    fontFamily: 'Inter-Regular',
+    fontSize: 12,
+    color: colors.primary,
+  },
+  reminderBtnRow: {
+    flexDirection: 'row',
+    gap: 6,
+    alignItems: 'center',
+  },
+  reminderSaveBtn: {
+    backgroundColor: colors.primary,
+    paddingHorizontal: 14,
+    paddingVertical: 7,
+    borderRadius: 4,
+  },
+  reminderSaveBtnText: {
+    color: '#fff',
+    fontFamily: 'Inter-Medium',
+    fontSize: 13,
+  },
+  reminderClearBtn: {
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+    borderRadius: 4,
+    borderWidth: 1,
+    borderColor: '#e53935',
+  },
+  reminderClearBtnText: {
+    color: '#e53935',
+    fontFamily: 'Inter-Regular',
+    fontSize: 13,
+  },
+  reminderCancelBtn: {
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+    borderRadius: 4,
+    borderWidth: 1,
+    borderColor: colors.borderDefault,
+  },
+  reminderCancelBtnText: {
+    color: colors.textSecondary,
+    fontFamily: 'Inter-Regular',
+    fontSize: 13,
+  },
+  // ===== END REMINDER STYLES =====
+
   exportMenuPopover: {
     position: 'absolute',
     left: isWeb ? '100%' : 0,

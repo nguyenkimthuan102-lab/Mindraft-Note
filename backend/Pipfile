@@ -4,15 +4,18 @@ verify_ssl = true
 name = "pypi"
 
 [packages]
-django = "*"
 django-environ = "*"
 pymysql = "*"
 python-decouple = "*"
-djangorestframework = "*"
-django-cors-headers = "*"
 djangorestframework-simplejwt = "*"
-google-auth = "*"
 requests = "*"
+django = "*"
+djangorestframework = "*"
+python-dotenv = "*"
+pyjwt = "*"
+google-auth = "*"
+pillow = "*"
+django-cors-headers = "*"
 
 [dev-packages]
 

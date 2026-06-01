@@ -8,10 +8,11 @@ import { useLayoutStore } from '../../store/useLayoutStore';
 import { useSyncStore } from '../../store/useSyncStore';
 import { SyncIndicator } from '../ui/SyncIndicator';
 import { useSelectionStore } from '../../store/useSelectionStore';
-import { useNoteStore } from '../../store/useNoteStore'; // THÊM IMPORT STORE NOTE
+import { useNoteStore } from '../../store/useNoteStore';
 import { useAppStore, DEFAULT_SORT } from '../../store/useAppStore';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuthStore } from '../../store/useAuthStore';
+import { useNotificationStore } from '../../store/useNotificationStore'; // 🔥 IMPORT STORE THÔNG BÁO
 import { ProfileModal } from './ProfileModal';
 
 interface TopbarProps {
@@ -21,7 +22,6 @@ interface TopbarProps {
 
 const logoIcon = require('../../../assets/images/icon.png');
 
-// DANH SÁCH MÀU CHO MENU
 const NOTE_COLORS = [
   { key: 'default', bg: '#FFFFFF' }, { key: 'red', bg: '#FADADD' },
   { key: 'orange', bg: '#FEEFC3' }, { key: 'yellow', bg: '#FEF7CD' },
@@ -33,9 +33,11 @@ const NOTE_COLORS = [
 export function Topbar({ onViewModeChange }: TopbarProps) {
   const { sort, setSort, viewMode, setViewMode, theme } = useAppStore();
   const { user } = useAuthStore();
+  const { unreadCount } = useNotificationStore(); // 🔥 LẤY SỐ LƯỢNG THÔNG BÁO CHƯA ĐỌC ĐỘNG
+
   const [menuVisible, setMenuVisible] = useState(false);
   const [profileVisible, setProfileVisible] = useState(false);
-  const [colorMenuVisible, setColorMenuVisible] = useState(false); // STATE MENU MÀU BATCH
+  const [colorMenuVisible, setColorMenuVisible] = useState(false);
 
   const isSortActive = sort.field !== DEFAULT_SORT.field || sort.direction !== DEFAULT_SORT.direction;
   const insets = useSafeAreaInsets();
@@ -67,7 +69,6 @@ export function Topbar({ onViewModeChange }: TopbarProps) {
   const { selectedIds, clearSelection } = useSelectionStore();
   const selectedCount = selectedIds.length;
 
-  // LẤY ACTION TỪ NOTE STORE
   const { batchPinAction, batchArchiveAction, batchTrashAction, batchColorAction } = useNoteStore();
 
   const handleSortChange = (field: any, direction: any) => {
@@ -94,7 +95,6 @@ export function Topbar({ onViewModeChange }: TopbarProps) {
     return 'Mindraft Note';
   };
 
-  // CÁC HÀM XỬ LÝ BATCH CHÍNH THỨC -----------------------------
   const handleBatchPin = async () => {
     const idsToProcess = [...selectedIds];
     clearSelection();
@@ -119,15 +119,17 @@ export function Topbar({ onViewModeChange }: TopbarProps) {
     clearSelection();
     await batchColorAction(idsToProcess, colorKey);
   };
-  // -------------------------------------------------------------
 
+  // ------------------------------------------------─────────────
+  // 1. GIAO DIỆN KHI CHỌN HÀNG LOẠT (BATCH MODE ACTIVE)
+  // ------------------------------------------------─────────────
   if (selectedCount > 0) {
     return (
       <View
         style={[
           styles.topbar,
           {
-            backgroundColor: isDark ? '#1f2937' : '#E3F2FD', // Nổi bật thanh Topbar khi chọn nhiều
+            backgroundColor: isDark ? '#1f2937' : '#E3F2FD',
             borderBottomColor: dynamicColors.border,
             height: 66 + insets.top,
             paddingTop: insets.top,
@@ -142,7 +144,7 @@ export function Topbar({ onViewModeChange }: TopbarProps) {
           <Text
             style={[
               styles.selectionText,
-              { color: isDark ? '#93c5fd' : colors.primary }, // Màu chữ nhấn mạnh
+              { color: isDark ? '#93c5fd' : colors.primary },
               isMobile && { fontSize: 15, marginLeft: 6 },
             ]}
           >
@@ -151,7 +153,6 @@ export function Topbar({ onViewModeChange }: TopbarProps) {
         </View>
 
         <View style={[styles.selectionActions, { gap: isMobile ? 4 : 10 }]}>
-          {/* SỬ DỤNG LẠI COMPONENT NÚT CŨ NHƯNG THAY THÀNH TouchableOpacity ĐỂ CÓ THỂ BẤM */}
           <TouchableOpacity style={styles.iconBtn} onPress={handleBatchPin}>
             <Icon source="pin-outline" size={22} color={isDark ? '#9ca3af' : colors.textSecondary} />
           </TouchableOpacity>
@@ -160,7 +161,6 @@ export function Topbar({ onViewModeChange }: TopbarProps) {
             <Icon source="bell-outline" size={22} color={isDark ? '#9ca3af' : colors.textSecondary} />
           </TouchableOpacity>
 
-          {/* MENU CHỌN MÀU HÀNG LOẠT */}
           <Menu
             visible={colorMenuVisible}
             onDismiss={() => setColorMenuVisible(false)}
@@ -195,7 +195,9 @@ export function Topbar({ onViewModeChange }: TopbarProps) {
     );
   }
 
-  // ... PHẦN RENDER TOPBAR BÌNH THƯỜNG GIỮ NGUYÊN 100% NHƯ CỦA BẠN TRỞ XUỐNG ...
+  // ------------------------------------------------─────────────
+  // 2. GIAO DIỆN Ô TÌM KIẾM PHÓNG TO TRÊN MOBILE
+  // ------------------------------------------------─────────────
   if (isMobile && isSearchExpanded) {
     return (
       <View style={[styles.topbar, { backgroundColor: dynamicColors.bg, borderBottomColor: dynamicColors.border, paddingHorizontal: 12, height: 66 + insets.top, paddingTop: insets.top }]}>
@@ -223,10 +225,14 @@ export function Topbar({ onViewModeChange }: TopbarProps) {
     );
   }
 
+  // ------------------------------------------------─────────────
+  // 3. GIAO DIỆN TOPBAR BÌNH THƯỜNG
+  // ------------------------------------------------─────────────
   return (
     <>
       <View style={[styles.topbar, { backgroundColor: dynamicColors.bg, borderBottomColor: dynamicColors.border, height: 66 + insets.top, paddingTop: insets.top }]}>
 
+        {/* Cột trái: Nút menu và Brand/Title */}
         <View style={[styles.leftSection, isMobile && { width: 'auto' }]}>
           <TouchableOpacity onPress={toggleSidebar} style={styles.menuBtn}>
             <Feather name="menu" size={22} color={dynamicColors.textSec} />
@@ -257,6 +263,7 @@ export function Topbar({ onViewModeChange }: TopbarProps) {
           )}
         </View>
 
+        {/* Giữa: Ô tìm kiếm (Ẩn trên Mobile, chỉ hiện trên Tablet/Web) */}
         {!isMobile && (
           <View style={[styles.searchWrap, { backgroundColor: dynamicColors.searchBg }]}>
             <Feather name="search" size={16} color={dynamicColors.textSec} style={styles.searchIcon} />
@@ -270,6 +277,7 @@ export function Topbar({ onViewModeChange }: TopbarProps) {
           </View>
         )}
 
+        {/* Cột phải: Các nút chức năng hệ thống */}
         <View style={[styles.actions, isMobile && { width: 'auto' }]}>
           {isMobile && (
             <TouchableOpacity style={styles.iconBtn} onPress={() => setIsSearchExpanded(true)}>
@@ -283,6 +291,7 @@ export function Topbar({ onViewModeChange }: TopbarProps) {
             <Feather name={viewMode === 'list' ? "grid" : "list"} size={20} color={dynamicColors.textSec} />
           </TouchableOpacity>
 
+          {/* Menu Sắp xếp */}
           <Menu
             visible={menuVisible}
             onDismiss={closeMenu}
@@ -298,7 +307,6 @@ export function Topbar({ onViewModeChange }: TopbarProps) {
             contentStyle={{ backgroundColor: dynamicColors.bg }}
           >
             <Menu.Item title="SẮP XẾP THEO" titleStyle={[styles.menuHeader, { color: isDark ? '#6b7280' : colors.textTertiary }]} disabled />
-
             <Menu.Item
               leadingIcon="drag-variant"
               onPress={() => handleSortChange('custom', 'desc')}
@@ -306,9 +314,7 @@ export function Topbar({ onViewModeChange }: TopbarProps) {
               titleStyle={{ color: dynamicColors.text }}
               trailingIcon={sort.field === 'custom' ? "check" : undefined}
             />
-
             <Divider style={{ backgroundColor: dynamicColors.border }} />
-
             <Menu.Item
               leadingIcon="update"
               onPress={() => handleSortChange('updated_at', 'desc')}
@@ -323,9 +329,7 @@ export function Topbar({ onViewModeChange }: TopbarProps) {
               titleStyle={{ color: dynamicColors.text }}
               trailingIcon={sort.field === 'updated_at' && sort.direction === 'asc' ? "check" : undefined}
             />
-
             <Divider style={{ backgroundColor: dynamicColors.border }} />
-
             <Menu.Item
               leadingIcon="calendar-plus"
               onPress={() => handleSortChange('created_at', 'desc')}
@@ -340,9 +344,7 @@ export function Topbar({ onViewModeChange }: TopbarProps) {
               titleStyle={{ color: dynamicColors.text }}
               trailingIcon={sort.field === 'created_at' && sort.direction === 'asc' ? "check" : undefined}
             />
-
             <Divider style={{ backgroundColor: dynamicColors.border }} />
-
             <Menu.Item
               leadingIcon="restore"
               onPress={() => handleSortChange(DEFAULT_SORT.field, DEFAULT_SORT.direction)}
@@ -351,13 +353,25 @@ export function Topbar({ onViewModeChange }: TopbarProps) {
             />
           </Menu>
 
-          <TouchableOpacity style={styles.iconBtn}>
-            <View>
+          {/* 🔥 QUẢ CHUÔNG THÔNG BÁO TỰ ĐỘNG ĐÃ ĐƯỢC ĐỔI ĐƯỜNG DẪN ĐIỀU HƯỚNG */}
+          <TouchableOpacity 
+            style={styles.iconBtn} 
+            onPress={() => router.push('/(main)/notifications')}
+            activeOpacity={0.7}
+          >
+            <View style={styles.bellContainer}>
               <Feather name="bell" size={20} color={dynamicColors.textSec} />
-              <View style={styles.notifDot} />
+              {unreadCount > 0 && (
+                <View style={styles.notifBadge}>
+                  <Text style={styles.notifBadgeText}>
+                    {unreadCount > 99 ? '99+' : unreadCount}
+                  </Text>
+                </View>
+              )}
             </View>
           </TouchableOpacity>
 
+          {/* Avatar Profile */}
           <TouchableOpacity style={styles.avatar} onPress={() => setProfileVisible(true)}>
             {user?.avatar_url ? (
               <Image source={{ uri: user.avatar_url }} style={styles.avatarImg} />
@@ -376,7 +390,6 @@ export function Topbar({ onViewModeChange }: TopbarProps) {
 }
 
 const styles = StyleSheet.create({
-  // STYLES MỚI CHO BATCH COLOR
   colorGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
@@ -391,7 +404,6 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.borderDefault,
   },
-  // STYLES CŨ CỦA BẠN GIỮ NGUYÊN
   selectionSection: { flexDirection: 'row', alignItems: 'center' },
   selectionText: { fontSize: 18, fontFamily: 'Inter-Medium', marginLeft: 15 },
   selectionActions: { flexDirection: 'row', gap: 10, alignItems: 'center' },
@@ -471,16 +483,27 @@ const styles = StyleSheet.create({
   iconBtnActive: {
     backgroundColor: colors.bgHover,
   },
-  notifDot: {
+  bellContainer: {
+    position: 'relative',
+  },
+  // 🔥 STYLE BADGE CHẤM ĐỎ HIỂN THỊ SỐ ĐỘNG CHUẨN ĐẸP
+  notifBadge: {
     position: 'absolute',
-    top: -1,
-    right: -1,
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: colors.danger,
-    borderWidth: 1.5,
-    borderColor: colors.bgSurface,
+    top: -5,
+    right: -7,
+    backgroundColor: '#ef4444',
+    borderRadius: 8,
+    minWidth: 16,
+    height: 16,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 3,
+  },
+  notifBadgeText: {
+    color: '#ffffff',
+    fontSize: 9,
+    fontFamily: 'Inter-Bold',
+    lineHeight: 12,
   },
   avatar: {
     width: 36,
