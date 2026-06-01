@@ -7,6 +7,7 @@ import { HoverBtn } from '../ui/HoverBtn';
 // THÊM: Import AppStore để lấy trạng thái theme
 import { useAppStore } from '../../store/useAppStore';
 import { useSelectionStore } from '../../store/useSelectionStore';
+import { useNoteStore, mapApiTodoItems } from '../../store/useNoteStore';
 
 // Bảng màu cho Chế độ Sáng (Giữ nguyên của bạn)
 const cardColorMap: Record<string, string> = {
@@ -31,7 +32,7 @@ const NOTE_COLORS = [
 ];
 
 export interface TodoItemData {
-  id: string; title: string; is_completed: boolean; subtasks?: TodoItemData[];
+  id: string; title: string; is_completed: boolean; content?: string; subtasks?: TodoItemData[]; position?: string;
 }
 
 export interface NoteCardData {
@@ -202,6 +203,7 @@ const stripHtml = (html: string): string =>
 export function NoteCard({ note, isSelected, onSelect, isGridView, onPress, onUpdate, onDelete, onArchive, archiveLabel = 'Lưu trữ', archiveIcon = 'archive-arrow-down-outline' }: NoteCardProps) {
   const { theme } = useAppStore(); // Lấy theme hệ thống
   const isDark = theme === 'dark';
+  const { clearCompletedTodosAction } = useNoteStore();
   const { width } = useWindowDimensions();
   const isMobile = width < 720;
 
@@ -234,8 +236,17 @@ export function NoteCard({ note, isSelected, onSelect, isGridView, onPress, onUp
     onUpdate?.(note.id, changes);
   };
 
-  const handleDotAction = (action: string) => {
-    if (action === 'delete') onDelete?.(note.id);
+  const handleDotAction = async (action: string) => {
+    if (action === 'delete') {
+      onDelete?.(note.id);
+    } else if (action === 'clear_done') {
+      try {
+        // Gọi bulk API xóa sạch việc xong ngầm dưới DB, UI local tự động co gọn lập tức
+        await clearCompletedTodosAction(note.id);
+      } catch (err) {
+        console.warn('[NoteCard] Lỗi dọn dẹp việc hoàn thành ngoài Card:', err);
+      }
+    }
   };
 
   // Logic chọn bảng màu bg
@@ -244,7 +255,11 @@ export function NoteCard({ note, isSelected, onSelect, isGridView, onPress, onUp
     : (cardColorMap[localNote.color] ?? cardColorMap.default);
 
   const isTodo = localNote.type === 'todo';
-  const incompleteItems = localNote.todo_items?.filter(t => !t.is_completed) ?? [];
+  
+  // ✅ SỬA DÒNG NÀY: Sort mảng hiển thị thu gọn ngoài Card theo position để đồng bộ trật tự hiển thị
+  const incompleteItems = (localNote.todo_items ?? [])
+    .filter(t => !t.is_completed)
+    .sort((a, b) => (a.position || '').localeCompare(b.position || ''));
   const completedCount = localNote.todo_items?.filter(t => t.is_completed).length ?? 0;
   const hiddenIncomplete = Math.max(0, incompleteItems.length - 3);
   const visibleItems = incompleteItems.slice(0, 3);

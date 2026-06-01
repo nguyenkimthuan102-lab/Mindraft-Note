@@ -1,5 +1,7 @@
 import { create } from 'zustand';
 import api from '../api/axiosClient';
+import { Platform } from 'react-native';
+import * as SecureStore from 'expo-secure-store';
 interface User {
   id: string;
   name: string;
@@ -12,17 +14,31 @@ interface AuthState {
   isAuthenticated: boolean;
   isLoading: boolean; // Trạng thái chờ check token khi vừa F5 hoặc vừa bật app
   setUser: (user: User) => void;
-  logout: () => void;
+  logout: () => Promise<void>;
   initialize: () => Promise<void>; // Hàm tự động khôi phục phiên đăng nhập
 }
 
 export const useAuthStore = create<AuthState>((set) => ({
   user: null,
   isAuthenticated: false,
-  isLoading: true, // Mặc định ban đầu luôn là true để Layout dừng lại đợi
+  isLoading: true,
 
   setUser: (user) => set({ user, isAuthenticated: true, isLoading: false }),
-  logout: () => set({ user: null, isAuthenticated: false, isLoading: false }),
+  
+  logout: async () => {
+    try {
+      if (Platform.OS === 'web') {
+        localStorage.removeItem('access_token');
+        localStorage.removeItem('refresh_token'); // Phòng hờ nếu Web có lưu
+      } else {
+        await SecureStore.deleteItemAsync('access_token');
+      }
+    } catch (err) {
+      console.error('[AuthStore] Lỗi dọn dẹp token local khi logout:', err);
+    } finally {
+      set({ user: null, isAuthenticated: false, isLoading: false });
+    }
+  },
 
   initialize: async () => {
     set({ isLoading: true });

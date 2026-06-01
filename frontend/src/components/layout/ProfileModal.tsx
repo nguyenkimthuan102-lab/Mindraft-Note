@@ -361,7 +361,7 @@ export function ProfileModal({ visible, onClose }: ProfileModalProps) {
             // Thêm dòng này để gọi API Backend xóa cookie/token dưới DB
             await axiosClient.post('/auth/logout/'); 
         } catch { /* ignore */ }
-        storeLogout();
+        await storeLogout();
         onClose();
         router.replace('/(auth)/login');
     };

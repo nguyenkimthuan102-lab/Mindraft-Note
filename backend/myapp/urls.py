@@ -7,15 +7,15 @@ from .views.Notes_task import *
 from .views.Reminders import *
 from .views.Notify import *
 from .views.Todoitems import *
-from .views.tag_views import *
-from .views.media_views import *
+#from .views.tag_views import *
+#from .views.media_views import *
 
 # Import cụ thể từ profile view (ở file 1)
 from .views.profile import (
-    user_profile_view, 
-    change_password_view, 
-    presigned_url_view, 
-    upload_local_file_view, 
+    user_profile_view,
+    change_password_view,
+    presigned_url_view,
+    upload_local_file_view,
     serve_local_file_view
 )
 
@@ -31,13 +31,13 @@ urlpatterns = [
     path('auth/login/', login_view),
     path('auth/forgot-password/', forgot_password_view),
     path('auth/reset-password/', reset_password_view),
-    path('auth/logout/', logout_view), # Mở cổng POST Đăng xuất theo mục 1.7 Contract
+    path('auth/logout/', logout_view),
 
     # ==========================================
     # USERS, PROFILE & SETTINGS (Người dùng & Cài đặt)
     # ==========================================
-    path("users/me", user_profile_view, name="user-profile"), 
-    path("users/me/password", change_password_view, name="change-password"),   
+    path("users/me", user_profile_view, name="user-profile"),
+    path("users/me/password", change_password_view, name="change-password"),
     path('users/me/settings', get_my_settings),
 
     # ==========================================
@@ -53,14 +53,14 @@ urlpatterns = [
     # ==========================================
     # MEDIA (Hình ảnh & File)
     # ==========================================
-    path("media/presigned-url", presigned_url_view, name="presigned-url"), 
+    path("media/presigned-url", presigned_url_view, name="presigned-url"),
     path('notes/<str:note_id>/media', upload_note_image, name='upload_note_image'),
 
     # ==========================================
     # TAGS (Nhãn)
     # ==========================================
     path('tags/', create_tag, name='create_tag'),
-    path('tags/list/', get_tags, name='get_tags'), # Lấy danh sách tag chung (thay thế cho path("tags/", get_tags))
+    path('tags/list/', get_tags, name='get_tags'),
     path('tags/<str:tag_id>/', update_tag, name='update_tag'),
     path('tags/<str:tag_id>/delete/', delete_tag, name='delete_tag'),
     path('notes/<str:note_id>/tags/', add_tag_to_note, name='add_tag_to_note'),
@@ -85,6 +85,7 @@ urlpatterns = [
     # TODO ITEMS (Công việc cần làm)
     # ==========================================
     path('notes/<str:note_id>/todos/', todo_list, name='todo-list'),
+    path('notes/<str:note_id>/todos/clear-completed/', todo_clear_completed, name='todo-clear-completed'),
     path('notes/<str:note_id>/todos/<str:todo_id>/', todo_detail, name='todo-detail'),
     path('notes/<str:note_id>/todos/<str:todo_id>/toggle/', todo_toggle, name='todo-toggle'),
 ]
