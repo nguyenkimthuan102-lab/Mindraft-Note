@@ -2,7 +2,6 @@
   "extends": "expo/tsconfig.base",
   "compilerOptions": {
     "moduleResolution": "bundler", // Hoặc "node16" / "nodenext"
-    "ignoreDeprecations": "6.0",
     "skipLibCheck": true,
     "module": "esnext",
     "allowSyntheticDefaultImports": true,

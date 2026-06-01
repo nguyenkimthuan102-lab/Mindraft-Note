@@ -450,7 +450,7 @@ const styles = StyleSheet.create({
     position: 'relative',
     borderWidth: 1,
     borderColor: colors.borderDefault,
-    overflow: 'hidden',   // ← hidden để ảnh bị clip theo borderRadius card
+    overflow: 'visible',   // ← hidden để ảnh bị clip theo borderRadius card
     zIndex: 1,
     width: '100%',
     ...Platform.select({ web: { cursor: 'pointer' } as any }),
