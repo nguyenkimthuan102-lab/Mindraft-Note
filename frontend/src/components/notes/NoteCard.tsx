@@ -112,21 +112,24 @@ function DotMenu({ isTodo, onAction, onClose, isDark }: {
   const borderColor = isDark ? '#374151' : colors.borderDefault;
 
   // 6 items — khớp hoàn toàn với NoteEditor
-  const items = [
-    { key: 'delete', label: 'Xóa ghi chú', danger: true },
-    { key: 'tag', label: 'Thêm nhãn' },
-    { key: 'export-file', label: 'Xuất file', hasArrow: true },
+  const baseItems = [
+    { key: 'tag', label: 'Thêm tag' },
     { key: 'duplicate', label: 'Tạo bản sao' },
-    { key: 'toggle_checkbox', label: isTodo ? 'Ẩn hộp kiểm' : 'Hiển thị hộp kiểm' },
-    { key: 'history', label: 'Lịch sử phiên bản' },
+    { key: 'history', label: 'Xem lịch sử phiên bản' },
+    { key: 'delete', label: 'Xóa ghi chú', danger: true },
   ];
+  const todoItems = [
+    { key: 'sort', label: 'Sắp xếp theo' },
+    { key: 'clear_done', label: 'Xóa tất cả việc đã hoàn thành' },
+  ];
+  const items = isTodo ? [...baseItems.slice(0, 1), ...todoItems, ...baseItems.slice(1)] : baseItems;
 
   const exportFormats = [
     { key: 'export_txt', label: 'Xuất ra .TXT' },
     { key: 'export_pdf', label: 'Xuất ra .PDF' },
     { key: 'export_docx', label: 'Xuất ra .DOCX' },
   ];
-  const items = isTodo ? [...baseItems.slice(0, 1), ...todoItems, ...baseItems.slice(1)] : baseItems;
+  
   return (
     <View style={[styles.dotMenu, { backgroundColor: menuBg, borderColor }]}>
       {items.map((item) => (
@@ -195,7 +198,7 @@ function DotMenu({ isTodo, onAction, onClose, isDark }: {
           )}
         </View>
       ))}
-      
+
     </View>
   );
 }

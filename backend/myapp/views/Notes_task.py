@@ -625,22 +625,6 @@ def trash_note(request, note_id):
         "data": serializer.data
     })
 
-# @api_view(["PATCH"])
-# @permission_classes([IsAuthenticated])
-# def note_detail(request, pk):
-#     try:
-#         # Ngăn không cho sửa note đã vào thùng rác
-#         note = Notes.objects.get(id=pk, user=request.user, is_trashed=0, is_deleted=0)
-#     except Notes.DoesNotExist:
-#         return Response({"error": "Không tìm thấy ghi chú hoặc ghi chú đã bị xóa/vào thùng rác"}, status=404)
-
-#     serializer = CreateNoteSerializer(note, data=request.data, partial=True)
-#     if serializer.is_valid():
-#         # Cập nhật thời gian tại đây
-#         serializer.save(server_updated_at=timezone.now())
-#         return Response({"data": NoteSerializer(note).data})
-    
-#     return Response(serializer.errors, status=422)
 
 # views/media_views.py
 

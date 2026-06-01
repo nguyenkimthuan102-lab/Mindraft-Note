@@ -107,6 +107,7 @@ export function NoteEditor({ visible, mode, note, inline, readOnly }: NoteEditor
   const [content, setContent] = useState(note?.content_text ?? '');
 
   const {
+    allTagObjects, tagIdByName, loadTagsFromServer,
     allTags, addTagToSystem, saveNoteAction,
     closeEditor, archiveNoteAction, trashNoteAction,
     clearCompletedTodosAction,
@@ -199,8 +200,6 @@ export function NoteEditor({ visible, mode, note, inline, readOnly }: NoteEditor
   // Callback ref để trigger file picker của NoteImageUploader từ toolbar
   const imagePickerTriggerRef = useRef<(() => void) | null>(null);
 
-  const [noteTags, setNoteTags] = useState<string[]>(note?.labels ?? []);
-  const { allTags, addTagToSystem, allTagObjects, tagIdByName, loadTagsFromServer } = useNoteStore();
   const router = useRouter();
 
   // ✅ FIX Bugs 2 & 4: đọc từ note.tags (Tag[]) thay vì note.labels
@@ -563,7 +562,7 @@ export function NoteEditor({ visible, mode, note, inline, readOnly }: NoteEditor
     const exportNoteData: NoteCardData = {
       ...note,
       color: noteColor,
-      id:            note?.id ?? `${Date.now()}`,
+      id:            note?.id ?? `temp-${Date.now()}`,
       title:         title.trim() || undefined,
       content_text: editorMode === 'text' ? currentContent?.trim() || undefined : undefined,
       todo_items:    editorMode === 'todo' ? todoItems : undefined,
@@ -658,7 +657,7 @@ export function NoteEditor({ visible, mode, note, inline, readOnly }: NoteEditor
 
     const updatedNote: NoteCardData = {
       ...note,
-      id: note?.id ?? `${Date.now()}`,
+      id: note?.id ?? `temp-${Date.now()}`,
       type: editorMode,
       color: noteColor,
       title: title.trim() || undefined,
