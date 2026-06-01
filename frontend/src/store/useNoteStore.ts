@@ -20,6 +20,9 @@ const deleteRemindersForNote = async (noteId: string) => {
   }
 };
 
+import { getTags, createTag, addTagToNote, removeTagFromNote, type Tag } from '../api/tagApi';
+import { useAppStore } from './useAppStore';
+
 type ViewMode = 'grid' | 'list';
 type EditorMode = 'text' | 'todo';
 
@@ -61,8 +64,13 @@ interface NoteStoreState {
   openCreateTodo: () => void;
   openEditNote: (note: NoteCardData) => void;
   closeEditor: () => void;
-  allTags: string[];
+
+  allTags: string[];           // tên tag — giữ nguyên cho TagMenu tương thích
+  allTagObjects: Tag[];        // tag đầy đủ {id, name} để gọi API
+  tagIdByName: Record<string, string>; // name → id mapping
   noteTagsMap: Record<string, string[]>;
+
+  loadTagsFromServer: () => Promise<void>;
   addTagToSystem: (tag: string) => Promise<void>;
   updateNoteTags: (noteId: string, tags: string[]) => Promise<void>;
   batchPinAction: (ids: string[]) => Promise<void>;
@@ -189,9 +197,31 @@ export const useNoteStore = create<NoteStoreState>((set, get) => ({
           ? await createNoteText(cleanNote)
           : await createNoteTodo(cleanNote);
 
+        // Sync tags cho note mới
+        const desiredTagNames: string[] = cleanNote.labels ?? [];
+
+        let syncedTags: Tag[] = [];
+
+        if (desiredTagNames.length > 0) {
+          await Promise.all(
+            desiredTagNames.map(name => {
+              const tagId = get().tagIdByName?.[name];
+              return tagId
+                ? addTagToNote(createdNote.id, tagId)
+                : Promise.resolve();
+            })
+          );
+
+          syncedTags = desiredTagNames
+            .map(name =>
+              get().allTagObjects?.find((t: Tag) => t.name === name)
+            )
+            .filter(Boolean) as Tag[];
+        }
+
         const mergedNote = cleanNote.type === 'todo'
-          ? { ...createdNote, todo_items: cleanNote.todo_items }
-          : createdNote;
+          ? { ...createdNote, todo_items: cleanNote.todo_items, tags: syncedTags, }
+          : { ...createdNote, tags: syncedTags, };
 
         set((state) => ({
           notes: state.notes.map(n => n.id === cleanNote.id ? mergedNote : n),
@@ -271,7 +301,10 @@ export const useNoteStore = create<NoteStoreState>((set, get) => ({
 
         if (isPinningFromArchive) {
           set({ notes: currentNotes.filter(n => n.id !== cleanNote.id) });
+
           await updateNote(cleanNote.id, cleanNote);
+
+
           await togglePinNote(cleanNote.id);
           await toggleArchiveNote(cleanNote.id);
           return { note: cleanNote, contentsMap: localContents };
@@ -333,12 +366,39 @@ export const useNoteStore = create<NoteStoreState>((set, get) => ({
           cleanNote.todo_items = updatedTodoItems;
         }
 
-        set({ notes: currentNotes.map(n => n.id === cleanNote.id ? { ...cleanNote, todo_items: updatedTodoItems } : n) });
+
         if (oldNote && oldNote.is_pinned !== cleanNote.is_pinned) {
           await togglePinNote(cleanNote.id);
         }
-        await updateNote(cleanNote.id, cleanNote);
-        return { note: cleanNote, contentsMap: updatedContentsMap };
+
+
+        const updatedNote = await updateNote(cleanNote.id, cleanNote);
+
+        const tagsFromEditor =
+          cleanNote.tags !== undefined
+            ? cleanNote.tags
+            : updatedNote.tags;
+
+        set((state) => ({
+          notes: state.notes.map(n =>
+            n.id === cleanNote.id
+              ? {
+                ...updatedNote,
+                tags: tagsFromEditor,
+                todo_items: updatedTodoItems,
+              }
+              : n
+          ),
+        }));
+
+        return {
+          note: {
+            ...updatedNote,
+            tags: tagsFromEditor,
+            todo_items: updatedTodoItems,
+          },
+          contentsMap: updatedContentsMap,
+        };
       }
     } catch (error) {
       console.error('Lỗi saveNoteAction:', error);
@@ -358,24 +418,123 @@ export const useNoteStore = create<NoteStoreState>((set, get) => ({
   openEditNote: (note) => set({ editorVisible: true, editorMode: note.type, editingNote: note }),
   closeEditor: () => set({ editorVisible: false, editingNote: undefined }),
 
-  allTags: ['ehr', 'g', 'gse'],
+  allTags: [],
+  allTagObjects: [],
+  tagIdByName: {},
   noteTagsMap: {},
+
+  // Fetch tất cả tags từ server (gọi khi app mount)
+  loadTagsFromServer: async () => {
+    try {
+      const serverTags = await getTags();
+      const names = serverTags.map((t: Tag) => t.name);
+      const idByName: Record<string, string> = {};
+      serverTags.forEach((t: Tag) => { idByName[t.name] = t.id; });
+
+      set({
+        allTagObjects: serverTags,
+        allTags: names,
+        tagIdByName: idByName,
+      });
+
+      // ✅ Đồng bộ sang AppStore để Sidebar hiển thị đúng
+      useAppStore.getState().setTags(serverTags);
+    } catch {
+      // Giữ nguyên state nếu lỗi
+    }
+  },
+
   addTagToSystem: async (rawTag) => {
     const tag = normalizeTag(rawTag);
     if (!tag) return;
     const previousTags = get().allTags;
-    if (previousTags.includes(tag)) return;
-    set({ allTags: [...previousTags, tag] });
+    const previousObjects = get().allTagObjects;
+    const previousIdByName = get().tagIdByName;
+
+    if (previousTags.includes(tag)) {
+      return;
+    }
+
+    // Optimistic: thêm tạm vào list
+    set({
+      allTags: [...previousTags, tag],
+    });
+
+    try {
+      const created = await createTag(tag);
+      const updatedObjects = [...get().allTagObjects, created];
+      const newIdByName = { ...get().tagIdByName, [created.name]: created.id };
+
+      set({
+        allTagObjects: updatedObjects,
+        allTags: updatedObjects.map((t) => t.name),
+        tagIdByName: newIdByName,
+      });
+
+      // ✅ Cập nhật Sidebar ngay lập tức
+      useAppStore.getState().setTags(updatedObjects);
+    } catch (error) {
+      throw error;
+    }
   },
 
   updateNoteTags: async (noteId, tags) => {
     const normalizedTags = uniqueTags(tags);
+
     const previousSystemTags = get().allTags;
-    const mergedSystemTags = uniqueTags([...previousSystemTags, ...normalizedTags]);
+    const previousNoteTags = get().noteTagsMap[noteId] || [];
+
+    const mergedSystemTags = uniqueTags([
+      ...previousSystemTags,
+      ...normalizedTags,
+    ]);
+
     set((state) => ({
       allTags: mergedSystemTags,
-      noteTagsMap: { ...state.noteTagsMap, [noteId]: normalizedTags },
+      noteTagsMap: {
+        ...state.noteTagsMap,
+        [noteId]: normalizedTags,
+      },
     }));
+
+    try {
+      const tagIdByName = get().tagIdByName;
+
+      const toAdd = normalizedTags.filter(
+        t => !previousNoteTags.includes(t)
+      );
+
+      const toRemove = previousNoteTags.filter(
+        t => !normalizedTags.includes(t)
+      );
+
+      await Promise.all([
+        ...toAdd.map((name) => {
+          const tagId = tagIdByName[name];
+          return tagId
+            ? addTagToNote(noteId, tagId)
+            : Promise.resolve();
+        }),
+
+        ...toRemove.map(name => {
+          const tagId = tagIdByName[name];
+          return tagId
+            ? removeTagFromNote(noteId, tagId)
+            : Promise.resolve();
+        }),
+      ]);
+    } catch (error) {
+      // Rollback nếu API thất bại
+      set((state) => ({
+        allTags: previousSystemTags,
+        noteTagsMap: {
+          ...state.noteTagsMap,
+          [noteId]: previousNoteTags,
+        },
+      }));
+
+      throw error;
+    }
   },
 
   batchPinAction: async (ids) => {
@@ -389,13 +548,30 @@ export const useNoteStore = create<NoteStoreState>((set, get) => ({
 
   batchArchiveAction: async (ids) => {
     if (ids.length === 0) return;
+
     const oldNotes = get().notes;
-    const pinnedIds = oldNotes.filter(n => ids.includes(n.id) && n.is_pinned === 1).map(n => n.id);
-    set({ notes: oldNotes.filter(n => !ids.includes(n.id)) });
+
+    const pinnedIds = oldNotes
+      .filter(n => ids.includes(n.id) && n.is_pinned === 1)
+      .map(n => n.id);
+
+    set({
+      notes: oldNotes.filter(n => !ids.includes(n.id)),
+    });
+
     try {
-      if (pinnedIds.length > 0) await Promise.all(pinnedIds.map(id => togglePinNote(id)));
-      await Promise.all(ids.map(id => toggleArchiveNote(id)));
-    } catch { set({ notes: oldNotes }); }
+      if (pinnedIds.length > 0) {
+        await Promise.all(
+          pinnedIds.map(id => togglePinNote(id))
+        );
+      }
+
+      await Promise.all(
+        ids.map(id => toggleArchiveNote(id))
+      );
+    } catch {
+      set({ notes: oldNotes });
+    }
   },
 
   batchTrashAction: async (ids) => {
@@ -455,19 +631,20 @@ export const useNoteStore = create<NoteStoreState>((set, get) => ({
       .map(item => ({
         ...item,
         subtasks: (item.subtasks || []).filter(sub => !sub.is_completed),
+
       }));
 
     set({
       notes: currentNotes.map(n =>
         n.id === noteId
           ? {
-              ...n,
-              todo_items: updatedItems,
-              todo_total: updatedItems.reduce(
-                (acc, i) => acc + 1 + (i.subtasks?.length ?? 0), 0
-              ),
-              todo_completed: 0,
-            }
+            ...n,
+            todo_items: updatedItems,
+            todo_total: updatedItems.reduce(
+              (acc, i) => acc + 1 + (i.subtasks?.length ?? 0), 0
+            ),
+            todo_completed: 0,
+          }
           : n
       ),
     });

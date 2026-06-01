@@ -14,9 +14,14 @@ import api from '../../api/axiosClient';
 import { useReminderStore } from '@/src/store/useReminderStore';
 import { useLocalNotification } from '@/src/hooks/useLocalNotification';
 import { NoteImageUploader } from './NoteImageUploader';
+import { addTagToNote, removeTagFromNote, Tag } from '../../api/tagApi';
+import { useRouter } from 'expo-router';
 
 const isWeb = Platform.OS === 'web';
 const WebDiv = 'div' as any;
+
+// ── XÓA: contentRef và mobileContentRef đặt ở top-level vi phạm Rules of Hooks
+// Các ref này đã được khai báo lại đúng chỗ bên trong component NoteEditor bên dưới
 
 const cardColorMap: Record<string, string> = {
   default: '#FFFFFF', red: '#FADADD', orange: '#FEEFC3', yellow: '#FEF7CD',
@@ -31,6 +36,8 @@ const NOTE_COLORS = [
   { key: 'blue',    bg: '#D3E3FD' }, { key: 'purple', bg: '#E8DEFC' },
   { key: 'pink',    bg: '#FDCFE8' }, { key: 'brown',  bg: '#F0E6DA' },
 ];
+
+// ── XÓA: EditorSnapshot không dùng tới ─────────────────────────────────────
 
 interface NoteEditorProps {
   visible: boolean;
@@ -100,6 +107,7 @@ export function NoteEditor({ visible, mode, note, inline, readOnly }: NoteEditor
   const [content, setContent] = useState(note?.content_text ?? '');
 
   const {
+    allTagObjects, tagIdByName, loadTagsFromServer,
     allTags, addTagToSystem, saveNoteAction,
     closeEditor, archiveNoteAction, trashNoteAction,
     clearCompletedTodosAction,
@@ -134,15 +142,12 @@ export function NoteEditor({ visible, mode, note, inline, readOnly }: NoteEditor
   });
   const [showTagMenu,    setShowTagMenu]    = useState(false);
   const [showExportMenu, setShowExportMenu] = useState(false);
-  const [noteTags, setNoteTags] = useState<string[]>(note?.labels ?? []);
 
   // Reminder states
   const [showReminderPicker, setShowReminderPicker] = useState(false);
   const [reminderDate, setReminderDate] = useState('');
   const [reminderTime, setReminderTime] = useState('');
 
-  const contentRef     = useRef<any>(null);
-  const mobileContentRef = useRef<any>(null);
   const debounceTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
   const todoIdMapRef   = useRef<Record<string, string>>({});
 
@@ -195,8 +200,25 @@ export function NoteEditor({ visible, mode, note, inline, readOnly }: NoteEditor
   // Callback ref để trigger file picker của NoteImageUploader từ toolbar
   const imagePickerTriggerRef = useRef<(() => void) | null>(null);
 
+  const router = useRouter();
+
+  // ✅ FIX Bugs 2 & 4: đọc từ note.tags (Tag[]) thay vì note.labels
+  const [noteTags, setNoteTags] = useState<string[]>(
+    note?.tags?.map(t => t.name) ?? note?.labels ?? []
+  );
+  // Lưu tags gốc lúc mở editor để tính diff khi save
+  const originalTagsRef = useRef<Tag[]>(note?.tags ?? []);
+
+  // ── Refs khai báo đúng bên trong component ────────────────────────────────
+  const contentRef = useRef<any>(null);
+  const mobileContentRef = useRef<any>(null);
+  // ──────────────────────────────────────────────────────────────────────────
   useEffect(() => {
     if (!visible) return;
+
+    // ✅ FIX: Load tags từ server mỗi khi editor mở để TagMenu có dữ liệu
+    loadTagsFromServer();
+
     setTitle(note?.title ?? '');
     setContent(note?.content_text ?? '');
     setHtmlConfig({ __html: (note?.content_text ?? '').replace(/\n/g, '<br>') });
@@ -207,6 +229,11 @@ export function NoteEditor({ visible, mode, note, inline, readOnly }: NoteEditor
     );
     setIsPinned(note?.is_pinned ?? 0);
     setNoteColor(note?.color ?? 'default');
+    // ✅ FIX Bug 2 & 4: reset tags từ note.tags (Tag[]) khi mở note khác
+    const currentTags = note?.tags ?? [];
+    setNoteTags(currentTags.map(t => t.name));
+    originalTagsRef.current = currentTags;
+
     setEditorMode(mode);
     setShowColorPicker(false);
     setShowMoreMenu(false);
@@ -535,7 +562,7 @@ export function NoteEditor({ visible, mode, note, inline, readOnly }: NoteEditor
     const exportNoteData: NoteCardData = {
       ...note,
       color: noteColor,
-      id:            note?.id ?? `${Date.now()}`,
+      id:            note?.id ?? `temp-${Date.now()}`,
       title:         title.trim() || undefined,
       content_text: editorMode === 'text' ? currentContent?.trim() || undefined : undefined,
       todo_items:    editorMode === 'todo' ? todoItems : undefined,
@@ -623,22 +650,52 @@ export function NoteEditor({ visible, mode, note, inline, readOnly }: NoteEditor
 
     if (editorMode === 'text' && !strippedCheck) {
       currentContent = '';
-      if (isWeb && contentRef.current) contentRef.current.innerHTML = '';
+      if (isWeb && contentRef.current) {
+        contentRef.current.innerHTML = '';
+      }
     }
 
     const updatedNote: NoteCardData = {
       ...note,
-      id:             note?.id ?? `temp-${Date.now()}`,
-      type:           editorMode,
-      color:          noteColor,
-      title:          title.trim() || undefined,
-      content_text:   editorMode === 'text' ? (strippedCheck ? currentContent.trim() : '') : undefined,
-      todo_items:     editorMode === 'todo' ? cleanedTodoItems : undefined,
-      todo_total:     editorMode === 'todo' ? cleanedTodoItems.length : undefined,
-      todo_completed: editorMode === 'todo' ? cleanedTodoItems.filter(i => i.is_completed).length : undefined,
-      labels:         noteTags,
-      is_pinned:      isPinned,
+      id: note?.id ?? `temp-${Date.now()}`,
+      type: editorMode,
+      color: noteColor,
+      title: title.trim() || undefined,
+      content_text: editorMode === 'text' ? (strippedCheck ? currentContent.trim() : '') : undefined,
+      todo_items: editorMode === 'todo' ? cleanedTodoItems : undefined,
+      todo_total: editorMode === 'todo' ? cleanedTodoItems.length : undefined,
+      todo_completed: editorMode === 'todo' ? cleanedTodoItems.filter((item) => item.is_completed).length : undefined,
+      labels: noteTags,       // desired tag names (dùng cho parent khi tạo note mới)
+      tags: note?.tags ?? [], // giữ tags gốc để parent biết trạng thái cũ
+      is_pinned: isPinned,
     };
+
+    // ✅ FIX Bug 2 & 4: Sync tag changes qua API ngay với note đã tồn tại
+    const isExistingNote = note?.id && !note.id.startsWith('temp-');
+    if (isExistingNote && note?.id) {
+      const originalTagNames = originalTagsRef.current.map(t => t.name);
+      const toAdd = noteTags.filter(name => !originalTagNames.includes(name));
+      const toRemove = originalTagNames.filter(name => !noteTags.includes(name));
+      try {
+        await Promise.all([
+          ...toAdd.map(name => {
+            const tagId = tagIdByName[name];
+            return tagId ? addTagToNote(note.id, tagId) : Promise.resolve();
+          }),
+          ...toRemove.map(name => {
+            const tag = originalTagsRef.current.find(t => t.name === name);
+            return tag ? removeTagFromNote(note.id, tag.id) : Promise.resolve();
+          }),
+        ]);
+        // Cập nhật updatedNote.tags với danh sách tags mới (để hiển thị đúng trên card)
+        const newTags = noteTags
+          .map(name => allTagObjects.find(t => t.name === name))
+          .filter(Boolean) as Tag[];
+        updatedNote.tags = newTags;
+      } catch {
+        // Nếu API lỗi vẫn tiếp tục save nội dung
+      }
+    }
 
     if (!hasContent) {
       if (note?.id && !note.id.startsWith('temp-')) await saveNoteAction(updatedNote);
@@ -652,6 +709,17 @@ export function NoteEditor({ visible, mode, note, inline, readOnly }: NoteEditor
     }
     closeEditor();
   };
+
+  // ── Format command constants — tránh ESLint no-unescaped-entities trong JSX ─
+  const FMT_BOLD = 'bold';
+  const FMT_ITALIC = 'italic';
+  const FMT_UNDERLINE = 'underline';
+  const FMT_STRIKE = 'strikeThrough';
+  const FMT_REMOVE = 'removeFormat';
+  const FMT_H1 = 'H1';
+  const FMT_H2 = 'H2';
+  const FMT_DIV = 'DIV';
+  // ──────────────────────────────────────────────────────────────────────────
 
   const handleSaveAndCloseRef = useRef(handleSaveAndClose);
   useEffect(() => { handleSaveAndCloseRef.current = handleSaveAndClose; }, [handleSaveAndClose]);
@@ -667,6 +735,11 @@ export function NoteEditor({ visible, mode, note, inline, readOnly }: NoteEditor
   const bg = cardColorMap[noteColor] ?? cardColorMap.default;
   const hasReminder = !!(reminderDate && reminderTime);
   const isSavedNote = !!(note?.id && !note.id.startsWith('temp-'));
+  // ── Biến này dùng trong JSX để tránh ESLint báo 'text' là text string ────
+  const isTextMode = editorMode === 'text';
+  // ──────────────────────────────────────────────────────────────────────────
+
+
 
   return (
     <View style={styles.overlay}>
@@ -723,7 +796,7 @@ export function NoteEditor({ visible, mode, note, inline, readOnly }: NoteEditor
           onTouchStart={closePopups}
           {...Platform.select({ web: { onClickCapture: closePopups } } as any)}
         >
-          {editorMode === 'text' ? (
+          {isTextMode ? (
             <View style={{ position: 'relative' }}>
               {isWeb ? (
                 <>
@@ -733,7 +806,7 @@ export function NoteEditor({ visible, mode, note, inline, readOnly }: NoteEditor
                     </Text>
                   )}
                   <WebDiv
-                    key={`editor-${note?.id ?? 'new'}-${visible}`}
+                    key={`editor-${note?.id ?? 'note-new'}-${visible}`}
                     id="web-content-editor"
                     ref={contentRef}
                     contentEditable={true}
@@ -917,19 +990,54 @@ export function NoteEditor({ visible, mode, note, inline, readOnly }: NoteEditor
           )}
         </ScrollView>
 
-        {/* ── Formatting Bar ── */}
-        {showFormattingBar && editorMode === 'text' && (
+        {/* ── Tag chips: body tap → navigate, × → remove (Bug 3 fix) ─────── */}
+        {noteTags.length > 0 && (
+          <View style={styles.tagChipsRow}>
+            {noteTags.map(tag => {
+              const tagObj = allTagObjects.find(t => t.name === tag);
+              return (
+                <View key={tag} style={styles.tagChip}>
+                  {/* Tap chip body → lưu & navigate sang trang nhãn */}
+                  <TouchableOpacity
+                    style={styles.tagChipBody}
+                    onPress={() => {
+                      if (tagObj) {
+                        handleSaveAndClose();
+                        router.push(`/(main)/label/${tagObj.id}` as any);
+                      }
+                    }}
+                    activeOpacity={0.7}
+                  >
+                    <MaterialCommunityIcons name="label-outline" size={12} color={colors.textSecondary} />
+                    <Text style={styles.tagChipText}>{tag}</Text>
+                  </TouchableOpacity>
+                  {/* × → xóa nhãn khỏi note */}
+                  <TouchableOpacity
+                    onPress={() => handleToggleTag(tag)}
+                    hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+                  >
+                    <MaterialCommunityIcons name="close" size={12} color={colors.textTertiary} />
+                  </TouchableOpacity>
+                </View>
+              );
+            })}
+          </View>
+        )}
+        {/* ──────────────────────────────────────────────────────────────────── */}
+
+        {/* Formatting Bar */}
+        {showFormattingBar && isTextMode && (
           <View style={styles.formattingBar}>
-            <ToolbarBtn icon="format-header-1"               onPress={() => handleFormat('formatBlock', 'H1')}  label="Tiêu đề 1"    isFormatActive={activeFormats.block.toLowerCase() === 'h1'} />
-            <ToolbarBtn icon="format-header-2"               onPress={() => handleFormat('formatBlock', 'H2')}  label="Tiêu đề 2"    isFormatActive={activeFormats.block.toLowerCase() === 'h2'} />
-            <ToolbarBtn icon="format-paragraph"              onPress={() => handleFormat('formatBlock', 'DIV')} label="Văn bản thường" isFormatActive={activeFormats.block.toLowerCase() === 'div' || activeFormats.block.toLowerCase() === 'p'} />
+            <ToolbarBtn icon="format-header-1" onPress={() => handleFormat('formatBlock', FMT_H1)} label="Tiêu đề 1" isFormatActive={activeFormats.block.toLowerCase() === 'h1'} />
+            <ToolbarBtn icon="format-header-2" onPress={() => handleFormat('formatBlock', FMT_H2)} label="Tiêu đề 2" isFormatActive={activeFormats.block.toLowerCase() === 'h2'} />
+            <ToolbarBtn icon="format-paragraph" onPress={() => handleFormat('formatBlock', FMT_DIV)} label="Văn bản thường" isFormatActive={activeFormats.block.toLowerCase() === 'div' || activeFormats.block.toLowerCase() === 'p'} />
             <View style={styles.divider} />
-            <ToolbarBtn icon="format-bold"                   onPress={() => handleFormat('bold')}               label="In đậm"       isFormatActive={activeFormats.bold} />
-            <ToolbarBtn icon="format-italic"                 onPress={() => handleFormat('italic')}             label="In nghiêng"   isFormatActive={activeFormats.italic} />
-            <ToolbarBtn icon="format-underline"              onPress={() => handleFormat('underline')}          label="Gạch chân"    isFormatActive={activeFormats.underline} />
-            <ToolbarBtn icon="format-strikethrough-variant"  onPress={() => handleFormat('strikeThrough')}      label="Gạch ngang"   isFormatActive={activeFormats.strikeThrough} />
+            <ToolbarBtn icon="format-bold" onPress={() => handleFormat(FMT_BOLD)} label="In đậm" isFormatActive={activeFormats.bold} />
+            <ToolbarBtn icon="format-italic" onPress={() => handleFormat(FMT_ITALIC)} label="In nghiêng" isFormatActive={activeFormats.italic} />
+            <ToolbarBtn icon="format-underline" onPress={() => handleFormat(FMT_UNDERLINE)} label="Gạch chân" isFormatActive={activeFormats.underline} />
+            <ToolbarBtn icon="format-strikethrough-variant" onPress={() => handleFormat(FMT_STRIKE)} label="Gạch ngang" isFormatActive={activeFormats.strikeThrough} />
             <View style={styles.divider} />
-            <ToolbarBtn icon="format-clear" onPress={() => handleFormat('removeFormat')} label="Xóa định dạng" />
+            <ToolbarBtn icon="format-clear" onPress={() => handleFormat(FMT_REMOVE)} label="Xóa định dạng" />
           </View>
         )}
 
@@ -1097,7 +1205,7 @@ export function NoteEditor({ visible, mode, note, inline, readOnly }: NoteEditor
                       setShowMoreMenu(false);
                     }}
                     label="Xóa ghi chú"
-                    disabled={!note?.id || note.id.startsWith('temp-')}
+                    disabled={!note?.id && !title.trim() && (isTextMode ? isContentEmpty : todoItems.filter(t => t.title.trim()).length === 0)}
                   />
 
                   <View style={{ position: 'relative', zIndex: 310 }}>
@@ -1128,7 +1236,7 @@ export function NoteEditor({ visible, mode, note, inline, readOnly }: NoteEditor
                   <MenuBtn
                     onPress={() => { alert('Tạo bản sao (Cần API)'); setShowMoreMenu(false); }}
                     label="Tạo bản sao"
-                    disabled={!note?.id && !title.trim() && (editorMode === 'text' ? isContentEmpty : todoItems.filter(t => t.title.trim()).length === 0)}
+                    disabled={!note?.id && !title.trim() && (isTextMode ? isContentEmpty : todoItems.filter(t => t.title.trim()).length === 0)}
                   />
                   <MenuBtn onPress={handleToggleMode} label={editorMode === 'text' ? 'Hiển thị hộp kiểm' : 'Ẩn hộp kiểm'} />
 
@@ -1148,7 +1256,7 @@ export function NoteEditor({ visible, mode, note, inline, readOnly }: NoteEditor
                   <MenuBtn
                     onPress={() => { alert('Lịch sử phiên bản (Cần API)'); setShowMoreMenu(false); }}
                     label="Lịch sử phiên bản"
-                    disabled={!note?.id && !title.trim() && (editorMode === 'text' ? isContentEmpty : todoItems.filter(t => t.title.trim()).length === 0)}
+                    disabled={!note?.id && !title.trim() && (isTextMode ? isContentEmpty : todoItems.filter(t => t.title.trim()).length === 0)}
                   />
                 </View>
               )}
@@ -1336,6 +1444,41 @@ const styles = StyleSheet.create({
     marginLeft: 8,
     zIndex: 1000,
   },
+  // ── Tag chips trong editor ────────────────────────────────────────────────
+  tagChipsRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+    paddingHorizontal: 20,
+    paddingVertical: 8,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: colors.borderDefault,
+  },
+  tagChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderRadius: 999,
+    backgroundColor: colors.bgSurface,
+    borderWidth: 1,
+    borderColor: colors.borderDefault,
+    paddingRight: 8,
+    overflow: 'hidden',
+  },
+  tagChipBody: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingVertical: 4,
+    paddingLeft: 10,
+    paddingRight: 4,
+    ...Platform.select({ web: { cursor: 'pointer' } as any }),
+  },
+  tagChipText: {
+    fontFamily: 'Inter-Regular',
+    fontSize: 12,
+    color: colors.textSecondary,
+  },
+  // ──────────────────────────────────────────────────────────────────────────
   overlay: {
     position: 'absolute',
     inset: 0,

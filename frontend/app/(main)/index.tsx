@@ -13,6 +13,7 @@ import { useNoteStore } from '../../src/store/useNoteStore';
 import { NoteList } from '../../src/components/notes/NoteList';
 import { useAppStore } from '@/src/store/useAppStore';
 
+
 export default function HomeScreen() {
   // ── XÓA: router, isCreating, setIsCreating — không dùng ở màn Home ──────
   const { theme, viewMode } = useAppStore();
@@ -29,7 +30,7 @@ export default function HomeScreen() {
     openEditNote,
     trashNoteAction,
     archiveNoteAction,
-    saveNoteAction
+    saveNoteAction,
   } = useNoteStore();
 
   const { selectedIds, toggleSelect, clearSelection } = useSelectionStore();

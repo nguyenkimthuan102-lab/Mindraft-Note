@@ -2,6 +2,8 @@ import { create } from 'zustand';
 import { Platform } from 'react-native';
 import { db } from '../services/database/database';
 import api from '../api/axiosClient';
+import { Tag, getTags } from '../api/tagApi';
+
 
 // ── Sort types ──────────────────────────────────────────────
 export type SortField = 'updated_at' | 'created_at' | 'custom';
@@ -21,6 +23,12 @@ interface AppState {
   setTheme: (theme: ThemeType) => void; // Thêm action đổi theme
   setSort: (s: SortOption) => void;         
   toggleSidebar: () => void;
+  tags: Tag[];
+  fetchTags: () => Promise<void>;
+  setTags: (tags: Tag[]) => void;
+  // ── Lọc note theo tag (sidebar click) ────────────────────────────────────
+  selectedTagId: string | null;
+  setSelectedTagId: (id: string | null) => void;
 }
 
 export const useAppStore = create<AppState>((set) => ({
@@ -50,6 +58,23 @@ export const useAppStore = create<AppState>((set) => ({
       if (themeResult) set({ theme: themeResult.value as ThemeType });
     }
   },
+
+  tags: [],
+  selectedTagId: null,
+
+  fetchTags: async () => {
+    try {
+      const data = await getTags();
+      set({ tags: data });
+    } catch (error) {
+      console.error("Lỗi lấy danh sách nhãn:", error);
+    }
+  },
+
+  setTags: (tags) => set({ tags }),
+
+  // ── Khi click tag trên sidebar → cập nhật filter ─────────────────────────
+  setSelectedTagId: (id) => set({ selectedTagId: id }),
 
   setViewMode: (mode) => {
     set({ viewMode: mode });

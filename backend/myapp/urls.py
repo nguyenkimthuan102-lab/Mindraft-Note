@@ -17,16 +17,21 @@ from .views.profile import (
     serve_local_file_view
 )
 
+from .views.labels import (        # THÊM MỚI
+    tags_collection_view,
+    tag_detail_view,
+    note_tags_collection_view,
+    note_tag_detail_view,
+)
+
 urlpatterns = [
-    # ==========================================
-    # AUTHENTICATION (Xác thực)
-    # ==========================================
-    path('auth/register/', register_view),
-    path('auth/verify-otp/', verify_otp_view),
-    path('auth/resend-otp/', resend_otp_view),
-    path('auth/google/', google_login_view),
-    path('auth/refresh/', refresh_token_view, name='token_refresh'),
-    path('auth/login/', login_view),
+    # ── AUTH ──────────────────────────────────────────────────────────────────
+    path('auth/register/',        register_view),
+    path('auth/verify-otp/',      verify_otp_view),
+    path('auth/resend-otp/',      resend_otp_view),
+    path('auth/google/',          google_login_view),
+    path('auth/refresh/',         refresh_token_view, name='token_refresh'),
+    path('auth/login/',           login_view),
     path('auth/forgot-password/', forgot_password_view),
     path('auth/reset-password/', reset_password_view),
     path('auth/logout/', logout_view),
@@ -59,13 +64,13 @@ urlpatterns = [
     # ==========================================
     # TAGS (Nhãn)
     # ==========================================
-    path('tags/', create_tag, name='create_tag'),
-    path('tags/list/', get_tags, name='get_tags'),
-    path('tags/<str:tag_id>/', update_tag, name='update_tag'),
-    path('tags/<str:tag_id>/delete/', delete_tag, name='delete_tag'),
-    path('notes/<str:note_id>/tags/', add_tag_to_note, name='add_tag_to_note'),
-    path('notes/<str:note_id>/tags/list/', get_note_tags),
-    path('notes/<str:note_id>/tags/<str:tag_id>/', remove_tag_from_note, name='remove_tag_from_note'),
+    # ── NOTE TAGS (5.1, 5.2) ───────────────────────────────────────────────────
+    path('notes/<str:note_id>/tags/',              note_tags_collection_view),   # POST
+    path('notes/<str:note_id>/tags/<str:tag_id>/', note_tag_detail_view),        # DELETE
+
+    # ── TAGS (4.1, 4.2, 4.3, 4.4) ─────────────────────────────────────────────
+    path('tags/',              tags_collection_view),   # GET, POST
+    path('tags/<str:tag_id>/', tag_detail_view),        # PATCH, DELETE
 
     # ==========================================
     # REMINDERS (Nhắc nhở)

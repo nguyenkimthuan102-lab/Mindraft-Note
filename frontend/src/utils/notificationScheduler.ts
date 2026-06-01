@@ -1,5 +1,6 @@
 // src/utils/notificationScheduler.ts
 import * as Notifications from 'expo-notifications';
+import { SchedulableTriggerInputTypes } from 'expo-notifications';
 import { Platform } from 'react-native';
 
 // ── Cấu hình hiển thị thông báo khi app đang mở ────────────────────────────
@@ -8,6 +9,8 @@ Notifications.setNotificationHandler({
     shouldShowAlert: true,   // hiện banner
     shouldPlaySound: true,   // phát âm thanh
     shouldSetBadge: true,    // cập nhật badge icon
+    shouldShowBanner: true,  // Bổ sung dòng này
+    shouldShowList: true,
   }),
 });
 
@@ -49,6 +52,7 @@ export async function scheduleReminderNotification(params: {
       data: { reminderId: params.reminderId },
     },
     trigger: {
+      type: SchedulableTriggerInputTypes.DATE,
       date: params.remindAt, // đúng thời điểm remind_at
     },
   });

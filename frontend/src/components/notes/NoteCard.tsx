@@ -1,6 +1,7 @@
 import { View, Text, StyleSheet, TouchableOpacity, Platform, Modal, Dimensions, useWindowDimensions, Image } from 'react-native';
 import { Icon } from 'react-native-paper';
 import { useState, useRef, useEffect } from 'react';
+import { useRouter } from 'expo-router';
 import { TagChip } from '../ui/TagChip';
 import { colors } from '../../constants/colors';
 import { HoverBtn } from '../ui/HoverBtn';
@@ -8,6 +9,9 @@ import { useAppStore } from '../../store/useAppStore';
 import { useSelectionStore } from '../../store/useSelectionStore';
 import { useNoteStore, mapApiTodoItems } from '../../store/useNoteStore';
 import { getNoteMedia, MediaData } from '../../api/mediaApi';
+import { exportToTxt, exportToPdf, exportToDocx } from '../../utils/exportNote';
+import { NoteTagMenu } from './TagMenu';
+import { Tag } from '../../api/tagApi';
 
 const cardColorMap: Record<string, string> = {
   default: '#FFFFFF', red: '#FADADD', orange: '#FEEFC3', yellow: '#FEF7CD',
@@ -36,7 +40,8 @@ export interface TodoItemData {
 export interface NoteCardData {
   id: string; type: 'text' | 'todo'; color: string;
   title?: string; content_text?: string; is_pinned?: 0 | 1; is_archived?: 0 | 1; is_trashed?: 0 | 1;
-  tags?: string[]; collaborators?: { name: string }[];
+  // ── CHUẨN API: tags là mảng Tag objects { id, name } ──────────────────────
+  tags?: Tag[]; collaborators?: { name: string }[];
   todo_items?: TodoItemData[]; todo_total?: number;
   todo_completed?: number; date?: string; reminder?: string;
   images?: string[];
@@ -54,6 +59,9 @@ interface NoteCardProps {
   isGridView?: boolean;
   archiveLabel?: string;
   archiveIcon?: string;
+  // THÊM: prop từ NoteList
+  onTogglePin?: () => void;
+  onRestoreNote?: () => void;
 }
 
 function Avatars({ names, isDark }: { names: string[]; isDark: boolean }) {
@@ -96,6 +104,14 @@ function ColorPicker({ onSelect, onClose, isDark }: { onSelect: (color: string) 
 function DotMenu({ isTodo, onAction, onClose, isDark }: {
   isTodo: boolean; onAction: (action: string) => void; onClose: () => void; isDark: boolean;
 }) {
+  const [showExportSub, setShowExportSub] = useState(false);
+
+  const menuBg = isDark ? '#1F2937' : '#fff';
+  const textColor = isDark ? '#F9FAFB' : colors.textSecondary;
+  const subBg = isDark ? '#111827' : '#F9FAFB';
+  const borderColor = isDark ? '#374151' : colors.borderDefault;
+
+  // 6 items — khớp hoàn toàn với NoteEditor
   const baseItems = [
     { key: 'tag', label: 'Thêm tag' },
     { key: 'duplicate', label: 'Tạo bản sao' },
@@ -107,15 +123,82 @@ function DotMenu({ isTodo, onAction, onClose, isDark }: {
     { key: 'clear_done', label: 'Xóa tất cả việc đã hoàn thành' },
   ];
   const items = isTodo ? [...baseItems.slice(0, 1), ...todoItems, ...baseItems.slice(1)] : baseItems;
+
+  const exportFormats = [
+    { key: 'export_txt', label: 'Xuất ra .TXT' },
+    { key: 'export_pdf', label: 'Xuất ra .PDF' },
+    { key: 'export_docx', label: 'Xuất ra .DOCX' },
+  ];
+  
   return (
-    <View style={[styles.dotMenu, isDark && { backgroundColor: '#1F2937', borderColor: '#374151' }]}>
+    <View style={[styles.dotMenu, { backgroundColor: menuBg, borderColor }]}>
       {items.map((item) => (
-        <HoverBtn key={item.key} style={styles.dotMenuItem} onPress={() => { onAction(item.key); onClose(); }} fullWidth borderRadius={0}>
-          <Text style={[styles.dotMenuText, isDark && { color: '#F9FAFB' }, (item as any).danger && { color: colors.danger }]}>
-            {item.label}
-          </Text>
-        </HoverBtn>
+        <View key={item.key}>
+          <HoverBtn
+            style={styles.dotMenuItem}
+            onPress={() => {
+              if (item.key === 'export-file') {
+                setShowExportSub(v => !v);
+              } else {
+                onAction(item.key);
+                onClose();
+              }
+            }}
+            fullWidth
+            borderRadius={0}
+          >
+            <Text
+              style={[
+                styles.dotMenuText,
+                isDark && { color: '#F9FAFB' },
+                (item as any).danger && { color: colors.danger },
+              ]}
+            >
+              {item.label}
+            </Text>
+
+            {(item as any).hasArrow && (
+              <Icon
+                source={showExportSub ? 'chevron-up' : 'chevron-down'}
+                size={16}
+                color={textColor}
+              />
+            )}
+          </HoverBtn>
+
+          {item.key === 'export-file' && showExportSub && (
+            <View
+              style={[
+                styles.exportSubMenu,
+                { backgroundColor: subBg, borderColor },
+              ]}
+            >
+              {exportFormats.map(fmt => (
+                <HoverBtn
+                  key={fmt.key}
+                  style={styles.exportSubItem}
+                  onPress={() => {
+                    onAction(fmt.key);
+                    onClose();
+                  }}
+                  fullWidth
+                  borderRadius={0}
+                >
+                  <Text
+                    style={[
+                      styles.dotMenuText,
+                      isDark && { color: '#F9FAFB' },
+                    ]}
+                  >
+                    {fmt.label}
+                  </Text>
+                </HoverBtn>
+              ))}
+            </View>
+          )}
+        </View>
       ))}
+
     </View>
   );
 }
@@ -179,7 +262,7 @@ function NoteMediaBlock({ noteId, isDark }: { noteId: string; isDark: boolean })
     if (!noteId || noteId.startsWith('temp-')) return;
     getNoteMedia(noteId)
       .then(data => setMedia(data))
-      .catch(() => {});
+      .catch(() => { });
   }, [noteId]);
 
   if (media.length === 0) return null;
@@ -206,12 +289,13 @@ function NoteMediaBlock({ noteId, isDark }: { noteId: string; isDark: boolean })
   );
 }
 
-export function NoteCard({ note, isSelected, onSelect, isGridView, onPress, onUpdate, onDelete, onArchive, archiveLabel = 'Lưu trữ', archiveIcon = 'archive-arrow-down-outline' }: NoteCardProps) {
+export function NoteCard({ note, isSelected, onSelect, isGridView, onPress, onUpdate, onDelete, onArchive, archiveLabel = 'Lưu trữ', archiveIcon = 'archive-arrow-down-outline', onTogglePin, onRestoreNote }: NoteCardProps) {
   const { theme } = useAppStore();
   const isDark = theme === 'dark';
   const { clearCompletedTodosAction } = useNoteStore();
   const { width } = useWindowDimensions();
   const isMobile = width < 720;
+  const router = useRouter(); // ✅ FIX Bug 3: navigate khi click chip nhãn
 
   const { selectedIds } = useSelectionStore();
   const isSelectionMode = selectedIds.length > 0;
@@ -219,6 +303,12 @@ export function NoteCard({ note, isSelected, onSelect, isGridView, onPress, onUp
   const [hovered, setHovered] = useState(false);
   const [showColorPicker, setShowColorPicker] = useState(false);
   const [showDotMenu, setShowDotMenu] = useState(false);
+  // ── THÊM: state cho TagMenu ────────────────────────────────────────────────
+  const [showTagMenu, setShowTagMenu] = useState(false);
+  const [tagMenuPos, setTagMenuPos] = useState({ x: 0, y: 0 });
+  const tagBtnRef = useRef<View>(null);
+  // ──────────────────────────────────────────────────────────────────────────
+
   const [localNote, setLocalNote] = useState(note);
 
   useEffect(() => { setLocalNote(note); }, [note]);
@@ -248,6 +338,36 @@ export function NoteCard({ note, isSelected, onSelect, isGridView, onPress, onUp
       } catch (err) {
         console.warn('[NoteCard] Lỗi dọn dẹp việc hoàn thành ngoài Card:', err);
       }
+    } else if (action === 'tag') {
+      // ── MỞ TagMenu inline — giống Google Keep ────────────────────────────
+      tagBtnRef.current?.measureInWindow((x, y, w, h) => {
+        const screenHeight = Dimensions.get('window').height;
+        const menuHeight = 320;
+        const spaceBelow = screenHeight - (y + h);
+        if (spaceBelow < menuHeight) {
+          setTagMenuPos({ x: x - 200, y: y - menuHeight });
+        } else {
+          setTagMenuPos({ x: x - 200, y: y + h + 4 });
+        }
+        setShowTagMenu(true);
+      });
+      // ────────────────────────────────────────────────────────────────────
+    } else if (action === 'export_txt') {
+      await exportToTxt(note);
+    } else if (action === 'export_pdf') {
+      await exportToPdf(note);
+    } else if (action === 'export_docx') {
+      await exportToDocx(note);
+    } else if (action === 'duplicate') {
+      // Placeholder — sẽ gọi API tạo bản sao
+      alert('Tạo bản sao (Cần API)');
+    } else if (action === 'toggle_checkbox') {
+      // Chuyển đổi giữa text ↔ todo
+      const newType = note.type === 'todo' ? 'text' : 'todo';
+      onUpdate?.(note.id, { type: newType });
+    } else if (action === 'history') {
+      // Placeholder — sẽ gọi API lịch sử
+      alert('Lịch sử phiên bản (Cần API)');
     }
   };
 
@@ -256,7 +376,7 @@ export function NoteCard({ note, isSelected, onSelect, isGridView, onPress, onUp
     : (cardColorMap[localNote.color] ?? cardColorMap.default);
 
   const isTodo = localNote.type === 'todo';
-  
+
   // ✅ SỬA DÒNG NÀY: Sort mảng hiển thị thu gọn ngoài Card theo position để đồng bộ trật tự hiển thị
   const incompleteItems = (localNote.todo_items ?? [])
     .filter(t => !t.is_completed)
@@ -347,7 +467,19 @@ export function NoteCard({ note, isSelected, onSelect, isGridView, onPress, onUp
 
           {localNote.tags && localNote.tags.length > 0 && (
             <View style={styles.tagsRow}>
-              {localNote.tags.map((tag) => <TagChip key={tag} label={tag} />)}
+              {localNote.tags.map((tag) => (
+                // ✅ FIX Bug 3: click chip → navigate sang trang nhãn
+                <TouchableOpacity
+                  key={tag.id}
+                  onPress={(e) => {
+                    e.stopPropagation?.();
+                    router.push(`/(main)/label/${tag.id}` as any);
+                  }}
+                  activeOpacity={0.7}
+                >
+                  <TagChip label={tag.name} />
+                </TouchableOpacity>
+              ))}
             </View>
           )}
 
@@ -398,12 +530,44 @@ export function NoteCard({ note, isSelected, onSelect, isGridView, onPress, onUp
                 }}
               />
             </View>
+
+            {/* Ref ẩn để đo vị trí mở TagMenu — gắn vào nút "Thêm nhãn" trong DotMenu */}
+            <View ref={tagBtnRef} style={{ width: 0, height: 0, position: 'absolute' }} />
+
             <Modal visible={showDotMenu} transparent animationType="none" onRequestClose={() => setShowDotMenu(false)}>
               <TouchableOpacity style={StyleSheet.absoluteFillObject} onPress={() => setShowDotMenu(false)} activeOpacity={1} />
               <View style={[styles.dotMenu, { position: 'absolute', top: dotMenuPos.y, left: dotMenuPos.x }]}>
                 <DotMenu isTodo={isTodo} onAction={handleDotAction} onClose={() => setShowDotMenu(false)} isDark={isDark} />
               </View>
             </Modal>
+
+            {/* ── TagMenu Modal — Google Keep style ────────────────────────── */}
+            <Modal
+              visible={showTagMenu}
+              transparent
+              animationType="none"
+              onRequestClose={() => setShowTagMenu(false)}
+            >
+              <TouchableOpacity
+                style={StyleSheet.absoluteFillObject}
+                onPress={() => setShowTagMenu(false)}
+                activeOpacity={1}
+              />
+              <View style={{ position: 'absolute', top: tagMenuPos.y, left: tagMenuPos.x, zIndex: 9999 }}>
+                <NoteTagMenu
+                  noteId={note.id}
+                  noteTags={localNote.tags ?? []}
+                  onTagsChange={(updatedTags) => {
+                    // Cập nhật local state ngay
+                    setLocalNote(prev => ({ ...prev, tags: updatedTags }));
+                    // Cập nhật lên parent (index.tsx / store)
+                    onUpdate?.(note.id, { tags: updatedTags });
+                  }}
+                  onClose={() => setShowTagMenu(false)}
+                />
+              </View>
+            </Modal>
+            {/* ─────────────────────────────────────────────────────────────── */}
           </View>
         )}
 
@@ -506,13 +670,24 @@ const styles = StyleSheet.create({
     borderWidth: 1, borderColor: colors.borderDefault,
     ...Platform.select({ web: { boxShadow: '0 4px 16px rgba(0,0,0,0.12)' } as any }),
   },
-  dotMenuItem: { paddingHorizontal: 16, paddingVertical: 10, ...Platform.select({ web: { cursor: 'pointer' } as any }) },
-  dotMenuText: { fontFamily: 'Inter-Regular', fontSize: 14, color: colors.textSecondary },
-  tooltip: {
-    position: 'absolute', bottom: '100%', left: '50%',
-    backgroundColor: 'rgba(0,0,0,0.75)', borderRadius: 4, paddingHorizontal: 8, paddingVertical: 4,
-    zIndex: 999, marginBottom: 4,
-    ...Platform.select({ web: { transform: 'translateX(-50%)', whiteSpace: 'nowrap' } as any }),
-  } as any,
+  dotMenuItem: {
+    paddingHorizontal: 16, paddingVertical: 10,
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    ...Platform.select({ web: { cursor: 'pointer' } as any }),
+  },
+  dotMenuText: { fontFamily: 'Inter-Regular', fontSize: 14, color: colors.textSecondary, flex: 1 },
+  exportSubMenu: {
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.borderDefault,
+  },
+  exportSubItem: {
+    paddingHorizontal: 28,
+    paddingVertical: 9,
+    flexDirection: 'row',
+    alignItems: 'center',
+    ...Platform.select({ web: { cursor: 'pointer' } as any }),
+  },
+  tooltip: { position: 'absolute', bottom: '100%', left: '50%', backgroundColor: 'rgba(0,0,0,0.75)', borderRadius: 4, paddingHorizontal: 8, paddingVertical: 4, zIndex: 999, marginBottom: 4, ...Platform.select({ web: { transform: 'translateX(-50%)', whiteSpace: 'nowrap' } as any }) } as any,
   tooltipText: { fontFamily: 'Inter-Regular', fontSize: 12, color: '#fff' },
 });

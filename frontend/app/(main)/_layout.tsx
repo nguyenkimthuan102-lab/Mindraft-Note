@@ -147,7 +147,7 @@ export default function MainLayout() {
         {/* Sidebar cố định bên trái — chỉ render inline khi KHÔNG phải mobile */}
         {!isMobile && <Sidebar />}
 
-        {/* Nội dung chính */}
+        {/* Nội dung chính nằm bên phải */}
         <View style={{ flex: 1 }}>
           <Slot />
         </View>

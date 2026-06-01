@@ -1,16 +1,22 @@
 from rest_framework import serializers
-from .models import Notes, TodoItems,UserSettings,Tags,Media,Users
+from .models import Notes, TodoItems, UserSettings, Tags, NoteTags, Reminders, Media, Users, Notifications
 
-class ChecklistItemSerializer(serializers.ModelSerializer):
+class TagSerializer(serializers.ModelSerializer):
     class Meta:
-        model = TodoItems
-        fields = ['id', 'content', 'is_completed']
+        model = Tags
+        fields = ["id", "name", "created_at", "updated_at"]
+
+class NotTagInlineSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Tags
+        fields = ["id", "name"]
 
 class NoteSerializer(serializers.ModelSerializer):
+    # Lấy danh sách tags đang hoạt động của note
+    tags = serializers.SerializerMethodField()
 
     class Meta:
         model = Notes
-
         fields = [
             "id",
             "title",
@@ -26,7 +32,13 @@ class NoteSerializer(serializers.ModelSerializer):
             "created_at",
             "server_updated_at",
             "client_updated_at",
+            "tags"
         ]
+
+    def get_tags(self, obj):
+        active_tag_ids = NoteTags.objects.filter(note=obj, is_deleted=0).values_list("tag_id", flat=True)
+        tags = Tags.objects.filter(id__in=active_tag_ids, is_deleted=0)
+        return NotTagInlineSerializer(tags, many=True).data
 
     def validate(self, data):
         if data.get('is_deleted') and data.get('is_pinned'):
@@ -34,6 +46,7 @@ class NoteSerializer(serializers.ModelSerializer):
                 "Không thể ghim một ghi chú đã nằm trong thùng rác!"
             )
         return data
+
 
 class CreateNoteSerializer(serializers.ModelSerializer):
     class Meta:
@@ -56,11 +69,23 @@ class CreateNoteSerializer(serializers.ModelSerializer):
             "client_updated_at": {"required": False},
         }
 
-class UpdateNoteSerializer(serializers.ModelSerializer):
 
+class UserSettingsSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = UserSettings
+        fields = [
+            "theme",
+            "notifications_enabled",
+            "notify_reminder",
+            "notify_collaboration",
+            "default_note_view",
+            "sort_by",
+        ]
+
+
+class UpdateNoteSerializer(serializers.ModelSerializer):
     class Meta:
         model = Notes
-
         fields = [
             "title",
             "content",
@@ -73,7 +98,6 @@ class UpdateNoteSerializer(serializers.ModelSerializer):
             "is_reminded",
             "client_updated_at",
         ]
-
         extra_kwargs = {
             "title": {"required": False},
             "content": {"required": False},
@@ -88,33 +112,18 @@ class UpdateNoteSerializer(serializers.ModelSerializer):
         }
 
     def validate_color(self, value):
-
         if len(value) > 20:
-
-            raise serializers.ValidationError(
-                "Invalid color"
-            )
-
+            raise serializers.ValidationError("Invalid color")
         return value
 
     def validate_title(self, value):
-
         if len(value) > 1000:
-
-            raise serializers.ValidationError(
-                "Title too long"
-            )
-
+            raise serializers.ValidationError("Title too long")
         return value
 
     def validate_position(self, value):
-
         if len(value) > 255:
-
-            raise serializers.ValidationError(
-                "Invalid position"
-            )
-
+            raise serializers.ValidationError("Invalid position")
         return value
     
 class UserSettingsSerializer(serializers.ModelSerializer):
@@ -143,10 +152,6 @@ class TagSerializer(serializers.ModelSerializer):
             "updated_at",
         ]
 
-# serializers.py
-from rest_framework import serializers
-from .models import Reminders
-
 class ReminderSerializer(serializers.ModelSerializer):
     note_title = serializers.CharField(source='note.title', read_only=True)
     note_color = serializers.CharField(source='note.color', read_only=True)
@@ -154,19 +159,17 @@ class ReminderSerializer(serializers.ModelSerializer):
         model = Reminders
         fields = ['id', 'note', 'user','note_title', 'note_color', 'remind_at', 'repeat_type', 'is_notified', 'is_deleted', 'updated_at']
 
+
 class CreateReminderSerializer(serializers.ModelSerializer):
     class Meta:
         model = Reminders
         fields = ['note', 'remind_at', 'repeat_type']
 
+
 class UpdateReminderSerializer(serializers.ModelSerializer):
     class Meta:
         model = Reminders
         fields = ['remind_at', 'repeat_type', 'is_notified','is_deleted']
-
-# serializers.py
-from rest_framework import serializers
-from .models import Notifications
 
 class NotificationSerializer(serializers.ModelSerializer):
     class Meta:
