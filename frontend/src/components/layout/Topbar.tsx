@@ -1,6 +1,6 @@
 import { Feather } from '@expo/vector-icons';
 import { usePathname, useRouter } from 'expo-router';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Image, Platform, StyleSheet, Text, TextInput, TouchableOpacity, View, LayoutAnimation, useWindowDimensions } from 'react-native';
 import { Icon, Menu, Divider } from 'react-native-paper';
 import { colors } from '../../constants/colors';
@@ -70,6 +70,31 @@ export function Topbar({ onViewModeChange }: TopbarProps) {
   const selectedCount = selectedIds.length;
 
   const { batchPinAction, batchArchiveAction, batchTrashAction, batchColorAction } = useNoteStore();
+  useEffect(() => {
+    // 1. Xác định viewType hiện tại dựa theo pathname để đồng bộ chính xác với Sidebar
+    let currentViewType: 'all' | 'active' | 'archived' | 'trash' = 'active';
+    if (pathname.includes('trash')) currentViewType = 'trash';
+    else if (pathname.includes('archive')) currentViewType = 'archived';
+    else if (pathname.includes('all')) currentViewType = 'all';
+
+    // 2. Nếu đang đứng ở trang Nhãn (Tag), trích xuất tag_id từ đuôi url để filter bộ lọc kép
+    let currentTagId: string | undefined = undefined;
+    if (pathname.includes('tag')) {
+      currentTagId = pathname.split('/').pop();
+    }
+
+    // 3. Cơ chế Debounce: Thiết lập thời gian chờ 300ms sau khi người dùng dừng gõ phím
+    const delayDebounceFn = setTimeout(() => {
+      if (!isSettings) {
+        useAppStore.getState().setSearchKeyword(search);
+        
+        useNoteStore.getState().loadNotes(currentViewType, search, currentTagId);
+      }
+    }, 300);
+
+    // Xóa bộ đếm thời gian cũ nếu người dùng vẫn tiếp tục gõ chữ liên tục
+    return () => clearTimeout(delayDebounceFn);
+  }, [search, pathname, isSettings]);
 
   const handleSortChange = (field: any, direction: any) => {
     setSort({ field, direction });

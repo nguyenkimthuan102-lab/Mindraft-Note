@@ -47,7 +47,7 @@ export function mapApiTodoItems(results: any[]): TodoItemData[] {
 interface NoteStoreState {
   notes: NoteCardData[];
   setNotes: (notes: NoteCardData[]) => void;
-  loadNotes: (viewType: 'all' | 'active' | 'archived' | 'trash') => Promise<void>;
+  loadNotes: (viewType: 'all' | 'active' | 'archived' | 'trash', search?: string, tagId?: string) => Promise<void>;
   pinNoteAction: (id: string) => Promise<void>;
   archiveNoteAction: (id: string) => Promise<void>;
   trashNoteAction: (id: string) => Promise<void>;
@@ -97,17 +97,28 @@ export const useNoteStore = create<NoteStoreState>((set, get) => ({
   notes: [],
   setNotes: (notes) => set({ notes }),
 
-  loadNotes: async (viewType) => {
+  // 🔥 SỬA DÒNG NÀY THÀNH:
+  loadNotes: async (viewType, search, tagId) => {
     try {
-      const data = await fetchNotes({ view: viewType });
+      // 1. Gọi API lấy khung xương Note về trước (Param viewType lúc này có thể mang giá trị 'reminders')
+      const data = await fetchNotes({ 
+        view: viewType,
+        search: search,
+        tag_id: tagId 
+      });
       set({ notes: data });
 
+      // 2. Lọc danh sách Note Todo để chuẩn bị nạp tiếp việc con (Không có dấu đóng hàm ở giữa!)
       const todoNotes = data.filter(n => n.type === 'todo');
 
       Promise.all(
         todoNotes.map(async (note) => {
           try {
-            const response = await api.get(`/notes/${note.id}/todos/`);
+            // Gắn thêm từ khóa search đổ xuống API việc con
+            const response = await api.get(`/notes/${note.id}/todos/`, {
+              params: search ? { search } : undefined
+            });
+              
             const freshItems = mapApiTodoItems(response.data.results);
 
             set((state) => ({

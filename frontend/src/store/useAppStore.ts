@@ -29,6 +29,8 @@ interface AppState {
   // ── Lọc note theo tag (sidebar click) ────────────────────────────────────
   selectedTagId: string | null;
   setSelectedTagId: (id: string | null) => void;
+  searchKeyword: string;
+  setSearchKeyword: (keyword: string) => void;
 }
 
 export const useAppStore = create<AppState>((set) => ({
@@ -101,4 +103,7 @@ export const useAppStore = create<AppState>((set) => ({
   }, 
 
   toggleSidebar: () => set((state) => ({ isSidebarOpen: !state.isSidebarOpen })),
+
+  searchKeyword: '',
+  setSearchKeyword: (keyword) => set({ searchKeyword: keyword }),
 }));
