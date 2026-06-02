@@ -48,8 +48,8 @@ export function Sidebar() {
   const { openCreateText, openCreateTodo, loadTagsFromServer } = useNoteStore();
   const [isNewNoteOpen, setIsNewNoteOpen] = React.useState(false);
 
-  // ── File 1: tags thật + EditLabelsModal ──────────────────────────────────
-  const { theme, tags, fetchTags } = useAppStore();
+  // ── tags + selectedTagId từ store (thay vì useLocalSearchParams — không hoạt động trong layout)
+  const { theme, tags, fetchTags, selectedTagId, setSelectedTagId } = useAppStore();
   const [showEditLabels, setShowEditLabels] = React.useState(false);
   const isDark = theme === 'dark';
 
@@ -95,6 +95,7 @@ export function Sidebar() {
   if (!isMobile && !isSidebarOpen) return null;
 
   const handleNavItemPress = (href: string) => {
+    setSelectedTagId(null); // ✅ Xóa tag active khi navigate sang trang khác
     if (isMobile && isSidebarOpen) toggleSidebar();
     router.push(href as any);
   };
@@ -154,9 +155,7 @@ export function Sidebar() {
           )}
         </View>
 
-        {/* Main nav */}
         <NavItem icon="file-text" label="All notes" href="/(main)" active={pathname === '/'} isDark={isDark} onPress={() => handleNavItemPress('/(main)')} />
-        {/* 🔥 CHỈ SỬA HREF Ở ĐÂY ĐỂ ĐIỀU HƯỚNG VÀO TRONG (MAIN) */}
         <NavItem icon="bell" label="Reminders" href="/(main)/reminders" active={pathname === '/reminders'} isDark={isDark} onPress={() => handleNavItemPress('/(main)/reminders')} />
 
         <View style={[styles.divider, { backgroundColor: dc.border }]} />
@@ -168,26 +167,30 @@ export function Sidebar() {
           <Text style={[styles.sectionLabel, { color: dc.textTer }]}>LABELS</Text>
 
           {tags.map((tag) => {
-            const isActive = pathname === '/label_id' &&
-              // eslint-disable-next-line react-hooks/rules-of-hooks
-              false; // Đơn giản: chỉ highlight khi ở đúng trang
+            // ✅ FIX 2: Chỉ highlight đúng tag đang được chọn
+            // ✅ FIX: dùng selectedTagId từ store — đáng tin cậy hơn useLocalSearchParams trong layout
+            const isActive = selectedTagId === tag.id;
             return (
               <TouchableOpacity
                 key={tag.id}
-                style={[styles.navItem, (pathname === '/label_id') && { backgroundColor: isDark ? '#064e3b' : colors.primarySubtle }]}
+                style={[styles.navItem, isActive && { backgroundColor: isDark ? '#064e3b' : colors.primarySubtle }]}
                 activeOpacity={0.7}
                 onPress={() => {
                   if (isMobile && isSidebarOpen) toggleSidebar();
+                  setSelectedTagId(tag.id); // ✅ lưu vào store → Sidebar đọc để highlight
                   router.push({ pathname: '/(main)/label_id', params: { id: tag.id } } as any);
                 }}
               >
                 <Feather
                   name="tag"
                   size={16}
-                  color={dc.textSec}
+                  color={isActive ? (isDark ? '#34d399' : colors.primary) : dc.textSec}
                 />
                 <Text
-                  style={[styles.navLabel, { color: dc.textSec }]}
+                  style={[
+                    styles.navLabel, { color: dc.textSec },
+                    isActive && { color: isDark ? '#34d399' : colors.primary, fontFamily: 'Inter-Medium' },
+                  ]}
                   numberOfLines={1}
                 >
                   {tag.name}
