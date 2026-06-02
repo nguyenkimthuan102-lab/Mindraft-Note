@@ -18,9 +18,10 @@ interface HoverBtnProps {
   size?: number;
   hoverBorder?: boolean;
   label?: string;
+  isDark?: boolean;
 }
 
-export function HoverBtn({ onPress, children, style, borderRadius = 6, fullWidth = false, size, hoverBorder = false, label, }: HoverBtnProps) {
+export function HoverBtn({ onPress, children, style, borderRadius = 6, fullWidth = false, size, hoverBorder = false, label, isDark = false, }: HoverBtnProps) {
   const { hovered, hoverProps } = useHover();
   const [showBelow, setShowBelow] = useState(false);
 
@@ -29,14 +30,14 @@ export function HoverBtn({ onPress, children, style, borderRadius = 6, fullWidth
     if (Platform.OS === 'web') {
       // Lấy tọa độ thực tế của phần tử trên trình duyệt
       const rect = e.currentTarget.getBoundingClientRect();
-      
+
       // Nếu nút nằm quá sát mép trên màn hình (< 50px), đảo nhãn xuống dưới
-      setShowBelow(rect.top < 100); 
+      setShowBelow(rect.top < 100);
     }
-    
+
     // Thực hiện logic hover mặc định
     if (hoverProps.onMouseEnter) {
-       (hoverProps.onMouseEnter as Function)(e);
+      (hoverProps.onMouseEnter as Function)(e);
     }
   }, [hoverProps]);
 
@@ -58,9 +59,9 @@ export function HoverBtn({ onPress, children, style, borderRadius = 6, fullWidth
           size ? { width: size, height: size } : undefined,
           { borderRadius },
           hoverBorder && { borderWidth: 2, borderColor: 'transparent', borderStyle: 'solid' },
-          hovered && styles.btnHovered,
+          hovered && (isDark ? styles.btnHoveredDark : styles.btnHovered),
           style,
-          hovered && hoverBorder && styles.btnHoverBorder,
+          hovered && hoverBorder && (isDark ? styles.btnHoverBorderDark : styles.btnHoverBorder),
         ]}
         {...hoverProps}
       >
@@ -90,10 +91,16 @@ const styles = StyleSheet.create({
     width: '100%',
   },
   btnHovered: {
-    backgroundColor: colors.bgHover, // #F3F4F6
+    backgroundColor: colors.bgHover, // #F3F4F6 — light mode
+  },
+  btnHoveredDark: {
+    backgroundColor: 'rgba(255, 255, 255, 0.10)', // dark mode
   },
   btnHoverBorder: {
-    borderColor: '#000000',
+    borderColor: '#000000', // light mode
+  },
+  btnHoverBorderDark: {
+    borderColor: 'rgba(255, 255, 255, 0.40)', // dark mode
   },
   container: {
     position: 'relative',

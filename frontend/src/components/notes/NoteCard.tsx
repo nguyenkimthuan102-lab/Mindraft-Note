@@ -113,7 +113,7 @@ function DotMenu({ isTodo, onAction, onClose, isDark }: {
 
   // 6 items — khớp hoàn toàn với NoteEditor
   const baseItems = [
-    { key: 'tag', label: 'Thêm tag' },
+    { key: 'tag', label: 'Thêm nhãn' },
     { key: 'duplicate', label: 'Tạo bản sao' },
     { key: 'history', label: 'Xem lịch sử phiên bản' },
     { key: 'delete', label: 'Xóa ghi chú', danger: true },
@@ -129,7 +129,7 @@ function DotMenu({ isTodo, onAction, onClose, isDark }: {
     { key: 'export_pdf', label: 'Xuất ra .PDF' },
     { key: 'export_docx', label: 'Xuất ra .DOCX' },
   ];
-  
+
   return (
     <View style={[styles.dotMenu, { backgroundColor: menuBg, borderColor }]}>
       {items.map((item) => (
@@ -146,6 +146,7 @@ function DotMenu({ isTodo, onAction, onClose, isDark }: {
             }}
             fullWidth
             borderRadius={0}
+            isDark={isDark}
           >
             <Text
               style={[
@@ -183,6 +184,7 @@ function DotMenu({ isTodo, onAction, onClose, isDark }: {
                   }}
                   fullWidth
                   borderRadius={0}
+                  isDark={isDark}
                 >
                   <Text
                     style={[
@@ -229,11 +231,12 @@ function Tooltip({ label, children }: { label: string; children: React.ReactNode
   );
 }
 
-function ActionBtn({ icon, label, onPress, color }: { icon: string; label: string; onPress: () => void; color?: string }) {
+function ActionBtn({ icon, label, onPress, color, isDark }: { icon: string; label: string; onPress: () => void; color?: string; isDark?: boolean }) {
+  const iconColor = color ?? (isDark ? '#D1D5DB' : colors.textSecondary);
   return (
     <Tooltip label={label}>
-      <HoverBtn onPress={onPress} style={styles.actionBtn}>
-        <Icon source={icon} size={18} color={color || colors.textSecondary} />
+      <HoverBtn onPress={onPress} style={styles.actionBtn} isDark={isDark}>
+        <Icon source={icon} size={18} color={iconColor} />
       </HoverBtn>
     </Tooltip>
   );
@@ -409,6 +412,7 @@ export function NoteCard({ note, isSelected, onSelect, isGridView, onPress, onUp
             <HoverBtn
               onPress={() => update({ is_pinned: localNote.is_pinned === 1 ? 0 : 1 })}
               label={localNote.is_pinned === 1 ? "Bỏ ghim" : "Ghim"}
+              isDark={isDark}
             >
               <Icon
                 source={localNote.is_pinned === 1 ? 'pin' : 'pin-outline'}
@@ -477,7 +481,7 @@ export function NoteCard({ note, isSelected, onSelect, isGridView, onPress, onUp
                   }}
                   activeOpacity={0.7}
                 >
-                  <TagChip label={tag.name} />
+                  <TagChip label={tag.name} isDark={isDark} />
                 </TouchableOpacity>
               ))}
             </View>
@@ -504,20 +508,22 @@ export function NoteCard({ note, isSelected, onSelect, isGridView, onPress, onUp
               <ActionBtn
                 icon="palette-outline"
                 label="Đổi màu"
+                isDark={isDark}
                 onPress={() => { setShowColorPicker(v => !v); setShowDotMenu(false); }}
-                color={showColorPicker ? colors.primary : dynamicColors.textSecondary}
+                color={showColorPicker ? colors.primary : (isDark ? '#D1D5DB' : colors.textSecondary)}
               />
               {showColorPicker && (
                 <ColorPicker isDark={isDark} onSelect={(color) => update({ color })} onClose={() => setShowColorPicker(false)} />
               )}
             </View>
-            {!isTodo && <ActionBtn icon="bell-outline" label="Nhắc nhở" onPress={() => { }} />}
-            <ActionBtn icon="account-plus-outline" label="Thêm CTV" onPress={() => { }} />
-            <ActionBtn icon={archiveIcon} label={archiveLabel} onPress={() => onArchive?.(note.id)} />
+            {!isTodo && <ActionBtn icon="bell-outline" label="Nhắc nhở" isDark={isDark} onPress={() => { }} />}
+            <ActionBtn icon="account-plus-outline" label="Thêm CTV" isDark={isDark} onPress={() => { }} />
+            <ActionBtn icon={archiveIcon} label={archiveLabel} isDark={isDark} onPress={() => onArchive?.(note.id)} />
             <View ref={dotBtnRef}>
               <ActionBtn
                 icon="dots-vertical"
                 label="Thêm tùy chọn"
+                isDark={isDark}
                 onPress={() => {
                   dotBtnRef.current?.measureInWindow((x, y, w, h) => {
                     const screenHeight = Dimensions.get('window').height;
@@ -573,7 +579,7 @@ export function NoteCard({ note, isSelected, onSelect, isGridView, onPress, onUp
 
         {(isMobile ? isSelectionMode : (hovered || isSelected)) && (
           <View style={styles.checkboxWrapper}>
-            <HoverBtn onPress={onSelect} style={[isSelected && { backgroundColor: isDark ? '#1F2937' : '#fff' }]} label="Chọn">
+            <HoverBtn onPress={onSelect} isDark={isDark} style={[isSelected && { backgroundColor: isDark ? '#1F2937' : '#fff' }]} label="Chọn">
               <Icon source={isSelected ? "check-circle" : "circle-outline"} size={22} color={isSelected ? colors.primary : dynamicColors.textTertiary} />
             </HoverBtn>
           </View>
