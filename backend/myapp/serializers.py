@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import Notes, TodoItems, UserSettings, Tags, NoteTags, Reminders, Media, Users, Notifications
+from .models import Notes, TodoItems, UserSettings, Tags, NoteTags, Reminders, Media, Users, Notifications, TodoItems
 
 class TagSerializer(serializers.ModelSerializer):
     class Meta:
@@ -68,19 +68,6 @@ class CreateNoteSerializer(serializers.ModelSerializer):
             "position": {"required": False},
             "client_updated_at": {"required": False},
         }
-
-
-class UserSettingsSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = UserSettings
-        fields = [
-            "theme",
-            "notifications_enabled",
-            "notify_reminder",
-            "notify_collaboration",
-            "default_note_view",
-            "sort_by",
-        ]
 
 
 class UpdateNoteSerializer(serializers.ModelSerializer):
@@ -182,9 +169,7 @@ class CreateNotificationSerializer(serializers.ModelSerializer):
         model = Notifications
         fields = ['type', 'note', 'payload']
 
-# serializers.py
-from rest_framework import serializers
-from .models import TodoItems
+ TodoItems
 
 class TodoItemChildSerializer(serializers.ModelSerializer):
     """Serializer cho todo con (không lồng thêm)"""
