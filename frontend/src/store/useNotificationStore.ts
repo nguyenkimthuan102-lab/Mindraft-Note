@@ -25,9 +25,11 @@ export const useNotificationStore = create<NotificationStore>((set, get) => ({
   loadNotifications: async () => {
     set({ loading: true });
     try {
-      const data = await fetchNotifications();
-      const unread = data.filter(n => n.is_read === 0).length;
-      set({ notifications: data, unreadCount: unread });
+      const res = await fetchNotifications() as any;
+      const dataArray = res && Array.isArray(res.results) ? res.results : [];
+      const unread = dataArray.filter((n: any) => n.is_read === 0).length;
+      
+      set({ notifications: dataArray, unreadCount: unread });
     } catch (err) {
       console.error('Lỗi load thông báo:', err);
     } finally {
