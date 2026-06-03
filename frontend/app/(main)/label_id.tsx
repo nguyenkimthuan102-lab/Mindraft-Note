@@ -4,6 +4,7 @@
  * Route: /(main)/label/:id
  */
 import { ScrollView, StyleSheet, View, Alert, useWindowDimensions, Text } from 'react-native';
+import { useState, useEffect } from 'react';
 import { useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Icon } from 'react-native-paper';
@@ -17,26 +18,28 @@ import { useAppStore } from '@/src/store/useAppStore';
 import { useSyncStore } from '../../src/store/useSyncStore';
 import { useSelectionStore } from '../../src/store/useSelectionStore';
 import { useNoteStore } from '../../src/store/useNoteStore';
+import {
+  fetchNotes, createNoteText, createNoteTodo,
+  updateNote, trashNote, toggleArchiveNote, togglePinNote,
+} from '../../src/api/noteApi';
+import { addTagToNote } from '../../src/api/tagApi';
+import type { Tag } from '../../src/api/tagApi';
 
 export default function LabelScreen() {
-  // ── Lấy tag id từ route params ──────────────────────────────────────────────
-  const { id: tagId } = useLocalSearchParams<{ id: string }>();
-
-  // ── Store ───────────────────────────────────────────────────────────────────
-  const { theme, viewMode, tags } = useAppStore();
-  const { selectedIds, toggleSelect } = useSelectionStore();
+  // ── Lấy tag id: ưu tiên store (đáng tin cậy), fallback về route params ─────
+  const { id: paramsTagId } = useLocalSearchParams<{ id: string }>();
+  const { theme, viewMode, tags, selectedTagId } = useAppStore();
+  // ✅ FIX: Dùng selectedTagId từ store vì useLocalSearchParams trong layout bị lỗi
+  const tagId = selectedTagId ?? paramsTagId;
+  const { setSyncing, setDone, setError } = useSyncStore();
+  const { selectedIds, toggleSelect, clearSelection } = useSelectionStore();
   const {
-    notes,
-    editorVisible,
-    editorMode,
-    editingNote,
-    openEditNote,
-    openCreateText,
-    openCreateTodo,
-    trashNoteAction,
-    archiveNoteAction,
-    saveNoteAction
+    editorVisible, editorMode, editingNote,
+    openEditNote: openEditNoteStore, closeEditor: closeEditorStore,
+    tagIdByName, allTagObjects,
   } = useNoteStore();
+
+  const [notes, setNotes] = useState<NoteCardData[]>([]);
 
   const isDark = theme === 'dark';
   const dynamicBg = isDark ? '#111827' : colors.bgPage;
@@ -44,25 +47,176 @@ export default function LabelScreen() {
   // Tên label hiện tại để hiển thị (lấy từ store)
   const currentTag = tags.find(t => t.id === tagId);
 
+  // ── Load notes theo tag_id ──────────────────────────────────────────────────
+  useEffect(() => {
+    if (!tagId) return;
+    clearSelection();
+    setSyncing();
+    const load = async () => {
+      try {
+        // API Contract 3.1: GET /notes?view=active&tag_id=uuid
+        const data = await fetchNotes({ view: 'active', tag_id: tagId });
+        setNotes(data);
+        setDone();
+      } catch (err) {
+        console.error('Lỗi khi lọc note theo nhãn:', err);
+        setError();
+      }
+    };
+    load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tagId]);
+
+  // ── Handlers — giữ nguyên logic từ index.tsx ────────────────────────────────
+
   const handleUpdate = async (id: string, changes: Partial<NoteCardData>) => {
-    const noteToUpdate = notes.find(n => n.id === id);
-    if (!noteToUpdate) return;
+    setNotes(prev => prev.map(n => n.id === id ? { ...n, ...changes } : n));
     try {
-      await saveNoteAction({ ...noteToUpdate, ...changes });
+      await updateNote(id, changes);
     } catch {
-      Alert.alert("Lỗi", "Không thể cập nhật ghi chú. Vui lòng thử lại.");
+      setNotes(prev =>
+        prev.map(n =>
+          n.id === id
+            ? { ...n, ...Object.fromEntries(Object.keys(changes).map(k => [k, n[k as keyof NoteCardData]])) }
+            : n
+        )
+      );
+      Alert.alert('Lỗi', 'Không thể cập nhật ghi chú. Vui lòng thử lại.');
     }
   };
 
+  const handleTogglePin = async (id: string) => {
+    setNotes(prev =>
+      prev.map(n => n.id === id ? { ...n, is_pinned: n.is_pinned ? 0 : 1 } : n)
+    );
+    try {
+      await togglePinNote(id);
+    } catch {
+      setNotes(prev =>
+        prev.map(n => n.id === id ? { ...n, is_pinned: n.is_pinned ? 0 : 1 } : n)
+      );
+      Alert.alert('Lỗi', 'Không thể ghim ghi chú.');
+    }
+  };
 
-  const labelNotes = notes.filter(note => 
-    !note.is_archived && 
-    !note.is_trashed &&
-    note.labels?.some(l => typeof l === 'string' ? l === tagId : (l as any).id === tagId)
-  );
+  const handleDelete = async (id: string) => {
+    try {
+      await trashNote(id);
+      setNotes(prev => prev.filter(n => n.id !== id));
+    } catch {
+      Alert.alert('Lỗi', 'Không thể xóa ghi chú. Vui lòng thử lại.');
+    }
+  };
 
-  const pinned = labelNotes.filter(n => n.is_pinned === 1);
-  const others = labelNotes.filter(n => n.is_pinned !== 1);
+  const handleArchive = async (id: string) => {
+    const noteToRestore = notes.find(n => n.id === id);
+    const isPinned = noteToRestore?.is_pinned === 1;
+    setNotes(prev => prev.filter(n => n.id !== id));
+    try {
+      if (isPinned) await togglePinNote(id);
+      await toggleArchiveNote(id);
+    } catch {
+      setNotes(prev => noteToRestore ? [noteToRestore, ...prev] : prev);
+      Alert.alert('Lỗi', 'Không thể lưu trữ ghi chú. Vui lòng thử lại.');
+    }
+  };
+
+  const openCreateText = () => {
+    openEditNoteStore({
+      id: `temp-${Date.now()}`,
+      type: 'text',
+      title: '',
+      content_text: '',
+      color: 'default',
+      // Gắn tag hiện tại vào note mới tạo (nếu có)
+      tags: currentTag ? [currentTag] : [],
+    });
+  };
+
+  const openCreateTodo = () => {
+    openEditNoteStore({
+      id: `temp-${Date.now()}`,
+      type: 'todo',
+      title: '',
+      todo_items: [],
+      color: 'default',
+      tags: currentTag ? [currentTag] : [],
+    });
+  };
+
+  const openEditNote = (note: NoteCardData) => openEditNoteStore(note);
+  const closeEditor = () => closeEditorStore();
+
+  const handleSaveNote = async (note: NoteCardData) => {
+    const deepStripHtml = (html: string) => {
+      if (!html) return '';
+      return html
+        .replace(/<[^>]*>?/gm, '')
+        .replace(/&nbsp;/g, ' ')
+        .replace(/[\u200B-\u200D\uFEFF]/g, '')
+        .trim();
+    };
+
+    const strippedText = note.content_text ? deepStripHtml(note.content_text) : '';
+    const cleanNote: NoteCardData = {
+      ...note,
+      content_text: strippedText === '' ? '' : note.content_text,
+    };
+
+    const isContentEmpty =
+      (!cleanNote.title || cleanNote.title.trim() === '') &&
+      (!cleanNote.content_text || cleanNote.content_text.trim() === '') &&
+      (!cleanNote.todo_items || cleanNote.todo_items.length === 0);
+
+    if (isContentEmpty && note.id.startsWith('temp-')) {
+      closeEditorStore();
+      return;
+    }
+
+    const isNewNote = note.id.startsWith('temp-');
+    try {
+      if (isNewNote) {
+        const createdNote = cleanNote.type === 'text'
+          ? await createNoteText(cleanNote)
+          : await createNoteTodo(cleanNote);
+
+        // ✅ FIX: Gắn tags vào note mới vừa tạo
+        const desiredTagNames: string[] = cleanNote.labels ?? [];
+        if (desiredTagNames.length > 0) {
+          await Promise.all(
+            desiredTagNames.map(name => {
+              const tagId = tagIdByName[name];
+              return tagId ? addTagToNote(createdNote.id, tagId) : Promise.resolve();
+            })
+          );
+          const addedTags = desiredTagNames
+            .map(name => allTagObjects.find((t: Tag) => t.name === name))
+            .filter(Boolean) as Tag[];
+          setNotes(prev => [{ ...createdNote, tags: addedTags }, ...prev.filter(n => n.id !== note.id)]);
+        } else {
+          setNotes(prev => [createdNote, ...prev.filter(n => n.id !== note.id)]);
+        }
+      } else {
+        const oldNote = notes.find(n => n.id === note.id);
+        if (oldNote && oldNote.is_pinned !== cleanNote.is_pinned) {
+          await togglePinNote(cleanNote.id);
+        }
+        const updatedNote = await updateNote(cleanNote.id, cleanNote);
+        const tagsFromEditor = cleanNote.tags && cleanNote.tags.length > 0
+          ? cleanNote.tags
+          : updatedNote.tags;
+        setNotes(prev => prev.map(n =>
+          n.id === cleanNote.id ? { ...updatedNote, tags: tagsFromEditor } : n
+        ));
+      }
+      closeEditorStore();
+    } catch {
+      Alert.alert('Lỗi', 'Không thể lưu ghi chú. Vui lòng thử lại.');
+    }
+  };
+
+  const pinned = notes.filter(n => n.is_pinned === 1);
+  const others = notes.filter(n => n.is_pinned !== 1);
 
   const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
@@ -112,8 +266,8 @@ export default function LabelScreen() {
                   notes={pinned}
                   onPressNote={openEditNote}
                   onUpdateNote={handleUpdate}
-                  onDeleteNote={trashNoteAction}
-                  onArchiveNote={archiveNoteAction}
+                  onDeleteNote={handleDelete}
+                  onArchiveNote={handleArchive}
                   selectedIds={selectedIds}
                   onSelectNote={toggleSelect}
                 />
@@ -124,8 +278,8 @@ export default function LabelScreen() {
                   notes={others}
                   onPressNote={openEditNote}
                   onUpdateNote={handleUpdate}
-                  onDeleteNote={trashNoteAction}
-                  onArchiveNote={archiveNoteAction}
+                  onDeleteNote={handleDelete}
+                  onArchiveNote={handleArchive}
                   selectedIds={selectedIds}
                   onSelectNote={toggleSelect}
                 />
@@ -139,6 +293,8 @@ export default function LabelScreen() {
         visible={editorVisible}
         mode={editorMode}
         note={editingNote}
+        onClose={closeEditor}
+        onSave={handleSaveNote}
       />
 
       <FloatingActionButton

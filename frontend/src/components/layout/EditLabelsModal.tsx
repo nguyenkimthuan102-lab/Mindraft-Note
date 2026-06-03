@@ -17,14 +17,24 @@ export function EditLabelsModal({ visible, onClose }: EditLabelsModalProps) {
     const isDark = theme === 'dark';
 
     const [newLabelName, setNewLabelName] = useState('');
+    const [createError, setCreateError] = useState('');
     const [editingId, setEditingId] = useState<string | null>(null);
     const [editValue, setEditValue] = useState('');
 
     const handleCreate = async () => {
-        if (!newLabelName.trim()) return;
-        await createTag(newLabelName.trim());
+        const trimmed = newLabelName.trim();
+        if (!trimmed) return;
+
+        // ✅ FIX 1: Kiểm tra nhãn đã tồn tại (giống GG Keep)
+        const isDuplicate = tags.some(t => t.name.toLowerCase() === trimmed.toLowerCase());
+        if (isDuplicate) {
+            setCreateError('Nhãn đã tồn tại');
+            return;
+        }
+
+        setCreateError('');
+        await createTag(trimmed);
         setNewLabelName('');
-        // ✅ Cập nhật toàn bộ hệ thống: Sidebar + NoteStore
         await loadTagsFromServer();
     };
 
@@ -60,14 +70,17 @@ export function EditLabelsModal({ visible, onClose }: EditLabelsModalProps) {
                             name={newLabelName ? 'close' : 'plus'}
                             size={22}
                             color={dc.text}
-                            onPress={() => setNewLabelName('')}
+                            onPress={() => { setNewLabelName(''); setCreateError(''); }}
                         />
                         <TextInput
                             style={[styles.input, { color: dc.text }]}
                             placeholder="Tạo nhãn mới"
                             placeholderTextColor="#9ca3af"
                             value={newLabelName}
-                            onChangeText={setNewLabelName}
+                            onChangeText={(text) => {
+                                setNewLabelName(text);
+                                if (createError) setCreateError(''); // xóa lỗi khi gõ lại
+                            }}
                             onSubmitEditing={handleCreate}
                         />
                         {newLabelName.length > 0 && (
@@ -76,6 +89,11 @@ export function EditLabelsModal({ visible, onClose }: EditLabelsModalProps) {
                             </TouchableOpacity>
                         )}
                     </View>
+
+                    {/* Thông báo lỗi nhãn đã tồn tại */}
+                    {createError ? (
+                        <Text style={styles.errorText}>{createError}</Text>
+                    ) : null}
 
                     <ScrollView
                         style={{ maxHeight: 300 }}
@@ -211,6 +229,14 @@ const styles = StyleSheet.create({
         borderRadius: 16,
         alignItems: 'center',
         justifyContent: 'center',
+    },
+    errorText: {
+        fontSize: 12,
+        fontFamily: 'Inter-Regular',
+        color: '#ef4444',
+        paddingHorizontal: 16,
+        paddingBottom: 6,
+        marginTop: -2,
     },
     footer: {
         borderTopWidth: StyleSheet.hairlineWidth,
