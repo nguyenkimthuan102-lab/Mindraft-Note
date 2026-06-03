@@ -12,7 +12,7 @@ from ..serializers import (
     CreateTodoItemSerializer,
     UpdateTodoItemSerializer
 )
-
+from django.db.models import Q
 VALID_REPEAT_TYPES = ['none', 'daily', 'weekly', 'monthly']
 
 
@@ -31,20 +31,37 @@ def todo_list(request, note_id):
         return Response({'error': 'Note không tồn tại'}, status=status.HTTP_404_NOT_FOUND)
 
     if request.method == 'GET':
-        # Chỉ lấy todo cha (parent=None), children sẽ được nest bên trong
-        todos = TodoItems.objects.filter(
-            note=note,
-            parent=None         # chỉ lấy root items
-        ).order_by('position')
-
-        # Filter theo is_completed nếu có: ?is_completed=0 hoặc 1
+        search_keyword = request.query_params.get('search')
         is_completed = request.query_params.get('is_completed')
-        if is_completed is not None:
-            todos = todos.filter(is_completed=int(is_completed))
+
+        # GỐC: Chỉ lấy todo cha (parent=None), các con sẽ tự lồng bên trong
+        todos = TodoItems.objects.filter(note=note, parent=None).order_by('position')
+
+        # =========================================================================
+        # NÂNG CẤP: LỌC DANH SÁCH TASK CON THEO TỪ KHÓA SEARCH (QUÉT SẠCH CHA LẪN CON VÀ VIỆC ĐÃ XONG)
+        # =========================================================================
+        if search_keyword and search_keyword.strip():
+            keyword = search_keyword.strip()
+            
+            # Tìm tất cả TodoItems (bất kể cha con, bất kể trạng thái xong/chưa) có chứa chữ
+            matched_todos = TodoItems.objects.filter(
+                Q(note=note) & (Q(title__icontains=keyword) | Q(content__icontains=keyword))
+            )
+            
+            # Thu thập ID của các việc khớp chữ và ID cha của chúng
+            matched_ids = set(matched_todos.values_list('id', flat=True))
+            parent_ids = set(matched_todos.exclude(parent=None).values_list('parent_id', flat=True))
+            
+            # Giữ lại các Root task: bản thân nó khớp HOẶC nó chứa Sub-task con khớp từ khóa
+            todos = todos.filter(Q(id__in=matched_ids) | Q(id__in=parent_ids)).distinct()
+        else:
+            # Nếu KHÔNG search, thì mới áp dụng bộ lọc trạng thái hoàn thành cũ (tránh mất kết quả khi gõ th)
+            if is_completed is not None:
+                todos = todos.filter(is_completed=int(is_completed))
 
         serializer = TodoItemSerializer(todos, many=True)
 
-        # Thống kê nhanh cho frontend
+        # Thống kê nhanh cho frontend (Giữ nguyên)
         total = TodoItems.objects.filter(note=note).count()
         completed = TodoItems.objects.filter(note=note, is_completed=1).count()
 

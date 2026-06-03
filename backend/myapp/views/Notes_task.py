@@ -1,6 +1,7 @@
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
+from django.db.models import Q
 
 import uuid
 import os
@@ -88,23 +89,44 @@ def handle_get_notes(request):
 
         notes = notes.filter(id__in=note_ids_with_tag)
 
+    # =========================================================================
+    # THÊM MỚI: TÌM KIẾM CHUỖI TEXT QUÉT SẠCH TIÊU ĐỀ, NỘI DUNG VÀ CẢ DANH SÁCH TODO ITEMS
+    # =========================================================================
+    search_keyword = request.GET.get("search")
+    has_search = False
+
+    if search_keyword and search_keyword.strip():
+        has_search = True
+        keyword = search_keyword.strip()
+        
+        # 1. Tìm ID của các ghi chú có chứa Todo Items (cha hoặc con) khớp từ khóa search
+        from ..models import TodoItems # Import inline đảm bảo an toàn cấu trúc model
+        note_ids_from_todos = TodoItems.objects.filter(
+            Q(title__icontains=keyword) | Q(content__icontains=keyword)
+        ).values_list("note_id", flat=True)
+
+        # 2. Thực hiện bộ lọc tổng hợp chéo bảng chùm khế
+        notes = notes.filter(
+            Q(title__icontains=keyword) | 
+            Q(content_text__icontains=keyword) |
+            Q(id__in=note_ids_from_todos)
+        ).distinct() # Loại bỏ bản ghi trùng lặp khi gom mảng dữ liệu nối
+
     # =========================
     # SORT
     # =========================
-
-    sort_by = request.GET.get("sort_by", "updated_at")
-
-    if sort_by == "created_at":
-
-        notes = notes.order_by("-created_at")
-
-    elif sort_by == "position":
-
-        notes = notes.order_by("position")
-
-    else:
-
+    # Sắp xếp ưu tiên thời gian cập nhật server mới nhất nếu người dùng đang thực hiện tìm kiếm chữ thô
+    if has_search:
         notes = notes.order_by("-server_updated_at")
+    else:
+        sort_by = request.GET.get("sort_by", "updated_at")
+
+        if sort_by == "created_at":
+            notes = notes.order_by("-created_at")
+        elif sort_by == "position":
+            notes = notes.order_by("position")
+        else:
+            notes = notes.order_by("-server_updated_at")
 
     # =========================
     # SERIALIZE

@@ -254,6 +254,39 @@ const stripHtml = (html: string): string =>
     .replace(/\n{3,}/g, '\n\n')
     .trim();
 
+function HighlightText({ text, keyword, isDark }: { text: string; keyword: string; isDark: boolean }) {
+  if (!text) return null;
+  if (!keyword || !keyword.trim()) return <Text style={{ color: isDark ? '#F9FAFB' : colors.textPrimary, fontSize: 14, lineHeight: 20 }}>{text}</Text>;
+
+  const cleanKeyword = keyword.trim();
+  const parts = text.split(new RegExp(`(${cleanKeyword.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&')})`, 'gi'));
+
+  const highlightBg = isDark ? '#4B5563' : '#FEF08A';
+  const highlightTextColor = isDark ? '#FFFFFF' : '#000000';
+
+  return (
+    <Text style={{ color: isDark ? '#F9FAFB' : colors.textPrimary, fontSize: 14, lineHeight: 20 }}>
+      {parts.map((part, i) =>
+        part.toLowerCase() === cleanKeyword.toLowerCase() ? (
+          <Text 
+            key={i} 
+            style={{ 
+              backgroundColor: highlightBg, 
+              color: highlightTextColor,
+              fontWeight: 'bold',
+              lineHeight: 20, // Khớp tuyệt đối với cha
+            }}
+          >
+            {part}
+          </Text>
+        ) : (
+          part
+        )
+      )}
+    </Text>
+  );
+}
+
 // ── NoteMediaBlock: xếp dọc từng ảnh full-width ──────────────────────────────
 function NoteMediaBlock({ noteId, isDark }: { noteId: string; isDark: boolean }) {
   const [media, setMedia] = useState<MediaData[]>([]);
@@ -293,6 +326,8 @@ export function NoteCard({ note, isSelected, onSelect, isGridView, onPress, onUp
   const { theme } = useAppStore();
   const isDark = theme === 'dark';
   const { clearCompletedTodosAction } = useNoteStore();
+  // Lấy chữ search hiện tại từ thanh Topbar để tiến hành tô sáng (Highlight)
+  const searchKeyword = useAppStore((state) => state.searchKeyword);
   const { width } = useWindowDimensions();
   const isMobile = width < 720;
   const router = useRouter(); // ✅ FIX Bug 3: navigate khi click chip nhãn
@@ -303,6 +338,7 @@ export function NoteCard({ note, isSelected, onSelect, isGridView, onPress, onUp
   const [hovered, setHovered] = useState(false);
   const [showColorPicker, setShowColorPicker] = useState(false);
   const [showDotMenu, setShowDotMenu] = useState(false);
+  const [isCompletedExpanded, setIsCompletedExpanded] = useState(false);
   // ── THÊM: state cho TagMenu ────────────────────────────────────────────────
   const [showTagMenu, setShowTagMenu] = useState(false);
   const [tagMenuPos, setTagMenuPos] = useState({ x: 0, y: 0 });
@@ -429,35 +465,149 @@ export function NoteCard({ note, isSelected, onSelect, isGridView, onPress, onUp
           {/* Title */}
           {localNote.title ? (
             <Text style={[styles.title, { color: dynamicColors.textPrimary }]} numberOfLines={2}>
-              {localNote.title}
+              <HighlightText text={localNote.title} keyword={searchKeyword} isDark={isDark} /> {/* 🔥 Sửa dòng này */}
             </Text>
           ) : null}
 
           {/* Text content */}
           {!isTodo && localNote.content_text ? (
             <Text style={[styles.content, { color: dynamicColors.textSecondary }]} numberOfLines={4}>
-              {stripHtml(localNote.content_text)}
+              <HighlightText text={stripHtml(localNote.content_text)} keyword={searchKeyword} isDark={isDark} /> {/* 🔥 Sửa dòng này */}
             </Text>
           ) : null}
 
           {/* Todo list */}
           {isTodo && (
             <View style={styles.todoList}>
-              {visibleItems.map((item) => (
-                <View key={item.id} style={styles.todoRow}>
-                  <View style={[styles.checkbox, isDark && { borderColor: '#4B5563' }, item.is_completed && styles.checkboxDone]}>
-                    {item.is_completed && <Icon source="check" size={10} color="#fff" />}
-                  </View>
-                  <Text style={[styles.todoText, { color: dynamicColors.textSecondary }, item.is_completed && styles.todoTextDone]} numberOfLines={1}>
-                    {item.title}
-                  </Text>
-                </View>
-              ))}
-              {hiddenIncomplete > 0 && (
-                <Text style={[styles.moreText, { color: dynamicColors.textTertiary }]}>Xem thêm {hiddenIncomplete} việc...</Text>
+              {/* KỊCH BẢN 1: KHI ĐANG TÌM KIẾM -> HIỂN THỊ ĐỦ CẤU TRÚC CHA - CON NẾU SUBTASK KHỚP */}
+              {searchKeyword ? (
+                (() => {
+                  const searchNodes: React.ReactNode[] = [];
+                  
+                  (localNote.todo_items ?? []).forEach((item) => {
+                    const hasParentTitleMatch = item.title.toLowerCase().includes(searchKeyword.toLowerCase());
+                    const hasParentContentMatch = item.content?.toLowerCase().includes(searchKeyword.toLowerCase());
+                    
+                    // Kiểm tra xem trong mảng con của item cha này có thằng subtask nào khớp từ khóa không
+                    const matchedSubtasks = (item.subtasks || []).filter(sub => 
+                      sub.title.toLowerCase().includes(searchKeyword.toLowerCase()) ||
+                      sub.content?.toLowerCase().includes(searchKeyword.toLowerCase())
+                    );
+
+                    // 🎯 NẾU CHA KHỚP HOẶC CÓ CON KHỚP -> TIẾN HÀNH DỰNG CÂY
+                    if (hasParentTitleMatch || hasParentContentMatch || matchedSubtasks.length > 0) {
+                      
+                      // 1. Vẽ thằng Task Cha ra trước làm bệ đỡ không gian
+                      searchNodes.push(
+                        <View key={item.id} style={styles.todoRow}>
+                          <View style={[styles.checkbox, isDark && { borderColor: '#4B5563' }, item.is_completed && styles.checkboxDone]}>
+                            {item.is_completed && <Icon source="check" size={10} color="#fff" />}
+                          </View>
+                          <View style={{ flex: 1 }}>
+                            <Text style={[styles.todoText, { color: dynamicColors.textSecondary }, item.is_completed && styles.todoTextDone]} numberOfLines={1}>
+                              {/* Nếu bản thân cha khớp thì highlight, nếu cha không khớp (chỉ hiện ké do con khớp) thì render chữ thô */}
+                              {hasParentTitleMatch ? (
+                                <HighlightText text={item.title} keyword={searchKeyword} isDark={isDark} />
+                              ) : (
+                                item.title
+                              )}
+                            </Text>
+                            {hasParentContentMatch && item.content ? (
+                              <Text style={{ fontSize: 12, color: dynamicColors.textTertiary, fontFamily: 'Inter-Regular', fontStyle: 'italic', marginTop: 1 }} numberOfLines={1}>
+                                <HighlightText text={item.content} keyword={searchKeyword} isDark={isDark} />
+                              </Text>
+                            ) : null}
+                          </View>
+                        </View>
+                      );
+
+                      // 2. Duyệt qua mảng Sub-tasks để hiển thị mục con thụt lề
+                      (item.subtasks || []).forEach((sub) => {
+                        const isSubTitleMatch = sub.title.toLowerCase().includes(searchKeyword.toLowerCase());
+                        const isSubContentMatch = sub.content?.toLowerCase().includes(searchKeyword.toLowerCase());
+
+                        // Render mục con: Hoặc là chính nó khớp, hoặc nó được hiện kèm do ông cha của nó khớp chữ search
+                        if (isSubTitleMatch || isSubContentMatch || hasParentTitleMatch || hasParentContentMatch) {
+                          searchNodes.push(
+                            <View key={sub.id} style={[styles.todoRow, { paddingLeft: 24 }]}>
+                              <Icon source="subdirectory-arrow-right" size={14} color={dynamicColors.textTertiary} />
+                              <View style={[styles.checkbox, isDark && { borderColor: '#4B5563' }, sub.is_completed && styles.checkboxDone, { width: 14, height: 14, borderRadius: 7 }]}>
+                                {sub.is_completed && <Icon source="check" size={8} color="#fff" />}
+                              </View>
+                              <View style={{ flex: 1 }}>
+                                <Text style={[styles.todoText, { color: dynamicColors.textSecondary, fontSize: 13 }, sub.is_completed && styles.todoTextDone]} numberOfLines={1}>
+                                  {isSubTitleMatch ? (
+                                    <HighlightText text={sub.title} keyword={searchKeyword} isDark={isDark} />
+                                  ) : (
+                                    sub.title
+                                  )}
+                                </Text>
+                                {isSubContentMatch && sub.content ? (
+                                  <Text style={{ fontSize: 11, color: dynamicColors.textTertiary, fontFamily: 'Inter-Regular', fontStyle: 'italic', marginTop: 1 }} numberOfLines={1}>
+                                    <HighlightText text={sub.content} keyword={searchKeyword} isDark={isDark} />
+                                  </Text>
+                                ) : null}
+                              </View>
+                            </View>
+                          );
+                        }
+                      });
+                    }
+                  });
+
+                  return searchNodes.length > 0 ? searchNodes : <Text style={{ color: dynamicColors.textTertiary, fontSize: 13, fontStyle: 'italic' }}>Không có việc trùng khớp.</Text>;
+                })()
+              ) : (
+                /* KỊCH BẢN 2: KHI KHÔNG TÌM KIẾM -> GIỮ NGUYÊN GIAO DIỆN GỐC THU GỌN 3 ITEM CHA CHƯA XONG */
+                <>
+                  {visibleItems.map((item) => (
+                    <View key={item.id} style={styles.todoRow}>
+                      <View style={[styles.checkbox, isDark && { borderColor: '#4B5563' }, item.is_completed && styles.checkboxDone]}>
+                        {item.is_completed && <Icon source="check" size={10} color="#fff" />}
+                      </View>
+                      <Text style={[styles.todoText, { color: dynamicColors.textSecondary }]} numberOfLines={1}>
+                        {item.title}
+                      </Text>
+                    </View>
+                  ))}
+                  {hiddenIncomplete > 0 && (
+                    <Text style={[styles.moreText, { color: dynamicColors.textTertiary }]}>Xem thêm {hiddenIncomplete} việc...</Text>
+                  )}
+                </>
               )}
+
+              {/* DANH SÁCH VIỆC ĐÃ HOÀN THÀNH - CÓ KHẢ NĂNG BẤM ĐÓNG/MỞ XEM CHI TIẾT NHƯ GOOGLE TASKS */}
               {completedCount > 0 && (
-                <Text style={[styles.completedText, { color: dynamicColors.textTertiary }]}>Đã hoàn thành ({completedCount})</Text>
+                <View style={{ marginTop: 4 }}>
+                  <TouchableOpacity 
+                    style={{ flexDirection: 'row', alignItems: 'center', gap: 4, paddingVertical: 2 }}
+                    onPress={() => setIsCompletedExpanded(!isCompletedExpanded)}
+                    activeOpacity={0.7}
+                  >
+                    <Icon source={isCompletedExpanded ? "chevron-down" : "chevron-right"} size={16} color={dynamicColors.textTertiary} />
+                    <Text style={[styles.completedText, { color: dynamicColors.textTertiary, marginTop: 0 }]}>
+                      Đã hoàn thành ({completedCount})
+                    </Text>
+                  </TouchableOpacity>
+
+                  {/* Khi người dùng bấm mở, xổ toàn bộ danh sách việc đã gạch ngang ra dưới dạng thu gọn */}
+                  {isCompletedExpanded && (
+                    <View style={{ gap: 6, marginTop: 6, paddingLeft: 8 }}>
+                      {(localNote.todo_items ?? [])
+                        .filter(t => t.is_completed)
+                        .map((cItem) => (
+                          <View key={cItem.id} style={[styles.todoRow, { opacity: 0.5 }]}>
+                            <View style={[styles.checkbox, styles.checkboxDone]}>
+                              <Icon source="check" size={10} color="#fff" />
+                            </View>
+                            <Text style={[styles.todoText, { color: dynamicColors.textSecondary, textDecorationLine: 'line-through' }]} numberOfLines={1}>
+                              {cItem.title}
+                            </Text>
+                          </View>
+                        ))}
+                    </View>
+                  )}
+                </View>
               )}
             </View>
           )}
